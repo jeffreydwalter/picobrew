@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1
+ARG HUB_BINARY=server
 FROM --platform=$BUILDPLATFORM golang:1.27-bookworm AS server
 ARG TARGETOS
 ARG TARGETARCH
@@ -18,12 +19,18 @@ RUN target_os="${TARGETOS:-$(go env GOOS)}" \
     && CGO_ENABLED=0 GOOS="${target_os}" GOARCH="${target_arch}" \
        go build -trimpath -ldflags='-s -w' -o /out/picobrew-hub ./cmd/picobrew-hub
 
+# The release workflow verifies the native Hub download for each platform.
+FROM scratch AS released
+ARG TARGETARCH
+COPY --chmod=0755 release-binaries/picobrew-hub-linux-${TARGETARCH} /out/picobrew-hub
+
+FROM ${HUB_BINARY} AS binary
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 hub && useradd --uid 10001 --gid hub --no-create-home hub \
     && mkdir /data && chown hub:hub /data
-COPY --from=server /out/picobrew-hub /usr/local/bin/picobrew-hub
+COPY --from=binary /out/picobrew-hub /usr/local/bin/picobrew-hub
 WORKDIR /app
 USER hub
 VOLUME ["/data"]

@@ -1,0 +1,100 @@
+name: Publish PicoBrew Hub container
+on:
+  workflow_run:
+    workflows: [Package PicoBrew Hub]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Current public release to package, e.g. v1.0.0
+        required: true
+        type: string
+permissions: {}
+concurrency:
+  group: hub-container-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: >-
+      github.repository == 'jeffreydwalter/picobrew' &&
+      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
+       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.head_branch == 'master' &&
+        (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/jeffreydwalter/picobrew-hub
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Select and verify the official Linux Hub executables
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          python3 server/tools/container_release.py prepare --destination server/release-binaries \
+            --run-id "$RUN_ID" --commit "$RUN_COMMIT" --release-tag "$RELEASE_TAG"
+      - uses: docker/setup-qemu-action@v3
+        if: steps.source.outputs.commit != ''
+        with: {platforms: 'arm64,arm'}
+      - uses: docker/setup-buildx-action@v3
+        if: steps.source.outputs.commit != ''
+      - uses: docker/login-action@v3
+        if: steps.source.outputs.commit != ''
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Publish containers by source revision
+        id: build
+        if: steps.source.outputs.commit != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          file: server/Dockerfile
+          build-args: HUB_BINARY=released
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: ${{ env.IMAGE }}:sha-${{ steps.source.outputs.commit }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
+            org.opencontainers.image.title=PicoBrew Hub
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Promote the current public release
+        if: steps.source.outputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ steps.source.outputs.commit }}
+          RELEASE_TAG: ${{ steps.source.outputs.release_tag }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          tags=$(python3 server/tools/container_release.py stable-tags "$COMMIT" "$RELEASE_TAG")
+          args=()
+          for tag in $tags; do args+=(--tag "$IMAGE:$tag"); done
+          docker buildx imagetools create "${args[@]}" "$IMAGE@$DIGEST"
+          # Read the registry as an anonymous client, the same access as a first-time pull.
+          token=$(curl -fsS --get https://ghcr.io/token --data-urlencode service=ghcr.io \
+            --data-urlencode scope=repository:jeffreydwalter/picobrew-hub:pull | jq -er .token)
+          for tag in $tags; do
+            curl -fsS --retry 3 -H "Authorization: Bearer $token" \
+              -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json' \
+              "https://ghcr.io/v2/jeffreydwalter/picobrew-hub/manifests/$tag" > "$RUNNER_TEMP/index.json"
+            actual=$(sha256sum "$RUNNER_TEMP/index.json" | cut -d' ' -f1)
+            test "$DIGEST" = "sha256:$actual"
+          done
+          jq -e '[.manifests[].platform | select(.os == "linux") |
+            if .architecture == "arm" then (.architecture + "/" + .variant) else .architecture end] |
+            sort == ["amd64","arm/v7","arm64"]' "$RUNNER_TEMP/index.json"
