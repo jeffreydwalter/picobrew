@@ -9,6 +9,11 @@
 #include <sim_io.h>
 #include <avr_spi.h>
 #include <avr_eeprom.h>
+#define PROGMEM
+#define ZYMATIC_SITE_SECTION
+#include "../site/zymatic_site.h"
+#include "../site/zymatic_pair_js.h"
+#include "../site/zymatic_favicon.h"
 
 typedef struct {
     avr_t *avr;
@@ -152,6 +157,31 @@ static const char *exchange(Socket *s, int site, const char *path, const char *b
     assert(s->tx_len && s->tx_len<2048);
     s->regs[0x5800+s->tx_len]=0;
     return (const char *)&s->regs[0x5800];
+}
+
+static void verify_website(Socket *socket)
+{
+    const struct {
+        const char *path;
+        const uint8_t *bytes;
+        size_t length;
+    } pages[] = {
+        {"/", zymatic_site, sizeof zymatic_site},
+        {"/pair.js", zymatic_pair_js, sizeof zymatic_pair_js},
+        {"/favicon.ico", zymatic_favicon, sizeof zymatic_favicon},
+    };
+    unsigned presses = 0;
+    for (size_t i = 0; i < sizeof pages / sizeof pages[0]; ++i) {
+        const char *reply = exchange(socket, PROGRAM, pages[i].path, NULL, &presses);
+        const char *body = strstr(reply, "\r\n\r\n");
+        assert(body && strstr(reply, "200 OK") && !presses);
+        body += 4;
+        assert((size_t)(body - reply) + pages[i].length == socket->tx_len);
+        assert(!memcmp(body, pages[i].bytes, pages[i].length));
+    }
+    printf("All three website assets matched through Ethernet during a brew, maximum %llu cycles.\n",
+           (unsigned long long)max_cycles);
+    assert(max_cycles < 64000);
 }
 
 /* Stop only at the recovered stock text renderer and actual display transfer.
@@ -415,6 +445,11 @@ int main(int argc, char **argv)
     }
     if (!strcmp(argv[6], "about-pairing")) {
         verify_about_pairing(&socket);
+        avr_terminate(avr);
+        return 0;
+    }
+    if (!strcmp(argv[6], "program-website")) {
+        verify_website(&socket);
         avr_terminate(avr);
         return 0;
     }

@@ -1,0 +1,151 @@
+--- a/src/overlay.c
++++ b/src/overlay.c
+@@ -22,8 +22,6 @@
+ const uint8_t provision_key[32] __attribute__((section(".provision"), used)) = {0};
+ const char provision_uid[33] __attribute__((section(".provision"), used)) = {0};
+ const char provision_host[64] __attribute__((section(".provision"), used)) = {0};
+-static uint8_t key[sizeof(provision_key)];
+-static char uid[sizeof(provision_uid)];
+ char zymatic_hub_host[sizeof(provision_host)];
+ char zymatic_hub_authority[sizeof(provision_host)];
+ static ZymaticNetwork network;
+@@ -33,8 +31,6 @@
+ {
+     /* The reset hook verified the complete flash image before initializing SRAM. */
+     const uint8_t rampz = RAMPZ;
+-    memcpy_PF(key, pgm_get_far_address(provision_key), sizeof(key));
+-    memcpy_PF(uid, pgm_get_far_address(provision_uid), sizeof(uid));
+     memcpy_PF(zymatic_hub_host, pgm_get_far_address(provision_host), sizeof(zymatic_hub_host));
+     strcpy(zymatic_hub_authority, zymatic_hub_host);
+     char *colon = strchr(zymatic_hub_host, ':');
+@@ -61,7 +57,7 @@
+     last_poll = now;
+     const uint8_t rampz = RAMPZ;
+     zymatic_history_poll(now);
+-    zymatic_network_poll(&network, key, uid, now, brewing);
++    zymatic_network_poll(&network, (ZymKey)(uintptr_t)provision_key, (ZymUid)(uintptr_t)provision_uid, now, brewing);
+     RAMPZ = rampz;
+ }
+
+--- a/zymatic_api.h
++++ b/zymatic_api.h
+@@ -2,6 +2,15 @@
+ #define ZYMATIC_API_H
+
+ #include <stdint.h>
++#ifdef __AVR__
++/* Composed credentials occupy the upper 64 KiB bank. Keep the flash reads
++ * observable because the installer provisions their contents after linking. */
++typedef const volatile __flash1 uint8_t *ZymKey;
++typedef const volatile __flash1 char *ZymUid;
++#else
++typedef const uint8_t *ZymKey;
++typedef const char *ZymUid;
++#endif
+
+ /* The caller owns and zero-initializes this state. Reuse the line storage for
+  * the response only after parsing a complete request or rejecting the client. */
+@@ -18,13 +27,13 @@
+ void zymatic_panel_changed(void);
+ uint8_t zymatic_panel_take_press(void);
+ uint8_t zymatic_read_stock_serial(char *output);
+-void zymatic_network_poll(ZymaticNetwork *net, const uint8_t key[32], const char *uid, uint32_t now_ms, uint8_t program_active);
++void zymatic_network_poll(ZymaticNetwork *net, ZymKey key, ZymUid uid, uint32_t now_ms, uint8_t program_active);
+
+ /* Hardware-independent HTTP processing. feed returns 1 when the response is
+  * ready. reply_byte streams the completed response, including the optional
+  * device website from program flash. A new request starts with a zeroed state. */
+-uint8_t zymatic_api_feed(ZymaticNetwork *net, uint8_t byte, const uint8_t key[32]);
+-void zymatic_api_reply(ZymaticNetwork *net, const uint8_t key[32], const char *uid, uint32_t now_ms, uint8_t program_active);
++uint8_t zymatic_api_feed(ZymaticNetwork *net, uint8_t byte, ZymKey key);
++void zymatic_api_reply(ZymaticNetwork *net, ZymKey key, ZymUid uid, uint32_t now_ms, uint8_t program_active);
+ int8_t zymatic_api_more(ZymaticNetwork *net);
+ uint8_t zymatic_api_reply_byte(const ZymaticNetwork *net, uint16_t offset);
+
+--- a/zymatic_api.c
++++ b/zymatic_api.c
+@@ -106,7 +106,7 @@
+     }
+ }
+
+-static uint8_t authorized(const char *val, const uint8_t key[32])
++static uint8_t authorized(const char *val, ZymKey key)
+ {
+     if (!key || strlen(val) != 71) return 0;
+     FlashAddress scheme = CONSTANT("bearer ");
+@@ -200,7 +200,7 @@
+     n->flags |= REQUEST;
+ }
+
+-static void parse_header(ZymaticNetwork *n, char *name, const uint8_t *key)
++static void parse_header(ZymaticNetwork *n, char *name, ZymKey key)
+ {
+     char *v = name;
+     while (token((uint8_t)*v)) ++v;
+@@ -228,7 +228,7 @@
+     n->flags |= flag;
+ }
+
+-uint8_t zymatic_api_feed(ZymaticNetwork *n, uint8_t byte, const uint8_t key[32])
++uint8_t zymatic_api_feed(ZymaticNetwork *n, uint8_t byte, ZymKey key)
+ {
+     if (n->flags & BODY) {
+         if (!byte || byte > 0x7e) { n->http_error = BAD; return 1; }
+@@ -282,7 +282,7 @@
+     while (count) append(n,digits[--count]);
+ }
+
+-static uint8_t valid_uid(const char *uid)
++static uint8_t valid_uid(ZymUid uid)
+ {
+     if (!uid) return 0;
+     uint8_t len = 0;
+@@ -557,7 +557,7 @@
+     return 1;
+ }
+
+-void zymatic_api_reply(ZymaticNetwork *n, const uint8_t key[32], const char *uid, uint32_t now_ms, uint8_t program_active)
++void zymatic_api_reply(ZymaticNetwork *n, ZymKey key, ZymUid uid, uint32_t now_ms, uint8_t program_active)
+ {
+     if (n->route == ENCODER && !n->http_error) n->http_error = encoder_command(n->buffer.line, program_active, now_ms);
+     uint8_t pairing=0;
+--- a/zymatic_api_w5100.c
++++ b/zymatic_api_w5100.c
+@@ -92,7 +92,7 @@
+
+ /* 0 indicates an uncertain SPI operation: recheck ownership on the next poll
+  * before attempting any cleanup. Unstable RX/TX hardware counters are retried. */
+-static uint8_t service(ZymaticNetwork *n, uint8_t status, const uint8_t *key, const char *uid, uint32_t now, uint8_t program_active)
++static uint8_t service(ZymaticNetwork *n, uint8_t status, ZymKey key, ZymUid uid, uint32_t now, uint8_t program_active)
+ {
+     uint16_t length, again, ptr;
+     if (n->phase != LISTENING && (uint32_t)(now - n->started) > 5000) n->phase = ABANDON;
+@@ -169,7 +169,7 @@
+     return 1;
+ }
+
+-void zymatic_network_poll(ZymaticNetwork *n, const uint8_t key[32], const char *uid, uint32_t now, uint8_t program_active)
++void zymatic_network_poll(ZymaticNetwork *n, ZymKey key, ZymUid uid, uint32_t now, uint8_t program_active)
+ {
+     if (!ethernet_selected()) {
+         /* Do not touch a bus that the original firmware has assigned to Wi-Fi.
+--- a/tools/compile_extension.py
++++ b/tools/compile_extension.py
+@@ -55,7 +55,7 @@
+         sources = sorted(src.glob("*.c")) + sorted(src.glob("*.S")) + sorted(build.ROOT.glob("zymatic_api*.c"))
+         flags = ["-mmcu=atmega1284p", "-Os", "-std=gnu11", "-Wall", "-Wextra", "-Werror",
+                  "-ffunction-sections", "-fdata-sections", "-fno-jump-tables",
+-                 "-fno-tree-switch-conversion", "-fmerge-all-constants", "-finline-limit=10", "-fno-tree-dominator-opts", "-mcall-prologues", "-flto"]
++                 "-fno-tree-switch-conversion", "-fmerge-all-constants", "-finline-limit=10", "-fno-tree-dominator-opts", "-fno-tree-reassoc", "-mcall-prologues", "-flto"]
+         for path in sources:
+             invoke("avr-gcc", *flags, "-I", build.ROOT, "-c", path, "-o", path.stem + ".o", cwd=work)
+         entry_points = [*build.OFFLINE, "zymatic_factory_compare", "zymatic_factory_stamp", "zymatic_after_loop",
+@@ -64,7 +64,7 @@
+                         "zymatic_home_menu", "zymatic_menu_selection", "zymatic_dialog_button", "zymatic_run_program", "zymatic_about_wait",
+                         "zymatic_menu_button", "zymatic_brew_button", "zymatic_read_stock_serial"]
+         invoke("avr-gcc", "-mmcu=atmega1284p", "-Os", "-mcall-prologues", "-flto",
+-               "-fmerge-all-constants", "-finline-limit=10", "-fno-tree-dominator-opts", "-nostartfiles", "-nostdlib", "-Wl,--gc-sections", "-Wl,--relax",
++               "-fmerge-all-constants", "-finline-limit=10", "-fno-tree-dominator-opts", "-fno-tree-reassoc", "-nostartfiles", "-nostdlib", "-Wl,--gc-sections", "-Wl,--relax",
+                *[f"-Wl,--undefined={symbol}" for symbol in entry_points],
+                "-Wl,-T," + str(src / "overlay.ld"),
+                *[p.stem + ".o" for p in sources], "-Wl,--start-group", "-lc", "-lgcc", "-Wl,--end-group",

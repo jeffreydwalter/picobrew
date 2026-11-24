@@ -89,6 +89,34 @@ afterEach(() => {
   fetchMock.mockReset()
 })
 
+it('shows the read-only OLED during an explicit recipe pause and clears it when the brewer becomes unavailable', async () => {
+  fetchMock.mockImplementation(async (url) =>
+    response(String(url).endsWith('/display') ? frame : {})
+  )
+  const running = { ...device, status: { ...status, busy: true, state: 'program_running' } }
+  const paused = { ...device, status: { ...status, busy: true, state: 'recipe_pause' } }
+  const view = render(page(running))
+  await act(async () => {})
+  expect(displayCalls()).toHaveLength(0)
+  view.rerender(page(paused))
+  await act(async () => {})
+  expect(displayCalls()).toHaveLength(1)
+  expect(screen.getByText('LIVE OLED · 128 × 64')).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Press dial' })).toBeNull()
+  view.rerender(page({ ...paused, online: false }))
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10000)
+  })
+  expect(displayCalls()).toHaveLength(1)
+  expect(screen.queryByText('LIVE OLED · 128 × 64')).toBeNull()
+  view.rerender(page(running))
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10000)
+  })
+  expect(displayCalls()).toHaveLength(1)
+  expect(screen.getByText(pause)).toBeTruthy()
+})
+
 it('renders the real read-only panel, pauses after a busy response, and resumes it when the program ends', async () => {
   let busyResponse = false
   fetchMock.mockImplementation(async (url) => {

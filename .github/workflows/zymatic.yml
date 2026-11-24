@@ -71,5 +71,7 @@ jobs:
           make -j2 -C "$RUNNER_TEMP/simavr-1.8/simavr" install SIMAVR_VERSION=1.8 RELEASE=1 PREFIX="$prefix" DESTDIR="$prefix"
           export PKG_CONFIG_PATH="$prefix/lib/pkgconfig"
           export LD_LIBRARY_PATH="$prefix/lib"
+          export ZYMATIC_TEST_AVR_BIN="$RUNNER_TEMP/avr/bin"
           python -m unittest discover -s tests
           python tests/run_simavr.py --oem-file "$ZYMATIC_TEST_HEX"
+          make wifi-bench ARDUINO_AVR_BIN="$ZYMATIC_TEST_AVR_BIN"

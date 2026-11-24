@@ -1,0 +1,22 @@
+/* Fragment lengths repeat because the OEM functions restore the same number
+ * of registers. Store one length per run and one flash word address per fragment. */
+struct site_run { uint16_t end; uint8_t first, width; };
+static const struct site_run site_runs[] __attribute__((section(".low_web"), used)) = {
+@RUNS@
+};
+static const uint16_t site_words[] __attribute__((section(".low_web"), used)) = {
+@WORDS@
+};
+
+__attribute__((noinline,used,externally_visible))
+uint8_t candidate_site_byte(uint16_t offset)
+{
+    uint8_t run = 0;
+    while (offset >= pgm_read_word_near(&site_runs[run].end)) ++run;
+    if (run) offset -= pgm_read_word_near(&site_runs[run - 1].end);
+    uint8_t first = pgm_read_byte_near(&site_runs[run].first);
+    uint8_t width = pgm_read_byte_near(&site_runs[run].width);
+    uint8_t index = first + offset / width;
+    uint16_t word = pgm_read_word_near(&site_words[index]);
+    return pgm_read_byte_far((uint32_t)word * 2 + offset % width);
+}

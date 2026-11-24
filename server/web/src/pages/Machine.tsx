@@ -136,7 +136,11 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
   const hasPanel = supports(device?.capabilities, 'front_panel')
   const hasMirror = supports(device?.capabilities, 'display')
   const readOnly = hasMirror && !hasPanel && !device?.capabilities?.commands?.length
-  const pausedMirror = device?.model === 'zymatic' && readOnly && !!device.status?.busy
+  const pausedMirror =
+    device?.model === 'zymatic' &&
+    readOnly &&
+    !!device.status?.busy &&
+    device.status.state !== 'recipe_pause'
   const display = useBrewerDisplay(
     device?.online && (hasPanel || hasMirror) && !pausedMirror ? `/devices/${id}/display` : null,
     readOnly ? 5000 : 2500
