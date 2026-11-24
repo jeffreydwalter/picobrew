@@ -612,7 +612,7 @@ PicoFermentMenu* Adapter::ferment_menu() noexcept {
 bool Adapter::show_ferment(){
     auto& screen=head_.screens;
     screen.clear_data();
-    const auto add=[&](std::uint32_t command,const char* label,std::uint8_t slot=0){
+    const auto add=[&](std::uint32_t command,const char* label,std::uint8_t slot){
         HeadUiEvent event; event.command=static_cast<UiCommand>(command); event.index=ferment_.request;
         event.flags=slot;
         return screen.menu_data.append(event,label);
@@ -627,16 +627,16 @@ bool Adapter::show_ferment(){
             ::snprintf(label,sizeof label,"%s %s",action,ferment_.entries[i].name);
             if(!add(FermentSlot,label,i))return false;
         }
-        if(ferment_.more&&!add(FermentNext,text("Next page","Siguiente pagina","Page suivante")))return false;
-        if(ferment_.page&&!add(FermentPrev,text("Previous page","Pagina anterior","Page precedente")))return false;
+        if(ferment_.more&&!add(FermentNext,text("Next page","Siguiente pagina","Page suivante"),0))return false;
+        if(ferment_.page&&!add(FermentPrev,text("Previous page","Pagina anterior","Page precedente"),0))return false;
         break;
     case PICO_FERM_LINKED: title=text("PicoFerm linked","PicoFerm vinculado","PicoFerm associe"); break;
     case PICO_FERM_UNLINKED: title=text("PicoFerm unlinked","PicoFerm desligado","PicoFerm dissocie"); break;
     case PICO_FERM_STALE: title=text("List changed","La lista cambio","Liste modifiee"); break;
     case PICO_FERM_ERROR: title=text("Check Hub connection","Revise el Hub","Verifiez le Hub"); break;
     }
-    if(ferment_.result!=PICO_FERM_WAIT && !add(FermentRefresh,text("Refresh list","Actualizar lista","Actualiser la liste")))return false;
-    if(!add(FermentBack,text("Back","Atras","Retour")))return false;
+    if(ferment_.result!=PICO_FERM_WAIT && !add(FermentRefresh,text("Refresh list","Actualizar lista","Actualiser la liste"),0))return false;
+    if(!add(FermentBack,text("Back","Atras","Retour"),0))return false;
     page_=Page::Ferment;
     ferment_drawn_=ferment_.result;
     return screen.menu_screen(title)==HeadScreenResult::Ok;
