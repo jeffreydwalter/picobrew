@@ -2,6 +2,7 @@ name: hub
 
 services:
   hub:
+    # image: ghcr.io/jeffreydwalter/picobrew-hub:latest
     build: .
     restart: unless-stopped
     ports:

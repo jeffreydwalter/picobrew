@@ -68,15 +68,24 @@ func saveMetadata(path string, data []byte) error {
 }
 
 func stage(local, destination string) error {
-	host := runtime.GOOS + "-" + runtime.GOARCH
+	return stageForPlatform("", local, destination)
+}
+
+func stageForPlatform(platform, local, destination string) error {
+	if platform == "" {
+		platform = runtime.GOOS + "-" + runtime.GOARCH
+	}
+	if !regexp.MustCompile(`^[a-z0-9]+-[a-z0-9]+$`).MatchString(platform) {
+		return fmt.Errorf("invalid USB platform %q", platform)
+	}
 	var index Index
 	if err := json.Unmarshal(releases, &index); err != nil {
 		return err
 	}
-	asset, found := index.Assets[host]
+	asset, found := index.Assets[platform]
 	fromRelease := local == ""
 	if !fromRelease {
-		raw, err := os.ReadFile(filepath.Join(local, host+".json"))
+		raw, err := os.ReadFile(filepath.Join(local, platform+".json"))
 		if err != nil {
 			return err
 		}
@@ -84,13 +93,13 @@ func stage(local, destination string) error {
 			return err
 		}
 	} else if !found {
-		return fmt.Errorf("no pinned USB worker has been published for %s; use the platform release executable or build with go build ./cmd/picobrew-hub for a network-only Hub", host)
+		return fmt.Errorf("no pinned USB worker has been published for %s; use the platform release executable or build with go build ./cmd/picobrew-hub for a network-only Hub", platform)
 	}
-	name := "picobrew-usb-" + host
-	if runtime.GOOS == "windows" {
+	name := "picobrew-usb-" + platform
+	if strings.HasPrefix(platform, "windows-") {
 		name += ".exe"
 	}
-	if asset.Platform != host || asset.Name != name || asset.Bytes <= 0 || asset.Bytes > 160<<20 || !regexp.MustCompile("^[0-9a-f]{64}$").MatchString(asset.SHA256) {
+	if asset.Platform != platform || asset.Name != name || asset.Bytes <= 0 || asset.Bytes > 160<<20 || !regexp.MustCompile("^[0-9a-f]{64}$").MatchString(asset.SHA256) {
 		return errors.New("invalid USB platform artifact manifest")
 	}
 	if err := os.MkdirAll(destination, 0755); err != nil {
@@ -183,8 +192,9 @@ func stage(local, destination string) error {
 func main() {
 	local := flag.String("local", "", "Explicit directory containing the native build_worker.py output")
 	destination := flag.String("dest", "internal/usbservice/helper/payload", "USB embed staging directory")
+	platform := flag.String("platform", "", "Target os-arch platform (defaults to host runtime.GOOS-runtime.GOARCH)")
 	flag.Parse()
-	if err := stage(*local, *destination); err != nil {
+	if err := stageForPlatform(*platform, *local, *destination); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

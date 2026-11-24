@@ -1,13 +1,22 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.27-bookworm AS server
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm AS server
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/ cmd/
 COPY internal/ internal/
 COPY tools/usb-prepare/ tools/usb-prepare/
-RUN go run ./tools/usb-prepare
-RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/picobrew-hub ./cmd/picobrew-hub
+RUN target_os="${TARGETOS:-$(go env GOOS)}" \
+    && target_arch="${TARGETARCH:-$(go env GOARCH)}" \
+    && go run ./tools/usb-prepare -platform "${target_os}-${target_arch}"
+RUN target_os="${TARGETOS:-$(go env GOOS)}" \
+    && target_arch="${TARGETARCH:-$(go env GOARCH)}" \
+    && if [ "${target_arch}" = "arm" ] && [ -n "${TARGETVARIANT}" ]; then export GOARM="${TARGETVARIANT#v}"; fi \
+    && CGO_ENABLED=0 GOOS="${target_os}" GOARCH="${target_arch}" \
+       go build -trimpath -ldflags='-s -w' -o /out/picobrew-hub ./cmd/picobrew-hub
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \

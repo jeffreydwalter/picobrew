@@ -107,6 +107,8 @@ docker compose up --build -d
 docker compose logs hub
 ```
 
+Prebuilt multi-architecture images (`linux/amd64`, `linux/arm64`, and `linux/arm/v7`) are also published to `ghcr.io/jeffreydwalter/picobrew-hub:latest` (replace `build: .` with `image: ghcr.io/jeffreydwalter/picobrew-hub:latest` in `compose.yaml` to pull instead of building locally).
+
 The default Compose file publishes port `8080` on the host so machines can reach the Hub, and persists the SQLite database and encryption key in the `hub-data` volume. Use the setup token from the logs to create the owner account. The image runs as a nonroot user with a read-only application filesystem.
 
 The Compose project name is pinned to `hub`, preserving the default
