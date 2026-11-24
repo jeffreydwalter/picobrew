@@ -80,6 +80,8 @@ If you keep the factory firmware, a **Zymatic on 1.1.14** can fetch recipes from
 
 Open the paired machine’s page and click the **Firmware** version beneath its front panel. Choose **Check for Updates**, select a compatible version, and click **Install** while the brewer is idle. The Hub downloads the package, transfers it, and checks the version after the brewer restarts. **Install** appears when the machine supports wireless updates and has compatible recovery firmware. If you installed a development build such as 1.3.8, update the Hub first. Its Firmware page can offer the public 1.0.0 release even though the number is lower. Brewers without compatible recovery need USB setup. The Pico S below shows the wireless flow. For a USB-only machine, use **USB setup and recovery**. [Firmware updates by model](docs/firmware-parity.md)
 
+On the revised Pico S, Pico Pro, Pico C and Z firmware, select **Brew Recipe** on the machine to choose a saved recipe. Recipes created in the Hub and imported PicoPak programs appear in the same list.
+
 ![Machine firmware dialog on a Pico S showing the installed version, a different version selected, and the Install button](docs/images/hub-firmware-update.png)
 
 ### 4. Send your first recipe
