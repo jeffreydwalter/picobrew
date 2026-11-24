@@ -13,6 +13,8 @@ import (
 )
 
 type telemetryRecord struct {
+	Trial         *receiverTrial   `json:"receiver_trial,omitempty"`
+	RecoveryAfter time.Time        `json:"recovery_after,omitzero"`
 	SchemaVersion int              `json:"schema_version"`
 	FollowHub     bool             `json:"follow_hub,omitempty"`
 	Desired       *telemetryTarget `json:"desired,omitempty"`
@@ -327,6 +329,15 @@ func (s *Server) syncTelemetry(ctx context.Context, d *runtimeDevice, force bool
 	// only after this exact configured receiver has actually failed delivery.
 	// Explicit saves and older preferences without that provenance stay fixed.
 	isManaged := view.IsPicoFerm() && record.FollowHub && desired.Enabled && record.HubReceiver != nil && desired.sameConfig(*record.HubReceiver)
+	if record.Trial != nil {
+		if isManaged && record.Pending == nil {
+			s.checkReceiverTrial(ctx, d, record, status, observed, raw)
+		} else {
+			s.telemetryState(d, "pending", "Save receiver settings to resolve the previous PicoFerm receiver change.", desired)
+		}
+		return
+	}
+
 	if isManaged && !record.RetryPending && (record.Owned.Enabled || observed.Enabled || observed.Host != "") &&
 		!observed.sameConfig(desired) && !observed.sameConfig(record.Owned) {
 		d.telemetryDelivery = deliveryWindow{}
@@ -334,7 +345,7 @@ func (s *Server) syncTelemetry(ctx context.Context, d *runtimeDevice, force bool
 		return
 	}
 	if isManaged && record.Pending == nil && record.Owned.sameConfig(desired) && observed.sameConfig(desired) {
-		if d.telemetryDelivery.failing(desired, raw, status.UptimeMS) {
+		if d.telemetryDelivery.failing(desired, raw, status.UptimeMS) && !time.Now().Before(record.RecoveryAfter) {
 			if status.Busy || status.Stopped || !status.Ready {
 				s.telemetryState(d, "waiting_idle", "The PicoFerm could not reach its saved Hub address. Receiver recovery will run when it is idle.", desired)
 				return
@@ -344,14 +355,8 @@ func (s *Server) syncTelemetry(ctx context.Context, d *runtimeDevice, force bool
 				s.telemetryState(d, "pending", "The PicoFerm could not reach its saved Hub address. It will keep trying while the Hub looks for a reachable address.", desired)
 				return
 			}
-			before := record
-			record.Desired, record.HubReceiver, record.Apply = &replacement, &replacement, true
-			if err := s.writeTelemetryRecord(view.ID, before, record); err != nil {
-				s.telemetryState(d, "error", "The verified replacement address could not be saved.", desired)
-				return
-			}
-			desired = replacement
-			d.telemetryDelivery = deliveryWindow{}
+			s.startReceiverTrial(ctx, d, record, replacement)
+			return
 		}
 	} else {
 		d.telemetryDelivery = deliveryWindow{}
@@ -501,6 +506,7 @@ func (s *Server) machineTelemetry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	before := record
+	record.Trial, record.RecoveryAfter = nil, time.Time{}
 	record.Desired, record.Apply, record.RetryPending, record.FollowHub = &desired, true, true, verifiedHub
 	if verifiedHub {
 		record.HubReceiver = &desired
@@ -559,7 +565,8 @@ func (s *Server) releaseTelemetry(ctx context.Context, d *runtimeDevice) domain.
 		return result
 	}
 	owned := observed.sameReceiver(record.Owned) || record.Pending != nil && observed.sameReceiver(*record.Pending)
-	if !owned || !observed.sameReceiver(*record.HubReceiver) {
+	trial := record.Trial != nil && observed.sameConfig(record.Trial.Target)
+	if !trial && (!owned || !observed.sameReceiver(*record.HubReceiver)) {
 		return result
 	}
 	if !observed.Enabled {
@@ -568,6 +575,7 @@ func (s *Server) releaseTelemetry(ctx context.Context, d *runtimeDevice) domain.
 	disabled := observed
 	disabled.Enabled = false
 	before := record
+	record.Trial = nil
 	record.Pending, record.Apply, record.RetryPending = &disabled, false, false
 	if err := s.writeTelemetryRecord(view.ID, before, record); err != nil {
 		result.Message = "Monitoring is disabled; the machine receiver could not safely be changed."
