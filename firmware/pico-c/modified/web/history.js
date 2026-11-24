@@ -3,7 +3,8 @@
 function setupHistory({session,enqueue}) {
   const el=id=>document.getElementById(id), canvas=el('historyChart'), selector=el('historySession');
   const phases=['Heating','Holding','Cooling','Draining','Idle','Circulating','Cooling thermoblock','Pump hold','Heating'];
-  const series=[['wort_f','Wort','#1e5947'],['thermoblock_f','Thermoblock','#b45e34'],['target_f','Target','#765ba0']];
+  const series=[['wort_f','Wort','#1e5947','#a6d9b3'],['thermoblock_f','Thermoblock','#9b4f2d','#ffb88b'],
+    ['target_f','Target','#765ba0','#d3b7fb']];
   let metadata=null, rows=[], fields=[], selected=0, wantedId=null, loading=false, run=0, generation=session().generation;
   let unit=session().temperature_unit==='C'?'C':'F';
   let geometry=null;
@@ -55,6 +56,9 @@ function setupHistory({session,enqueue}) {
     context.setTransform(ratio,0,0,ratio,0,0);
     context.clearRect(0,0,width,height);geometry=null;
     if (!rows.length) return;
+    const scheme=document.documentElement.style.colorScheme;
+    const dark=scheme==='dark' || (scheme!=='light' && matchMedia('(prefers-color-scheme: dark)').matches);
+    const muted=dark?'#b7c5b9':'#58695f';
     const left=55, right=width-20, top=25, bottom=height-55;
     const first=Number(value(rows[0],'elapsed_ms')), last=Number(value(rows[rows.length-1],'elapsed_ms'));
     const span=Math.max(1000,last-first), readings=[];
@@ -63,18 +67,18 @@ function setupHistory({session,enqueue}) {
     if (readings.length) {low=Math.floor((Math.min(...readings)-5)/10)*10;high=Math.ceil((Math.max(...readings)+5)/10)*10;}
     const x=time=>left+(time-first)/span*(right-left), y=temp=>bottom-(temp-low)/(high-low)*(bottom-top);
     context.font='12px system-ui';context.lineWidth=1;
-    series.forEach(([,label,color],index)=>{context.fillStyle=color;context.textAlign='left';context.fillText(label,left+index*105,14);});
+    series.forEach(([,label,light,night],index)=>{context.fillStyle=dark?night:light;context.textAlign='left';context.fillText(label,left+index*105,14);});
     for (let tick=0;tick<=4;tick++) {
       const temp=low+(high-low)*tick/4, yy=y(temp);
-      context.strokeStyle='#dce3dc';context.beginPath();context.moveTo(left,yy);context.lineTo(right,yy);context.stroke();
-      context.fillStyle='#64746d';context.textAlign='right';context.fillText(temp.toFixed(0)+'°'+unit,left-8,yy+4);
+      context.strokeStyle=dark?'#506056':'#dce3dc';context.beginPath();context.moveTo(left,yy);context.lineTo(right,yy);context.stroke();
+      context.fillStyle=muted;context.textAlign='right';context.fillText(temp.toFixed(0)+'°'+unit,left-8,yy+4);
       const time=first+span*tick/4;context.textAlign='center';context.fillText(duration(time),x(time),height-12);
     }
     let previous=rows[0], start=first;
     const band=(end,row)=>{
       const xx=x(start), ww=x(end)-xx;
-      context.fillStyle=Number(value(row,'phase'))%2?'#dce9df':'#edf1e9';context.fillRect(xx,bottom+8,ww,15);
-      if (ww>75) {context.fillStyle='#385a2e';context.textAlign='left';context.fillText(phase(row),xx+4,bottom+20,ww-8);}
+      context.fillStyle=Number(value(row,'phase'))%2?(dark?'#384a40':'#dce9df'):(dark?'#2b3830':'#edf1e9');context.fillRect(xx,bottom+8,ww,15);
+      if (ww>75) {context.fillStyle=dark?'#d1e8d5':'#385a2e';context.textAlign='left';context.fillText(phase(row),xx+4,bottom+20,ww-8);}
     };
     for (const row of rows.slice(1)) if (value(row,'phase')!==value(previous,'phase')) {
       band(value(row,'elapsed_ms'),previous);start=value(row,'elapsed_ms');previous=row;
@@ -83,11 +87,11 @@ function setupHistory({session,enqueue}) {
     rows.forEach((row,index)=>{
       if (index && (value(row,'flags')&16)) {
         const from=x(value(rows[index-1],'elapsed_ms')), to=x(value(row,'elapsed_ms'));
-        context.fillStyle='#f3d7cb';context.fillRect(from,top,to-from,bottom-top+23);
+        context.fillStyle=dark?'#583e36':'#f3d7cb';context.fillRect(from,top,to-from,bottom-top+23);
       }
     });
-    for (const [field,,color] of series) {
-      context.strokeStyle=color;context.lineWidth=2;context.setLineDash(field==='target_f'?[5,4]:[]);context.beginPath();
+    for (const [field,,light,night] of series) {
+      context.strokeStyle=dark?night:light;context.lineWidth=2;context.setLineDash(field==='target_f'?[5,4]:[]);context.beginPath();
       let line=false;
       for (const row of rows) {
         const temp=temperature(row,field);
@@ -98,7 +102,7 @@ function setupHistory({session,enqueue}) {
       }
       context.stroke();
     }
-    context.setLineDash([]);context.strokeStyle='#64746d';context.lineWidth=1;
+    context.setLineDash([]);context.strokeStyle=muted;context.lineWidth=1;
     const cursor=x(value(rows[selected],'elapsed_ms'));
     context.beginPath();context.moveTo(cursor,top);context.lineTo(cursor,bottom);context.stroke();
     geometry={left,right,first,span,width};
@@ -201,7 +205,7 @@ function setupHistory({session,enqueue}) {
   new ResizeObserver(()=>{if (rows.length) draw();}).observe(canvas);
   setInterval(()=>{if (!document.hidden && !el('history').hidden && session().connected) load();},15000);
   clear();update();
-  return {activate:()=>load(),update};
+  return {activate:()=>load(),update,redraw:()=>{if (rows.length) draw();}};
 }
 
 // Measurement formatting shared by the overview and session views.

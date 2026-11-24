@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="light dark">
   <title>Pico Local</title>
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <link rel="stylesheet" href="/style.css">
@@ -90,8 +90,12 @@
         <article class="card history-phases"><h2>Phases &amp; steps</h2><div class="table-scroll"><table class="history-table"><thead><tr><th>Elapsed time</th><th>Phase</th><th>Step</th></tr></thead><tbody id="historyPhases"></tbody></table></div></article>
       </section>
       <section id="settings" class="tab-panel" hidden>
-        <div class="page-heading"><div><p class="eyebrow">MAKE IT YOURS</p><h1>Brewer settings.</h1><p class="muted">Preferences and forwarding are saved on your Pico.</p></div></div>
+        <div class="page-heading"><div><p class="eyebrow">MAKE IT YOURS</p><h1>Brewer settings.</h1><p class="muted">Manage your brewer and browser preferences.</p></div></div>
         <div class="settings-page">
+          <section class="settings-section" aria-labelledby="websiteHeading">
+            <div class="settings-section-heading"><h2 id="websiteHeading">Website</h2><p class="muted">Appearance is saved in this browser.</p></div>
+            <div class="settings-row"><label for="appearance">Appearance</label><select id="appearance"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
+          </section>
           <section class="settings-section" aria-labelledby="preferencesHeading">
             <div class="settings-section-heading"><h2 id="preferencesHeading">Display preferences</h2></div>
             <form id="settingsForm">
