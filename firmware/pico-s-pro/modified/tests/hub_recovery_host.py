@@ -26,8 +26,16 @@ def serve(directory, display):
             raise ValueError("Unknown Pico C display")
         http = ROOT.parents[1] / "pico-c/modified/platform/hub_recovery/variant_recovery.c"
         flags = [f'-DPICO_DISPLAY_VARIANT="{display}"']
+    # The archived HTTP harness uses 8 KiB per file for its small request fixtures.
+    # Give the loopback Hub a full application slot so it can transfer a real package.
+    host = directory / "hub_recovery_http_host.c"
+    fixture = (RECOVERY / "tests/recovery_http_host.c").read_text()
+    declaration = "files[PICO_RECOVERY_FILE_COUNT][8192]"
+    if fixture.count(declaration) != 1:
+        raise RuntimeError("Could not locate the pinned recovery harness file buffer")
+    host.write_text(fixture.replace(declaration, "files[PICO_RECOVERY_FILE_COUNT][PICO_RECOVERY_IMAGE_MAX]"))
     sources = [http, RECOVERY / "recovery/recovery.c",
-               RECOVERY / "recovery/sha256.c", RECOVERY / "tests/recovery_http_host.c", identity]
+               RECOVERY / "recovery/sha256.c", host, identity]
     subprocess.run([compiler(), "-std=c11", *pic_flags(), *shared_flags(), *flags,
                     "-I" + str(RECOVERY / "include"), "-I" + str(RECOVERY / "recovery"),
                     *sources, "-o", library], check=True)
