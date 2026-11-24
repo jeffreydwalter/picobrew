@@ -213,19 +213,19 @@ void stop_guard(){World w;w.core.heater.state.enabled=w.core.heater.state.starte
     w.core.ports.heater_gpio.write_pin(w.core.ports.heater_gpio.context,19,true);w.core.ports.heater_gpio.write_pin(w.core.ports.heater_gpio.context,23,true);
     assert(!w.pins[19]&&!w.pins[23]);std::uint8_t frame[6];auto size=z_msp_app_frame(frame,sizeof frame,Z_MSP_PUMPS_SET,0x70,1);
     w.core.msp.transport.transmit(w.core.msp.transport.context,0x40,frame,size);assert(w.frames.back()[2]==Z_MSP_PUMPS_SET&&w.frames.back()[3]==0);
-    assert(w.command("manual").status==409);w.core.runtime_commands.pending=false;w.core.runtime.state.id=RuntimeStateId::Standby;
+    assert(w.command("sous-vide").status==409);w.core.runtime_commands.pending=false;w.core.runtime.state.id=RuntimeStateId::Standby;
     assert(w.command("clear-stop").status==202&&!w.adapter.stopped());assert(!w.pins[19]&&!w.pins[23]);
     w.core.runtime.filter_required=true;w.filter_missing=true;
     assert(w.adapter.service_stage(CoreTickStage::Safeties,w.now)&&w.adapter.stopped());
     w.core.runtime_commands.pending=false;assert(w.command("clear-stop").status==409);
     w.filter_missing=false;assert(w.adapter.service_stage(CoreTickStage::Safeties,w.now));assert(w.command("clear-stop").status==202);
 }
-void input_order(){World w;assert(w.head.encoder.state.menu.count==6&&w.head.encoder.state.menu.selected==0);
+void input_order(){World w;assert(w.head.encoder.state.menu.count==5&&w.head.encoder.state.menu.selected==0);
     api::Command input;std::strcpy(input.name,"encoder");input.delta=1;input.click=true;assert(w.adapter.execute(input).status==202);
     assert(w.head.encoder_events.pending&&!w.head.button_events.pending);assert(w.adapter.execute(input).status==409);
     w.adapter.poll();assert(!w.head.button_events.pending);w.head_tick();assert(w.head.encoder.state.menu.selected==1);
     w.adapter.poll();assert(w.head.button_events.pending);w.head_tick();assert(w.head.ui_events.pending);
-    assert(w.head.ui_events.value.command==UiCommand::StartManualBrew);
+    assert(w.head.ui_events.value.command==UiCommand::StartSousVideWithKeg);
     w.head.ui_events.pending=false;assert(w.adapter.show_home());w.head.ui.transient.active=true;w.head.ui.transient.deadline=w.now+1000;
     input.delta=0;input.click=true;assert(w.adapter.execute(input).status==202);w.head_tick();w.head_tick();
     assert(!w.head.ui.transient.active&&!w.head.ui.transient.deadline&&w.alarms>0);
@@ -376,18 +376,45 @@ void buffered_coffee(){
     }
 }
 void standby_remote_start(){
-    for(const char* command:{"manual","brew"}){World w;assert(w.engine.recipe_store(recipe()).ok());
-        assert(w.core.core.transition(CoreStateId::StandBy)==CoreFlowResult::Ok);
-        assert(w.adapter.service_stage(CoreTickStage::Runtime,w.now));w.head_tick();
-        api::Snapshot before;assert(w.adapter.snapshot(before).ok()&&before.ready&&!before.busy);
-        const char* body=!std::strcmp(command,"brew")?"{\"command\":\"brew\",\"recipe_id\":\"native\"}":"{\"command\":\"manual\"}";
-        w.request(PICO_HTTP_POST,"/api/v1/commands",body,202);w.adapter.poll();
-        // Consume the wake transition before the queued native UI command.
-        for(unsigned i=0;i<4&&!w.core.core.commands.pending;++i)w.head_tick();
-        assert(w.core.core.state.id==CoreStateId::Idle&&w.core.core.commands.pending);
-        assert(w.dispatch());assert(w.core.core.state.id==CoreStateId::Starting);
-    }
+    World w;assert(w.engine.recipe_store(recipe()).ok());
+    assert(w.core.core.transition(CoreStateId::StandBy)==CoreFlowResult::Ok);
+    assert(w.adapter.service_stage(CoreTickStage::Runtime,w.now));w.head_tick();
+    api::Snapshot before;assert(w.adapter.snapshot(before).ok()&&before.ready&&!before.busy);
+    w.request(PICO_HTTP_POST,"/api/v1/commands",R"({"command":"brew","recipe_id":"native"})",202);
+    w.adapter.poll();
+    for(unsigned i=0;i<4&&!w.core.core.commands.pending;++i)w.head_tick();
+    assert(w.core.core.state.id==CoreStateId::Idle&&w.core.core.commands.pending);
+    assert(w.dispatch());assert(w.core.core.state.id==CoreStateId::Starting);
 }
+void recipe_menu_and_retired_manual_command() {
+    World w;
+    const auto& menu = w.head.screens.menu_data;
+    assert(menu.count && std::strcmp(menu.items[0].text.data(), "Brew Recipe") == 0);
+    for (unsigned i = 0; i < menu.count; ++i) {
+        assert(menu.items[i].event.command != UiCommand::StartManualBrew);
+    }
+    const auto caps = w.request(PICO_HTTP_GET, "/api/v1", nullptr, 200);
+    assert(caps.find("\"brew\"") != std::string::npos);
+    assert(caps.find("\"manual\"") == std::string::npos);
+    const auto rejected = w.request(PICO_HTTP_POST, "/api/v1/commands", R"({"command":"manual"})", 400);
+    assert(rejected.find("\"invalid_command\"") != std::string::npos);
+    assert(!w.core.core.commands.pending && w.core.core.state.id == CoreStateId::Idle);
+
+    // A queued native event can still carry the original program ID.
+    CoreCommand stale;
+    stale.id = CoreCommandId::StartProgram;
+    stale.program_id = static_cast<std::uint32_t>(ZProgramId::ManualBrew);
+    const auto writes = w.writes;
+    assert(w.core.post(stale) && w.dispatch());
+    assert(w.core.core.state.id == CoreStateId::Idle && !w.core.core.state.runtime_start_pending);
+    assert(w.writes == writes);
+
+    assert(w.engine.recipe_store(recipe()).ok());
+    assert(w.head.receive_ui(menu.items[0].event));
+    w.head_tick();
+    assert(menu.count == 2 && std::strcmp(menu.items[0].text.data(), "Owned recipe") == 0);
+}
+
 void recipe_step_indices(){World w;assert(w.adapter.load_recipe(recipe(),true).ok()&&w.dispatch());
     auto& runtime=w.core.runtime;runtime.program=w.core.program.record().view;
     assert(runtime.dispatch({OpCode::StepName,0x8002})==RuntimeResult::Ok);
@@ -525,7 +552,7 @@ int main(int argc,char** argv){assert(argc==2);const std::string test=argv[1];
     else if(test=="recovery")recovery_restart();else if(test=="recovery-pause")recovery_unheated_and_pause();
     else if(test=="recovery-corrupt")recovery_corruption_and_discard();else if(test=="recovery-end")recovery_failure_and_terminal_state();
     else if(test=="sensor-fault")sensor_fault_cutoff();else if(test=="coffee-buffer")buffered_coffee();
-    else if(test=="standby-start")standby_remote_start();else if(test=="step-indices")recipe_step_indices();
+    else if(test=="recipe-menu")recipe_menu_and_retired_manual_command();else if(test=="standby-start")standby_remote_start();else if(test=="step-indices")recipe_step_indices();
     else if(test=="wifi-picker")stable_wifi_picker_and_local_lease();
     else if(test=="pairing")physical_pairing();
     else if(test=="network-menus")native_network_menus();else if(test=="recovery-rejected")rejected_resume_retains_checkpoint();
