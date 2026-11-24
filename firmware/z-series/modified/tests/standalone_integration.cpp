@@ -432,7 +432,7 @@ void ferment_picker(){
     assert(post(R"({"request":1,"page":0,"result":"list","more":1,"entries":[]})")==400);
     assert(post(R"({"request":1,"page":0,"result":"list","more":0,"entries":[{"name":"too long to fit!!","linked":0}]})")==400);
     const char* list=R"({"more":1,"entries":[{"name":"Cellar","linked":0},{"linked":1,"name":"Basement"},{"name":"A\u0026B","linked":0},{"name":"Ferm 4","linked":0}],"result":"list","request":1,"page":0})";
-    assert(post(list)==200&&post(list)==200);w.adapter.poll();
+    assert(post(list)==200&&post(list)==409);w.adapter.poll();
     assert(!std::strcmp(menu.items[2].text.data(),"Link A&B"));
     auto old=menu.items[0].event;
     select("Next page");

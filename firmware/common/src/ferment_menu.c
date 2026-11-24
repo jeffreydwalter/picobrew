@@ -164,8 +164,10 @@ unsigned pico_ferment_http(PicoFermentMenu *menu, bool post, const char *body, s
         if (!body || !ferm_reply(body, length, &reply)) status = 400;
         else if (!menu || reply.request != menu->request) status = 409;
         else if (menu->result != PICO_FERM_WAIT) {
-            /* A retried acknowledgement must never replace the displayed page. */
-            if (reply.result != menu->result) status = 409;
+            /* Only the first Hub may associate this list request with its own
+             * registrations. Identical labels on two Hubs can name different
+             * monitors. A final mutation acknowledgement is safe to repeat. */
+            if (reply.result == PICO_FERM_LIST || reply.result != menu->result) status = 409;
         } else if (reply.result == PICO_FERM_LIST && (menu->list_request || reply.page != menu->page)) status = 409;
         else if ((reply.result == PICO_FERM_LINKED || reply.result == PICO_FERM_UNLINKED) &&
                  (!menu->list_request || (reply.result == PICO_FERM_UNLINKED) != !!menu->entries[menu->slot].linked)) status = 409;
