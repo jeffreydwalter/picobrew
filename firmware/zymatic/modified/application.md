@@ -20,6 +20,10 @@ History records the measurements the Zymatic actually supplies. Interrupted sess
 
 Connect the Zymatic to Ethernet and enter its address in **Add machine**. With the extended build, compare the code in the Hub with the one on the brewer’s **About Zymatic** screen and approve it at the physical dial. The Hub stores the key. A paired owner can use **Manage machine → Open machine website**. Stock Wi-Fi supports outbound recipe and session traffic. The custom incoming API and device website use the wired W5100. [Original network protocols](../reverse-engineered/network/README.md)
 
+## PicoFerm
+
+Assign a registered PicoFerm to your Zymatic in the Hub. The Zymatic 1.0.0 front panel retains the six original home menu entries. Neither the compact nor the extended build includes a Ferment selector.
+
 ## Installation and recovery
 
 First-time USB setup uses the compact build, which fits below every supported boot boundary. USB verification reads the full flash twice. A backup of the stock application or an Optiboot filename alone cannot establish how much space a particular brewer reserves for its bootloader.

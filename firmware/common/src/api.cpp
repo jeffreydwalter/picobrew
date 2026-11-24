@@ -32,6 +32,7 @@ unsigned Engine::Impl::discovery_json(Writer& writer) {
     writer.text("{"); identity_json(writer, identity);
     if (pico_http_pairing_available(false)) writer.text(",\"pairing_v1\":true");
     if (capabilities.ota_protocol) { writer.text(",\"ota_protocol\":"); writer.quote(capabilities.ota_protocol); }
+    if (capabilities.ferment_menu_v1) writer.text(",\"ferment_menu_v1\":true");
     if (capabilities.z_program_maker) writer.text(",\"z_program_maker\":true");
     writer.text(",\"api_version\":1,\"release_channel\":\"stable\",\"firmware_version\":"); writer.quote(identity.firmware_version);
     writer.format(",\"mode\":\"standalone\",\"recipe_capacity\":%u,\"step_capacity\":%u,\"recipe_create_only\":%s,\"zero_minute_steps\":%s,\"restore_default_recipes\":%s,\"starter_recipe_count\":%u,\"recipe_labels\":\"printable ASCII\",\"commands\":[",

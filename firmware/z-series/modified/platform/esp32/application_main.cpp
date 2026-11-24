@@ -100,6 +100,7 @@ struct Application {
         ports.save_configuration=[](void* p){return static_cast<Application*>(p)->firmware.save_configuration();};
         ports.pair_prompt=[](void*,std::uint32_t now,char code[9]){return pico_http_pairing_prompt(now,code);};
         ports.pair_decide=[](void*,std::uint32_t now,std::uint32_t serial,bool allow){return pico_http_pairing_decide(now,serial,allow);};
+        ports.request_seed=[](void*){return esp_random();};
         if(!adapter.bind(ports,engine))return false;
         // Establish the known inactive outputs even if a later setup stage
         // fails before the original heater initializer is reached.
@@ -110,6 +111,16 @@ struct Application {
     }
     static bool route(const PicoHttpRequest* req,PicoHttpResponse* res,char* arena,std::size_t capacity,void* ctx){
         auto& self=*static_cast<Application*>(ctx);
+        if(!std::strcmp(req->path,"/api/v1/ferment")){
+            unsigned status=405;
+            if(!req->authenticated)status=401;
+            else if(req->method==PICO_HTTP_GET || req->method==PICO_HTTP_POST)
+                status=pico_ferment_http(self.adapter.ferment_menu(),req->method==PICO_HTTP_POST,
+                                         req->body,req->body_length,arena,capacity);
+            if(status==401 || status==405) std::snprintf(arena,capacity,"{}");
+            *res={status,"application/json",reinterpret_cast<const std::uint8_t*>(arena),std::strlen(arena),nullptr};
+            return true;
+        }
         const bool pending=self.update.reboot_pending();
         if(self.update.handle(*req,*res,arena,capacity,self.update_ready?self.firmware.core.identifier.data():nullptr,
                 self.update_ready && !self.fault_reported && self.adapter.idle())){

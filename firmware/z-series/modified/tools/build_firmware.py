@@ -70,7 +70,7 @@ def main():
         '--entry',str(ROOT/'platform/esp32/application_main.cpp'),'--profile','standalone']
     for folder in [ROOT/'include',ROOT/'platform/esp32',COMMON/'include',COMMON/'src',COMMON/'platform/esp32',COMMON/'platform/esp32/ota']:
         command+=['--extra-include',str(folder)]
-    sources=sorted((COMMON/'src').glob('*.cpp'))+[COMMON/'src/http_server.c']
+    sources=sorted((COMMON/'src').glob('*.cpp'))+[COMMON/'src/http_server.c',COMMON/'src/ferment_menu.c']
     sources+=sorted((COMMON/'platform/esp32').glob('*.cpp'))+sorted((ROOT/'src').glob('*.cpp'))
     sources += sorted((COMMON/'platform/esp32/ota').glob('*.cpp'))
     sources += [ROOT/'platform/esp32'/name for name in ('msp_bus.cpp','output_cutoff.cpp','factory_application.cpp')]
@@ -106,7 +106,7 @@ def main():
     report['scope']+=' The standalone profile replaces remote service stages with authenticated local API/history/telemetry and a local recipe catalogue. Persistent storage is checked without automatic formatting. A latched output inhibit and bounded MSP bus transactions are modified policies. Stack frame sizes are compiler estimates, not measured runtime stack or heap high-water marks.'
     sys.path.insert(0,str(COMMON/'tools'))
     from package_reference import verify_esp32_descriptor
-    version='1.0.0'
+    version='1.0.1'
     verify_esp32_descriptor(application.read_bytes(),version,'z-series')
     report.update(model='z-series',firmware_version=version,ota_protocol='esp32-factory-v1')
     report['application_image'].update(reference_partition_offset=0xf0000,reference_partition_bytes=0x1a1000)

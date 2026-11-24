@@ -220,7 +220,7 @@ void stop_guard(){World w;w.core.heater.state.enabled=w.core.heater.state.starte
     w.core.runtime_commands.pending=false;assert(w.command("clear-stop").status==409);
     w.filter_missing=false;assert(w.adapter.service_stage(CoreTickStage::Safeties,w.now));assert(w.command("clear-stop").status==202);
 }
-void input_order(){World w;assert(w.head.encoder.state.menu.count==6&&w.head.encoder.state.menu.selected==0);
+void input_order(){World w;assert(w.head.encoder.state.menu.count==7&&w.head.encoder.state.menu.selected==0);
     api::Command input;std::strcpy(input.name,"encoder");input.delta=1;input.click=true;assert(w.adapter.execute(input).status==202);
     assert(w.head.encoder_events.pending&&!w.head.button_events.pending);assert(w.adapter.execute(input).status==409);
     w.adapter.poll();assert(!w.head.button_events.pending);w.head_tick();assert(w.head.encoder.state.menu.selected==1);
@@ -402,6 +402,60 @@ void recipe_step_indices(){World w;assert(w.adapter.load_recipe(recipe(),true).o
     assert(runtime.dispatch({OpCode::StepName,0x8007})==RuntimeResult::Ok);
     assert(w.adapter.snapshot(snapshot).ok()&&snapshot.current_step==-1);
 }
+void ferment_picker(){
+    World w;
+    char arena[512];
+    auto& menu=w.head.screens.menu_data;
+    auto select=[&](const char* label){
+        for(unsigned i=0;i<menu.count;++i){
+            if(std::strcmp(menu.items[i].text.data(),label))continue;
+            assert(w.head.receive_ui(menu.items[i].event));w.head_tick();return;
+        }
+        assert(!"Missing Ferment action");
+    };
+    auto post=[&](const char* json){
+        std::strcpy(arena,json); // The production server reuses the request arena.
+        return pico_ferment_http(w.adapter.ferment_menu(),true,arena,std::strlen(arena),arena,sizeof arena);
+    };
+    auto pending=[&](const char* expected){
+        assert(pico_ferment_http(w.adapter.ferment_menu(),false,nullptr,0,arena,sizeof arena)==200);
+        assert(!std::strcmp(arena,expected));
+    };
+    assert(w.adapter.services().capabilities(&w.adapter).ferment_menu_v1);
+    pending(R"({"request":0})");
+    select("Ferment");
+    pending(R"({"request":1,"action":"list","page":0})");
+    assert(post(R"({"request":4294967297,"result":"error"})")==400);
+    assert(post(R"({"request":1,"request":2,"result":"error"})")==400);
+    assert(post(R"({"request":1,"result":"linked"})")==409);
+    assert(post(R"({"request":7,"result":"error"})")==409);
+    assert(post(R"({"request":1,"page":0,"result":"list","more":1,"entries":[]})")==400);
+    assert(post(R"({"request":1,"page":0,"result":"list","more":0,"entries":[{"name":"too long to fit!!","linked":0}]})")==400);
+    const char* list=R"({"more":1,"entries":[{"name":"Cellar","linked":0},{"linked":1,"name":"Basement"},{"name":"A\u0026B","linked":0},{"name":"Ferm 4","linked":0}],"result":"list","request":1,"page":0})";
+    assert(post(list)==200&&post(list)==200);w.adapter.poll();
+    assert(!std::strcmp(menu.items[2].text.data(),"Link A&B"));
+    auto old=menu.items[0].event;
+    select("Next page");
+    pending(R"({"request":2,"action":"list","page":1})");
+    assert(post(R"({"result":"list","page":1,"request":2,"entries":[{"name":"Garage","linked":0}]})")==200);
+    w.adapter.poll();
+    assert(w.head.receive_ui(old));w.head_tick();pending(R"({"request":0})");
+    select("Link Garage");
+    pending(R"({"request":3,"action":"link","page":1,"slot":0,"list_request":2})");
+    assert(post(R"({"request":3,"result":"unlinked"})")==409);
+    assert(post(R"({"request":3,"result":"linked","page":1,"more":0,"entries":[]})")==200);
+    w.adapter.poll();assert(!std::strcmp(w.head.screens.state.title.data(),"PicoFerm linked"));
+    select("Refresh list");
+    assert(post(R"({"result":"list","page":0,"request":4,"entries":[{"name":"Garage","linked":1}]})")==200);
+    w.adapter.poll();select("Unlink Garage");
+    pending(R"({"request":5,"action":"unlink","page":0,"slot":0,"list_request":4})");
+    assert(post(R"({"request":5,"result":"stale"})")==200);
+    w.adapter.poll();select("Refresh list");w.now+=45001;w.adapter.poll();
+    assert(!std::strcmp(w.head.screens.state.title.data(),"Check Hub connection"));
+    select("Back");pending(R"({"request":0})");
+    assert(post(R"({"request":6,"result":"linked"})")==409);
+    assert(w.adapter.idle() && !w.core.core.commands.pending);
+}
 void physical_pairing(){
     World w;
     auto& menu=w.head.screens.menu_data;
@@ -527,7 +581,7 @@ int main(int argc,char** argv){assert(argc==2);const std::string test=argv[1];
     else if(test=="sensor-fault")sensor_fault_cutoff();else if(test=="coffee-buffer")buffered_coffee();
     else if(test=="standby-start")standby_remote_start();else if(test=="step-indices")recipe_step_indices();
     else if(test=="wifi-picker")stable_wifi_picker_and_local_lease();
-    else if(test=="pairing")physical_pairing();
+    else if(test=="pairing")physical_pairing();else if(test=="ferment")ferment_picker();
     else if(test=="network-menus")native_network_menus();else if(test=="recovery-rejected")rejected_resume_retains_checkpoint();
     else if(test=="recovery-preflight")recovery_preflight_has_no_diagnostics();else return 2;
 }
