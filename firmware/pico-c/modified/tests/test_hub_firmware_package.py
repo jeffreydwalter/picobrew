@@ -14,9 +14,11 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
+import embed_web
 import package_hub_firmware as package
 
 
@@ -33,6 +35,18 @@ class HubFirmwarePackageTests(unittest.TestCase):
         self.binary_path = self.firmware / "pico-c-standalone.bin"
         self.manifest_path = self.web / "manifest.json"
         self.output = self.directory / "package.zip"
+
+    def test_generated_assets_fit_existing_recovery_slots(self):
+        source = self.directory / "source"
+        shutil.copytree(ROOT / "web", source / "web")
+        for name, limit in [("style.css", 3584), ("app.js", 7680)]:
+            with self.subTest(name=name), patch.object(embed_web, "ROOT", source):
+                path = source / "web" / name
+                original = path.read_bytes()
+                path.write_bytes(hashlib.shake_256(b"oversized asset").digest(limit + 128))
+                with self.assertRaisesRegex(ValueError, f"{name}: .*recovery limit of {limit}"):
+                    embed_web.generate()
+                path.write_bytes(original)
 
     def build(self):
         return package.package_firmware("pico-c", "ssd1325", self.firmware, self.web, self.output)
