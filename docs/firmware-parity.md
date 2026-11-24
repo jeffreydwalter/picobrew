@@ -4,7 +4,7 @@ Each standalone brewer build serves a local website and API directly from the ma
 
 The tables describe the standalone applications in this checkout. Build and simulator results establish software behavior. Installation, sensors and brewing require hardware checks. [Matching an image to a machine](machine-identity.md)
 
-On Pico S, Pro, C and Z, **Brew Recipe** runs a saved machine recipe. On S, Pro and C, this is the menu previously called **Brew PicoPak**. Recipes made in the Hub and imported PicoPak programs use the same menu. Firmware 1.0.0 also has a separate **Manual Brew** mode for interactive brewing. Older sessions remain available in history.
+On Pico S, Pro, C and Z, **Brew Recipe** runs a saved machine recipe. On S, Pro and C, this is the menu previously called **Brew PicoPak**. Recipes made in the Hub and imported PicoPak programs use the same menu. The first 1.0.0 packages had a separate **Manual Brew** mode. The revised packages remove that entry and keep earlier sessions readable in history.
 
 ## Common behavior
 

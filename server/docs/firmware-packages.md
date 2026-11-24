@@ -10,6 +10,8 @@ While physical devices are registered, the Hub checks daily. The Brewery page di
 
 The public 1.0.0 catalog has seven wireless packages covering Pico S, Pico Pro, both Pico C displays, generic Z modules, PicoStill, and PicoFerm. The picker filters them for the selected machine. Pico C recovery checks the application's display marker, and the Z and accessory packages specify their recovery protocol. The Hub checks the connected device’s identity, protocol and flash layout before transfer. Both Zymatic 1.0.0 builds are provisioned over USB with the owner’s key. [USB setup and stock restoration](#usb-setup-backup-and-stock-restoration)
 
+The revised Pico S, Pro, C and Z packages still report **1.0.0**. On the updated machine, **Brew Recipe** opens the saved recipe list. Each ZIP has its own SHA-256 in the catalog. Select **Check for Updates** to refresh a previously cached catalog. The original GitHub tag retains the first set of packages.
+
 A generic Z module and PicoStill transfer only their application over Wi-Fi. Each machine’s protected recovery and existing filesystem stay in place. PicoFerm transfers the application built for its inactive bank. After reboot the Hub reads the running image hash before confirming the new bank. A failed or unconfirmed PicoFerm trial returns to the previous bank on the next reset. Earlier single-application installations need USB setup to gain these capabilities.
 
 To publish a new release, add its verified ZIP under `firmware/<family>/modified/releases/<model>/[display/]<version>.zip` and append an entry to `firmware/releases.json`. CI reads every archive and checks that current model-specific applications are represented.
