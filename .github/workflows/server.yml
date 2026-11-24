@@ -122,28 +122,21 @@ jobs:
             server/web/playwright-report
           retention-days: 7
   container:
-    name: Container build and startup
+    name: Container build and startup / ${{ matrix.platform }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64, linux/arm/v7]
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.platform != 'linux/amd64'
+        with:
+          platforms: arm64,arm
+      - uses: docker/setup-buildx-action@v3
       - name: Build image
-        run: docker build -t picobrew-hub:test .
-      - name: Check the embedded website and persistent volume
-        run: |
-          docker volume create hub-ci-data
-          docker run -d --name hub-ci --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --mount source=hub-ci-data,target=/data -p 127.0.0.1:18081:8080 -e HUB_PASSWORD=isolated-ci-password-not-for-production picobrew-hub:test
-          trap 'docker rm -f hub-ci >/dev/null 2>&1; docker volume rm hub-ci-data >/dev/null 2>&1' EXIT
-          for attempt in $(seq 1 40); do
-            if curl --fail --silent http://127.0.0.1:18081/healthz; then break; fi
-            sleep 0.5
-          done
-          curl --fail --silent http://127.0.0.1:18081/healthz
-          [[ "$(curl --fail --silent http://127.0.0.1:18081/)" == *'<title>PicoBrew Hub</title>'* ]]
-          curl --fail --silent http://127.0.0.1:18081/third-party-licenses.md --output /dev/null
-          docker restart hub-ci
-          for attempt in $(seq 1 40); do
-            if curl --fail --silent http://127.0.0.1:18081/healthz; then break; fi
-            sleep 0.5
-          done
-          curl --fail --silent http://127.0.0.1:18081/healthz
+        run: docker buildx build --platform ${{ matrix.platform }} --load -t picobrew-hub:test .
+      - name: Check the website, persistent volume and USB worker under Compose
+        run: bash tools/test_container.sh picobrew-hub:test ${{ matrix.platform }}
