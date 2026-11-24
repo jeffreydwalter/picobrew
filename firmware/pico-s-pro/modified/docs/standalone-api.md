@@ -6,12 +6,10 @@ REST API on the local network, without a PicoBrew account or a replacement
 PicoBrew server. The existing controller, display, encoder, and program
 workflows remain the execution path.
 
-**The model-specific 1.2.0 builds have not been physically installed or brewed
-with.** Software tests establish specific
-behavior of rebuilt code and simulated boundaries; they do not establish
-peripheral timing, interlock behavior, or a successful heating cycle. The
-[hardware acceptance record](hardware-validation.md) identifies the physical
-work still required.
+Stable firmware **1.0.0** ships as separate Pico S and Pico Pro images.
+The owner reported installing it on a Pico S. Physical brewing, interlock
+behavior and power-loss recovery still require validation. See the
+[hardware acceptance record](hardware-validation.md) and [Hub update procedure](hub-ota.md).
 
 The complete machine-readable contract is [openapi.json](openapi.json).
 Authentication setup is in the [key provisioning guide](standalone-provisioning.md).
@@ -113,11 +111,11 @@ stack/heap, and remaining RAM. These measurements must not be inferred from a
 previous legacy image. Link/layout success does not measure live stack usage
 or prove timing on the appliance.
 
-For comparison, the historical 1.1.0 shared native image was **165,656 bytes**. Its layout leaves **656 bytes**
-of unallocated RAM after the original **32 KiB stack and 32 KiB heap** reservations.
-The history tail and optional upload frame lazily allocate up to **4,704 bytes
-plus allocator overhead** from that reserved heap. Compressed browser assets
-total **22,090 bytes**, occupying **eight serial-flash blocks**.
+The checked-in [Pico S](../firmware/standalone/pico-s/firmware-report.json)
+and [Pico Pro](../firmware/standalone/pico-pro/firmware-report.json) reports
+give the exact sizes and hashes of the stable 1.0.0 images. Both reserve
+32 KiB each for stack and heap. Their shared website totals 27,491 compressed
+bytes in eight serial-flash blocks.
 
 The checked-in `analysis/standalone-validation.json` is an earlier development
 snapshot, including its historical source hashes and browser execution status.
@@ -155,37 +153,22 @@ power-loss recovery.
 
 ## Bring up a device
 
-1. Identify the exact board and preserve a verified production-firmware and
-   serial-flash backup, including a proven recovery path. A successful build
-   is not an installation test. The guarded
-   [macOS USB procedure](macos-usb-installation.md) is restricted to the
-   pinned Pico Pro profile. Its backup, boot-record and protected-image guards
-   must not be bypassed. The [macOS tools](macos-usb-backup.md) provide a
-   read-only backup path. The [flash-layout analysis](flash-layout.md)
-   describes a separate example listing with unconfirmed model identity.
-2. Build the standalone candidate and inspect its current report. Use the
-   verified device programming connection and recovery procedure for any
-   experimental installation. Follow the staged
-   [hardware acceptance work](hardware-validation.md) before powered brewing.
-3. Generate a different private key for each appliance:
+1. Connect the idle brewer to the Hub computer by USB. In the Hub, open
+   **Brewery → Add machine → USB setup and recovery**, select the physical
+   model and follow the prompts. The Hub saves and verifies the original
+   flash, provisions a unique key and installs the model-specific application,
+   matching website and Hub recovery. [USB setup](../../../../server/docs/firmware-packages.md#usb-setup-backup-and-stock-restoration)
+2. Boot normally and use the brewer’s Network menu to join Wi-Fi. Choose
+   **Add machine** from the completed USB job to pair using its saved key.
+   If the brewer was provisioned earlier, select it on the network and use
+   the dial pairing described above. [Hub connection guide](../../../../server/docs/device-connections.md)
+3. Open the device website from the paired Hub, or browse directly to the
+   brewer’s LAN address. Its public status shows current readings. Pair the
+   browser to use the protected controls.
 
-   ```sh
-   python3 tools/provision_api_key.py --output private/api.key
-   ```
-
-4. Provision that file as `/local/api.key` using the
-   [separate user-file programming procedure](standalone-provisioning.md),
-   then reboot. The Python tool creates a host file only. There is no runtime
-   UART console command that installs the key, and typing it into a serial
-   terminal does not provision it.
-5. Use the existing front-panel Wi-Fi workflow to join the local network.
-   Find the appliance's LAN address, for example in the router's client list.
-   Open `http://<pico-lan-ip>/` and enter the 64-character device key.
-
-The root page and `GET /api/v1/health` are public. All other API routes require
-`Authorization: Bearer <device-key>`. There is no default key. With no valid
-provisioned key, protected API routes return `503 api_key_not_provisioned`;
-an incorrect bearer key returns `401 unauthorized`.
+Protected API requests use `Authorization: Bearer <device-key>`. USB setup
+provisions the key. A missing key returns `503 api_key_not_provisioned` on
+protected routes, and incorrect credentials return `401 unauthorized`.
 
 This implementation serves HTTP on port 80 by default. HTTP does not encrypt
 the key or traffic; operate on a trusted LAN, or provide a TLS tunnel outside
@@ -311,7 +294,7 @@ font and stored labels use printable ASCII. A PUT replaces the entire recipe;
 a recipe GET result can be edited and sent back as a PUT.
 
 Recipes are selected by their stored IDs through both REST and **Brew PicoPak**
-on the front panel. Firmware 1.1.0 installs eight attributed archived PicoPak
+on the front panel. Stable firmware installs eight attributed archived PicoPak
 programs when migrating an empty catalogue. Existing nonempty collections are
 preserved. The migration is recorded in the catalogue, so later edits and
 deletions survive restarts and upgrades, including an intentionally empty list.
@@ -343,9 +326,9 @@ The local store uses fixed SLFS filenames for catalog/data banks. Client IDs
 never become flash paths. Records have a version, generation, explicit byte
 layout, and CRC. A recipe update writes and reads back the inactive recipe bank
 before committing the alternate catalog bank. Settings, the session counter,
-and resumable-brew checkpoints have their own bank pairs. The 1.1.0 catalogue
-adds a checksummed migration flag. Older firmware cannot read all upgraded
-catalogues; retain an appropriate backup before a firmware downgrade.
+and resumable-brew checkpoints have their own bank pairs. The catalog includes a checksummed starter-migration flag. Early
+development images that predate this flag cannot reliably read the newer
+format. Back up the recipes before returning to one of those images.
 
 A successful write requires the expected byte count, close result, exact file
 length, and readback. Missing files are distinguished from I/O failures;
@@ -374,7 +357,7 @@ or abort choice. The offer does not start a session, energize outputs, consume
 the checkpoint, or create a brew-history entry. Continue uses the matching
 program and remaining phase durations; changed, missing or corrupt recipes
 are rejected. Abort commits a tombstone so an older checkpoint cannot return.
-Legacy `restart.txt` records are not automatically resumed by 1.1.0.
+Automatic recovery requires a valid standalone checkpoint. Legacy `restart.txt` records cannot resume a brew.
 
 ## Commands and the remote front panel
 

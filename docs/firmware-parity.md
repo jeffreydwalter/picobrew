@@ -2,7 +2,7 @@
 
 Each standalone brewer build serves a local website and API directly from the machine. The Z-series build targets one module. The Zymatic serves incoming requests over Ethernet, and its available controls depend on the installed memory profile. Both Zymatic builds retain the original 1.1.14 brew controller. PicoStill and PicoFerm also serve their own websites and APIs for accessory-specific functions.
 
-The table describes the firmware in the repository. The [machine identity guide](machine-identity.md) covers matching an image to an individual machine. Build and simulator results establish software behavior. Installation, sensors and brewing require hardware checks.
+The table describes the public **1.0.0** applications. Build and simulator results establish software behavior. Installation, sensors and brewing require hardware checks. [Matching an image to a machine](machine-identity.md)
 
 ## Common behavior
 
@@ -12,6 +12,7 @@ The table describes the firmware in the repository. The [machine identity guide]
 | Authenticated API v1 and device identity | Implemented | Includes display variant | Z family identity | Wired Ethernet | Implemented | Implemented |
 | Device website | Implemented | Implemented | Shared browser | Compact supports monitoring. Extended adds paired dial control. | Shared browser | Shared browser |
 | Optional Hub connection and live readings | Implemented | Implemented | Implemented | Wired monitoring, outbound recipe sync over Ethernet or Wi-Fi | Implemented | Implemented |
+| Firmware updates after initial USB setup | Wi-Fi with verified recovery | Wi-Fi with display-matched recovery | Wi-Fi on a provisioned module | Rear USB | Wi-Fi with protected recovery | Wi-Fi with dual-bank layout |
 | Persistent history | Eight sessions sharing 4,224 samples | Eight sessions sharing 4,224 samples | Eight sessions sharing 4,224 samples | Extended retains eight sessions sharing 222 samples. Compact relies on Hub polling. | Eight sessions sharing 4,224 samples | Eight sessions sharing 4,224 samples |
 | Default periodic history interval | 15 seconds | 15 seconds | 15 seconds | Extended samples about once a minute during a program | 15 seconds | 300 seconds, configurable from 60 to 86,400 seconds |
 | Available controls and readings | Brewer profile | Brewer profile | Native Z profile | Monitoring on both profiles and eligible dial inputs on extended | Accessory profile | Sensor profile |

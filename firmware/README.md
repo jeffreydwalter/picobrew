@@ -4,6 +4,8 @@ Each machine has `oem/`, `reverse-engineered/` and `modified/` locations.
 Version-specific tools and tests live with their corresponding source tree;
 general repository tools live at root `tools/`.
 
+The public standalone applications are **1.0.0**. The [wireless release catalog](releases.json) lists seven packages for Pico S, Pico Pro, the two Pico C displays, generic Z modules, PicoStill and PicoFerm. The Hub’s USB installer prepares a personalized Zymatic 1.0.0 application for the verified boot layout. Version numbers in the OEM column below identify the original PicoBrew firmware. [Installation and recovery by model](../server/docs/firmware-packages.md#usb-setup-backup-and-stock-restoration)
+
 | Directory | OEM material | Source status |
 | --- | --- | --- |
 | [`pico-s-pro/`](pico-s-pro/README.md) | Verified device application image plus 1 upstream update envelope | Frozen pre-v1 OEM reconstruction, standalone brewing firmware with Hub OTA on provisioned units and a separately preserved recovery prototype |

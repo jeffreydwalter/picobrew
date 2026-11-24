@@ -2,10 +2,10 @@
 
 | Directory | Contents |
 | --- | --- |
-| `oem/device/` | Verified 0.1.34 application image extracted from the Pico Pro backup |
+| `oem/device/` | Verified 0.1.34 application image extracted from the Pico S backup historically labeled “Pico Pro” |
 | `oem/upstream/` | Unmodified files from the pinned Chiefwigms firmware archive |
 | `reverse-engineered/` | Exact buildable OEM reconstruction before our v1.x features, from commit `ea887709e72c493456583114034cde4aad746099` |
-| `modified/` | Our current v1.x firmware, device website, recipe data, packages and corresponding tests |
+| `modified/` | Stable 1.0.0 firmware for Pico S and Pico Pro, device website, recipes, Hub recovery and tests |
 | `modified/recovery/` | Separate experimental 0.1.0 image1 recovery candidate, its original source/package and independent build/tests |
 
 Both source folders retain their version-specific build and device tools under
@@ -31,15 +31,15 @@ the modified firmware, and
 `make -C firmware/pico-s-pro/reverse-engineered bootstrap` for the OEM reconstruction.
 Follow the respective component guide for Python dependencies.
 
-## Web recovery candidate
+## Hub recovery
 
-[The recovery component](modified/recovery/README.md) preserves the independent
-application from the former `feature/web-recovery` branch. It has its own pinned
-linker and build helpers so changes to the brewing firmware do not alter the
-candidate. Run its documented verification from that component's directory.
-It remains uninstalled and experimentally validated in host/build tests only;
-the current guarded USB installer cannot deploy image1, and the brewing firmware
-does not provide a recovery-entry or trial-confirmation command.
+USB setup installs the model-specific brewing application, its website and
+the shared 1.0.0 Hub recovery image. A provisioned Pico S or Pro can enter
+recovery for a wireless update and confirm the new application after restart.
+[Setup and update instructions](modified/docs/hub-ota.md)
+
+The [archived 0.1.0 web recovery candidate](modified/recovery/README.md)
+has its own pinned source, build and validation records.
 
 For the detailed current status and installation instructions, start with
 [modified firmware](modified/README.md). The [OEM reconstruction README](reverse-engineered/README.md)

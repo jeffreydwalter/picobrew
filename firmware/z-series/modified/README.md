@@ -145,11 +145,11 @@ select generated output directories. The default application output is
 `build/reference/`, including `application.bin`, `link/application.elf`, its
 map and `standalone-build-report.json`. The package uses `build/package/`.
 
-The explicit custom ESP32 reference layout requires at least 4 MiB flash:
-factory application at `0x10000`, length `0x1F0000`; prepared SPIFFS at
-`0x200000`, length `0x200000`. The package includes its bootloader, partition
-table, empty filesystem and exact image hashes. This is not a recovered OEM
-partition table, an OTA updater, or permission to overwrite a device backup.
+The [1.0.0 release package](releases/z-series/1.0.0.zip) includes the 4 MiB
+partition map for factory recovery, the standalone application and its
+filesystem. For installation, use the Hub's USB setup on the individual
+module. It reads the existing layout, verifies the active firmware and
+checks that the module's data can be preserved before writing.
 
 The native integration suite executes the actual recovered Core/Head/runtime
 and shared Engine with explicit hardware/storage boundaries. It covers recipe

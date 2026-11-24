@@ -48,7 +48,7 @@ one-minute steps.
 ## Migration and editing
 
 There are 16 recipe slots. An empty store receives the eight starters on its
-first 1.1.0 startup, leaving eight free slots. A nonempty older catalogue keeps
+first startup with stable firmware, leaving eight free slots. A nonempty older catalogue keeps
 all of its recipes, with no insertion or replacement. A CRC-protected flag is
 committed with the catalogue to mark this migration handled.
 
@@ -65,9 +65,9 @@ from the committed prior catalogue. A corrupt sole initial bank is preserved
 for recovery rather than treated as an empty device. Storage read errors also
 stop migration without replacing files.
 
-The new catalogue flag extends the old on-disk header. A downgrade to 1.0.x
-cannot reliably read an upgraded catalogue; preserve a suitable backup when
-planning a downgrade.
+The migration flag extends the catalog header used by early development
+images, including the shared development image labeled 1.0.0. Back up recipes
+before installing an image that predates the flag.
 
 ## Interrupted brewing
 

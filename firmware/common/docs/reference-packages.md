@@ -1,122 +1,50 @@
-# Reproducible standalone reference packages
+# Standalone firmware packages for Pico Z, PicoStill and PicoFerm
 
-`tools/package_reference.py` assembles complete Z-series, PicoStill and PicoFerm
-builds into explicit reference installation artifacts. It accepts an actual
-ELF and its complete build report, checks their identity and the report's
-source/header/SDK hashes, regenerates the application image, and packages a
-verified empty filesystem. It never connects to or flashes an appliance.
+The public release for all three targets is **1.0.0**. The [firmware catalog](../../releases.json) pins each ZIP by SHA-256 and records its model, protocol, build source revision and application digest. For PicoFerm, the catalog's application digest identifies bank A. The package manifest identifies both banks.
 
-This operation defines a custom reference layout. It does not recover an OEM
-partition table, assign Z-series images to Z1 or Z2, establish an individual
-device's flash capacity, or qualify physical operation. A private complete
-backup and device-specific layout/wiring checks remain necessary before any
-installation is planned. The [USB service workflow](esp-usb.md) performs these
-flash identity and backup checks for individual appliances.
+| Target | Release package | Wireless update on a USB-provisioned device |
+| --- | --- | --- |
+| One qualified Pico Z module | [Z-series 1.0.0](../../z-series/modified/releases/z-series/1.0.0.zip) | Factory recovery writes and verifies the application. The module retains its filesystem between wireless updates. |
+| PicoStill | [PicoStill 1.0.0](../../picostill/modified/releases/picostill/1.0.0.zip) | Factory recovery writes and verifies the application, which includes the device website. |
+| PicoFerm | [PicoFerm 1.0.0](../../picoferm/modified/releases/picoferm/1.0.0.zip) | The permanent loader selects between two application banks. A trial must be confirmed or the next boot returns to the previous bank. |
 
-## Command
+For initial conversion, use **Brewery → Add machine → USB setup and recovery**. The Hub verifies the device and its existing flash layout, saves a private backup and prepares the model-specific installation. A Z1–Z4 stack label alone cannot identify a compatible module. Physical installation and power-loss qualification are pending for these three targets. [USB requirements by model](../../../server/docs/firmware-packages.md#usb-setup-backup-and-stock-restoration)
 
-After building a model with its pinned compiler and SDK:
+## Build a package
+
+From the repository root, choose `z-series`, `picostill` or `picoferm`. For example, to acquire the pinned SDK and toolchain and build the Z package:
 
 ```sh
-python firmware/common/tools/package_reference.py \
-  --model picostill \
-  --elf firmware/picostill/modified/build/esp32/picostill-standalone.elf \
-  --build-report firmware/picostill/modified/build/esp32/build-report.json \
-  --esp8266-sdk /path/to/esp8266-2.4.1 \
-  --esp32-sdk /path/to/arduino-esp32-9a7946e6859130146e56231c27a4aa177d9175a1 \
-  --output firmware/picostill/modified/build/reference
+make firmware-bootstrap MODEL=z-series
+make firmware-package MODEL=z-series
 ```
 
-The accepted model IDs are `z-series`, `picostill` and `picoferm`. PicoFerm uses
-its LX106 ELF/build report and does not require `--esp32-sdk`. ESP32 profiles
-also need the pinned ESP8266 SDK because its public SPIFFS C sources provide
-the offline formatter; the **actual ESP32 configuration and packed on-flash
-ABI** are checked separately against ESP32 SDK objects. This distinction is
-recorded in each filesystem report. The ESP32 converter imports `pyserial==3.5`
-for offline `elf2image`; no serial port is opened.
+Z-series and PicoStill use [package_reference.py](../tools/package_reference.py). It takes the compiled ELF and matching build report, checks source, header and SDK hashes, then generates the component files and `manifest.json` under the model's `modified/build/package/` directory. For each published ESP32 ZIP, `manifest.json` lists component sizes, offsets and hashes. The package includes `partitions.csv` and the compiled partition table.
 
-`--source-root` can identify a separate checkout matching the build report.
-Without it, the package tool uses its own repository. A changed source/header
-or ELF is rejected rather than certified by an older report. An existing
-generated output directory can be refreshed. The tool validates all new files
-in a temporary directory, replaces only its named artifacts, and publishes
-the new manifest last. Unrelated files remain intact. Interrupted refreshes
-are detectable through the manifest's length/hash checks.
+PicoFerm uses [build_ab.py](../../picoferm/modified/tools/build_ab.py) to link the bootstrap and both applications, then [package_ab.py](../../picoferm/modified/tools/package_ab.py) to create `firmware/picoferm/modified/build/package/picoferm.zip`. The ZIP contains the bootstrap, both bank images, a prepared filesystem and `ota-manifest.json`. The build directory retains the ELFs and link maps. [PicoFerm boot and update protocol](../../picoferm/modified/dual-bank-updates.md)
 
-## Explicit layouts
+## Release layouts
 
-The selected ESP32 profile requires at least 4 MiB of flash and uses a single
-factory application. The modified standalone applications do not instantiate
-the original remote updater. Their application and history capacities fit
-these separate regions:
+Both ESP32 packages use the `esp32-factory-v1` protocol on a compatible 4 MiB layout. The SDK bootloader and partition table occupy the same addresses on both targets. USB provisions the boot selection record and preserves NVS. The following values are the byte offset and reserved size from the published partition maps.
 
-| ESP32 component | Physical offset | Maximum region |
-| --- | ---: | ---: |
-| Pinned SDK DIO/40 MHz bootloader | `0x1000` | `0x7000` |
-| Generated partition table | `0x8000` | `0x1000` |
-| Factory application | `0x10000` | `0x1f0000` |
-| Prepared SPIFFS | `0x200000` | `0x200000` |
+| Region | Pico Z offset / size | PicoStill offset / size |
+| --- | --- | --- |
+| NVS | `0x9000 / 0x5000` | `0x9000 / 0x5000` |
+| Boot selection | `0xe000 / 0x2000` | `0xe000 / 0x2000` |
+| Factory recovery | `0x10000 / 0xe0000` | `0x10000 / 0xf0000` |
+| Application | `0xf0000 / 0x1a1000` | `0x100000 / 0xf0000` |
+| SPIFFS | `0x291000 / 0x16f000` | `0x200000 / 0x200000` |
 
-The partition table also declares NVS at `0x9000`/`0x5000` and OTA-selection data
-at `0xe000`/`0x2000`. The package supplies **no replacement image for either**.
-The factory-only boot layout does not require an OTA application selection.
-Checked modified startup returns an NVS error instead of erasing the partition.
+PicoFerm uses `esp8266-ab-v1` on a compatible 2 MiB part. The bootstrap occupies sector zero. The two application banks start at `0x3000` and `0x83000`. The existing SPIFFS region begins at `0x100000`, and the EEPROM, radio and SDK settings begin at `0x1fb000`. The package's `spiffs.bin` is an empty formatted filesystem for initial setup. The USB worker handles migration of a recognized installation, including its existing settings and history. [ESP USB setup](esp-usb.md)
 
-PicoFerm uses the pinned Arduino 2.4.1 `eagle.flash.2m.ld` profile:
+## Verification
 
-| ESP8266 component | Physical offset | Maximum region |
-| --- | ---: | ---: |
-| eboot plus application | `0x0` | `0x100000` |
-| Prepared SPIFFS | `0x100000` | `0xfb000` |
-| EEPROM/RF/system tail, no generated write artifact | `0x1fb000` | `0x5000` |
+For ESP32, the package verifier checks the application checksum and digest, compares its ELF sections against the image, decodes the partition table and checks its geometry and MD5, and inspects the formatted filesystem. It verifies the model and version descriptors of both bootable images. Z-series has a separate recovery ELF. On PicoStill, the same compiled image serves as recovery when booted from the factory partition. [ESP32 package checks](../tools/package_reference.py)
 
-The last 4 KiB of the SPIFFS region is a remainder beyond complete 8 KiB logical
-blocks, matching the pinned SDK geometry. The formatter and mounted native
-filesystem tests explicitly account for it. Original EEPROM contents are read
-without sanitizing, writing or committing them; modified calibration and
-history occupy the separate filesystem namespace.
+For PicoFerm, the builder checks the bootstrap and bank-specific ELF addresses and compares their sections with each image. The reader checks the target, version, bank offsets, image digests and bootstrap digest recorded in the A/B manifest and checks the blank SPIFFS image. [PicoFerm package checks](../../picoferm/modified/tools/usb_ab.py)
 
-`spiffs.bin` is an **empty, formatted clean-install filesystem**. Writing it
-would replace existing modified preferences/history in that region. It is not
-an update overlay, credential backup or mechanism for preserving an existing
-filesystem. No default API key, Wi-Fi password or private record is generated.
-The running firmware never formats a failed filesystem mount.
+## Earlier single-application builds
 
-## Image and package verification
+The [reference-package validation report](../analysis/reference-package-validation.json) records an earlier generation of the three targets. Those ESP32 builds placed one factory application at `0x10000`. The earlier PicoFerm used eboot followed by a single application at `0x1000`. For a historical ELF and matching build report, `package_reference.py --model MODEL --elf ... --build-report ...` selects that layout from the report and checks its source inputs. The [validation script](../tools/validate_reference_packages.py) reproduced each archived build's packaging twice and tested rejection of corruption, altered geometry and stale inputs.
 
-ESP32 application images are produced by the pinned SDK's `esptool.py` with
-DIO, 40 MHz and 4 MiB reference settings. The separate repository image parser
-checks segment bounds, entry point, XOR footer and appended SHA-256. Every
-allocated ELF section byte is then matched by address, including RAM sections
-split around mapped flash sections. The bootloader is copied byte-for-byte
-from the verified dependency archive. The SDK partition generator produces
-the table; an independent decoder checks its exact fields, MD5 and padding.
-
-PicoFerm's standard-library encoder follows the pinned `platform.txt` recipe:
-eboot `.text`, `0xaa` padding to offset `0x1000`, then application
-`.irom0.text`, `.text`, `.data` and `.rodata`. Both components use their real ELF
-entry points and the original ESP8266 XOR image footer. The independent OEM
-image parser checks both components, and every decoded section is compared
-with its input ELF. The first IROM address must be `0x40201010`, agreeing with
-the selected linker and actual image data position. Unexpected allocated
-sections, overlaps, truncation, changed mappings or an oversized application
-are rejected.
-
-The image construction inputs in `dependencies/reference-images.json` were
-compared byte-for-byte with their pinned original public dependency archives.
-The package contains `application.elf`, `application.bin`, the original build
-report, the image-decoding report, `spiffs.bin`, its formatter/remount report,
-and a manifest. ESP32 additionally includes the pinned bootloader and generated
-partition CSV/binary. The manifest records each artifact hash, byte count,
-selected offset and maximum region, source-verification count, preserved
-regions and the explicit absence of hardware installation qualification.
-
-`tools/validate_reference_packages.py` runs real model ELFs through the complete
-operation twice and requires identical manifests. It then verifies rejection
-of image corruption, shifted component offsets, stale build reports, and a
-wrong partition geometry carrying a recomputed valid MD5. Validation keeps a
-non-package file intact through repeated generation. Model cases and exact
-input/output hashes are recorded in `analysis/reference-package-validation.json`.
-The associated filesystem evidence retains all 4,224 history records, reads
-the final page after remount, and reserves the following session on every
-supported selected profile.
+USB migration can recognize particular older applications by their [recorded lengths and hashes](../dependencies/legacy-usb-applications.json). The release ZIPs and their current checksums are listed in the [firmware catalog](../../releases.json).

@@ -1487,7 +1487,7 @@
             "enum": [
               false
             ],
-            "description": "This firmware has no in-place installer. A Hub firmware package does not provide OTA installation."
+            "description": "Legacy in-place installer flag. Hub wireless installation uses the independent recovery application and the hub_ota_v1 capability."
           },
           "system_restart": {
             "type": "boolean",

@@ -11,13 +11,12 @@ original instruction replay and a complete pinned ESP32 SDK link. The six
 preserved releases are application containers with verified segment checksums
 and appended SHA-256.
 
-[`modified/`](modified/README.md) implements standalone 1.2.0 with explicit
-native accessory modes, pump and two fan channels, sensor interlocks, physical
-controls, persistent history, verified UART provisioning and the authenticated
-common API/browser/Hub connection. It reports its own temperature/pressure/fan
-capabilities and does not advertise an external brewer's heater or recipes.
+The [standalone 1.0.0 firmware](modified/README.md) provides manual,
+essential-oils and cleaning programs through the physical controls, device
+website and Hub. The API reports four temperatures, pressure and fan speeds.
+Pump and fan controls retain the native sensor interlocks.
 
-Build with `make firmware MODEL=picostill`. The reference package uses an
-explicit custom ESP32 layout and prepared filesystem. Source comparisons,
-SDK linking and package verification are software evidence; initial-flash
-compatibility, physical calibration and operation remain unqualified.
+Build with `make firmware MODEL=picostill`. The Hub checks the ESP32 flash
+layout during USB setup and provisions recovery for later Wi-Fi updates.
+Physical installation, calibration and operating trials are pending.
+[Wireless updates](modified/README.md#wireless-updates)

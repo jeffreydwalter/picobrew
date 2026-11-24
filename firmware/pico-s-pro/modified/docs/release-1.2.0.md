@@ -1,4 +1,6 @@
-# Standalone firmware 1.2.0
+# Archived development firmware 1.2.0
+
+This record describes an earlier development build. See the [stable 1.0.0 packages](../firmware/standalone/README.md) for current downloads and installation.
 
 This release gives Pico S and Pico Pro separate build identities and lets
 PicoBrew Hub manage the connection for live readings. The REST compatibility

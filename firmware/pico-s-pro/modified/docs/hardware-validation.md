@@ -1,8 +1,14 @@
 # Physical firmware acceptance and backup status
 
+The November 17–18 results below concern development images on one brewer.
+Its backup was labeled “Pico Pro” at the time and the owner later identified
+the appliance as a Pico S. The owner subsequently reported installing the
+model-specific stable 1.0.0 on that Pico S. The controlled brewing and
+power-loss checks are still open. [Model-specific packages and update record](hub-ota.md)
+
 The source, test executables and complete firmware image have been built and
 checked offline. The owner completed a read-only serial-flash backup on the
-actual Pico Pro on 2026-11-17: two complete 1 MiB reads matched byte-for-byte.
+owner’s brewer on 2026-11-17: two complete 1 MiB reads matched byte-for-byte.
 The [macOS backup record](macos-usb-backup.md) documents that result. The owner
 installed the pinned standalone image and verified its complete readback on
 2026-11-18. The tool left the application unstarted, and the owner subsequently
@@ -23,8 +29,8 @@ response and functional feature checks remain outstanding. A successful link, fi
 readback, health response or browser connection cannot verify physical outputs,
 recovery or a heating cycle.
 
-The subsequent [1.0.1 Settings layout patch](release-1.0.1.md) has not yet been
-installed. Its package and software checks are separate from these 1.0.0
+The [development 1.0.1 Settings layout patch](release-1.0.1.md) had not been
+installed at the time of this record. Its package and software checks are separate from these 1.0.0
 hardware observations.
 
 The owner's extracted firmware and boot records were also reviewed. The

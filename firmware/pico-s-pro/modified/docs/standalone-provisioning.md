@@ -4,7 +4,8 @@ The standalone firmware reads its per-device bearer key from the CC3200 serial
 flash file **`/local/api.key`**. The key is separate from the firmware binary.
 There is no shared password and no unauthenticated API for installing one.
 
-For the owner's verified Pico Pro, the [guarded macOS USB workflow](macos-usb-installation.md)
+For the owner’s Pico S (historically recorded under a Pico Pro backup filename),
+the [guarded macOS USB workflow](macos-usb-installation.md)
 provides key provisioning using the existing SparkFun CH340C.
 Its `provision-key` command verifies the original backup and live firmware,
 creates and verifies the key, then rewrites and verifies the same key using

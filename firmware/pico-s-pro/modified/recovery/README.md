@@ -6,17 +6,14 @@ intended for `/sys/mcuimg1.bin`, with an embedded webpage, authenticated package
 uploads, full SHA-256 readback verification, and explicit application-slot boot
 selection. It does not run the brewing controller.
 
-The candidate is **experimental, not installed, and not supported by the current
-guarded USB installer**. Installing or entering it requires a separately
-implemented and validated image1/boot-metadata procedure. The existing main
-firmware has no command to enter this candidate or confirm its trial boot. No
-physical recovery, GPIO, radio, flash-write, boot-transition or power-loss result
-is established by this import. See the [design and limits](docs/web-recovery.md).
+This archived 0.1.0 candidate has host and build evidence only. The Hub USB
+installer provisions the separate **1.0.0 Hub recovery** used for wireless
+updates. Use the [Hub setup and update guide](../docs/hub-ota.md) for a
+working brewer. The [candidate design](docs/web-recovery.md) describes the
+older experiment and its hardware testing limits.
 
-The current [modified brewing firmware](../README.md) remains separate. Its
-source, build helper, linker, installation package and guarded installer are not
-changed by this component. In particular, this candidate retains its original
-linker and SDK helper: the later brewing firmware uses a different BSS layout.
+The archived source, build helper, linker and package retain their original
+identities. The stable brewing application has its own memory layout.
 
 ## Build and check
 

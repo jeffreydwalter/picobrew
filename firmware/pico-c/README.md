@@ -10,11 +10,13 @@ display variants. Its documentation separates original-instruction verification,
 bounded-memory repairs, and hardware qualification. No physical installation or
 brewing validation is claimed.
 
-[`modified/`](modified/README.md) implements standalone firmware 1.2.0 with the
-local API, browser, recipes, history, Hub-managed live readings and cancellation
-interlocks on the recovered C application. Both SSD1325 and SSD1309 native
-images build; software validation does not establish physical installation or
-brewing. Firmware package management is implemented; in-place installation is not.
+[Standalone firmware 1.0.0](modified/README.md) adds the local API, device
+website, recipes, history and Hub-managed live readings to the recovered C
+application. Both display variants have a 1.0.0 application and matching
+1.0.0 recovery. USB setup provisions the brewer. Subsequent Hub updates use
+Wi-Fi once the Hub has the independently verified display variant. Physical
+installation, brewing and power-loss testing remain pending for both variants.
+[Setup and recovery](modified/docs/standalone-provisioning.md)
 
 The build/API identity is `pico-c` / **Pico C**, in family `pico-c`.
 Firmware follows the shared [model identity contract](../../docs/machine-identity.md).

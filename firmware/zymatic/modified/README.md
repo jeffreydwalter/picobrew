@@ -1,10 +1,18 @@
 # Zymatic firmware and USB setup
 
-Zymatic **1.0.0** pairs with the Hub over Ethernet for authenticated monitoring. Recipe and session sync work through the original outbound protocol on Ethernet or Wi-Fi. One recipe is available offline after commissioning. The physical dial and original interlocks control brewing. USB installation, restoration and runtime behavior have been exercised in simulation. Physical qualification is pending. [Application and verification](application.md) · [Offline recipe selection](offline-recipe.md)
+Zymatic **1.0.0** offers a local website and authenticated monitoring over Ethernet. Recipe and session sync work over Ethernet or Wi-Fi. One recipe is available offline after commissioning. The original controller runs the brew and enforces its interlocks. USB installation, restoration and runtime behavior have been exercised in simulation. Physical qualification is pending. [Application and verification](application.md) · [Offline recipe selection](offline-recipe.md)
 
-## Back up or restore from the Hub computer
+## Set up from the Hub
 
-Use an idle brewer. Connect its rear USB port to the computer running the command, power it on and close PicoFlash and any serial monitors. Opening the bootloader can reset the controller. Install Python 3, `pyserial==3.5` and AVRDUDE **8.1** on that computer. Put the AVRDUDE executable on `PATH` and keep its packaged configuration installed. List local USB ports with `python3 -m serial.tools.list_ports -v` and select the PicoBrew port labeled `20A0:421E`. [AVRDUDE 8.1 releases](https://github.com/avrdudes/avrdude/releases/tag/v8.1) · [PicoBrew updater evidence](../oem/README.md)
+1. Connect the idle, powered Zymatic's rear USB port to the computer running the Hub. Close PicoFlash and any serial monitors. The downloadable Hub includes the programmer for its platform.
+2. Open **Brewery → Add machine → USB setup and recovery**. Choose the Zymatic connection and **Install standalone firmware**. The Hub compares two flash reads, saves the verified backup and shows the firmware it can install. Follow the prompts and keep power and USB connected through readback.
+3. After installation, check **About Zymatic** for **1.0.0**. Connect the brewer to Ethernet, choose **Add machine** in the completed USB job and enter the brewer's network address. The Hub uses the device key it saved during installation. Keep a private backup of the Hub data directory.
+
+First conversion from stock **1.1.14** installs the compact build. The extended build adds remote dial controls and retained history on a unit with independently verified boot space. Both builds use USB for firmware updates. In the same USB dialog, choose **Back up original firmware** for a backup or **Restore original firmware** to return to stock. [USB setup and restoration](../../../server/docs/firmware-packages.md#usb-setup-backup-and-stock-restoration)
+
+## Back up or restore from a source checkout
+
+For direct command-line use, install Python 3, `pyserial==3.5` and AVRDUDE **8.1** on the USB computer. Put the AVRDUDE executable on `PATH` and keep its packaged configuration installed. List local USB ports with `python3 -m serial.tools.list_ports -v` and select the PicoBrew port labeled `20A0:421E`. Opening the bootloader can reset the controller. [AVRDUDE 8.1 releases](https://github.com/avrdudes/avrdude/releases/tag/v8.1) · [PicoBrew updater evidence](../oem/README.md)
 
 Run these commands from the firmware checkout and substitute the actual data directory and port, for example `COM4` on Windows. Run backup to keep a private copy of the controller’s readable flash. Use restore when you intend to replace its application with stock 1.1.14.
 
@@ -19,7 +27,7 @@ Restore prefers the verified saved stock application. You may also supply an exa
 
 If stock 1.1.14 is already present the command finishes after verifying it. Otherwise it asks for two confirmations on the local terminal. Keep power and USB connected while it rechecks the full baseline on the same connection used for writing, writes the application pages and reads all 128 KiB back through a new connection. AVRDUDE’s `-D` disables a chip erase. On a stock-only restoration the page-aligned write preserves the 54 adjacent bytes after the application. Removing a recognized custom extension clears its owned pages through the verified application boundary. Both operations preserve boot flash. The tool compares the full readback to the original application plus the captured surrounding bytes. Disconnect USB afterward, restart the machine and check **About Zymatic** for **1.1.14**. [AVRDUDE command options](https://avrdudes.github.io/avrdude/8.1/avrdude_4.html)
 
-## Install the custom application
+## Install the custom application from a source checkout
 
 From the checkout’s `server/` directory, use a brewer running the verified stock 1.1.14 release. Substitute its USB port, the Hub’s LAN address and port, and a private key path in a directory you own.
 

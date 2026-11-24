@@ -1,4 +1,6 @@
-# Standalone firmware 1.0.1
+# Archived development firmware 1.0.1
+
+This record describes an earlier development build. See the [stable 1.0.0 packages](../firmware/standalone/README.md) for current downloads and installation.
 
 This patch replaces Settings' three-card grid with one continuous page.
 Display preferences use compact label/control rows, the receiver host and port

@@ -263,7 +263,7 @@ varies. This is the running-firmware identity check; it requires no API key.
 The browser console is at `http://<pico-ip>/`. Record the actual response
 before starting a program.
 
-### Network changes since 1.0.0
+### Wi-Fi reconnection in stable 1.0.0
 
 Standalone 1.0.0 includes the reconnect fix in
 `platform/energia_network.cpp`: it disconnects the old association, clears

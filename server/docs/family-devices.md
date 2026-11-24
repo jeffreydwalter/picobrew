@@ -1,17 +1,20 @@
 # Standalone family controls
 
 The Hub reads the authenticated device identity, capabilities, command argument
-descriptions and supported settings before presenting controls. Adding or opening
-a device performs reads. Commands require a user action, retain false/zero
-arguments, and use the existing Hub confirmation and idempotency receipt path.
-An uncertain appliance write is never retried automatically.
+descriptions and supported settings before presenting controls. During pairing it
+can also save a reachable address for the machine to send readings to the Hub.
+Operating the machine requires an explicit command. The Hub records its outcome
+and leaves an uncertain command for the owner to review.
 
 | Family | Controls and observations |
 | --- | --- |
 | C/S/Pro | Existing monochrome front panel, dial, local recipes, advertised native programs, stop latch, preferences and retained history. C keeps its explicit display geometry and separate firmware package checks. |
 | Generic Z-series | Actual 128 × 64 grayscale panel, dial, local canonical recipes, native programs and advertised pause/resume. Named temperature, pressure and actuator readings remain available. The identity does not establish a Z1/Z2 mapping. |
+| Zymatic | Both standalone profiles offer Ethernet monitoring, recipe sync and one USB-provisioned offline recipe. The extended profile adds remote dial inputs and retained history. Stock 1.1.14 can fetch recipes and report sessions to the Hub. [Zymatic profiles](../../firmware/zymatic/modified/application.md) |
 | PicoStill | Start, essential-oils, cleaning and stop commands. While a program runs, the pump and fan controls show the reported settings for the selected output. The page also displays reported temperatures and pressure. No recipe catalog, heater controls or front-panel view is invented. |
 | PicoFerm | Start or stop recording fermentation, take a reading, set the interval while idle, or calibrate pressure. A manual reading can retry a sensor fault. The page shows temperature, native pressure and battery, without brew or heater controls. |
+
+To follow a keg in the Hub, open its batch in **Brew journal**, select **Ferment**, and choose the PicoFerm. Start recording on the PicoFerm or its Hub page, then attach that recording to the batch. The brewer can be off. [Linking, moving and reconnecting a PicoFerm](device-connections.md)
 
 PicoFerm calibration requires an explicit confirmation after removing the unit
 from its keg or adapter, removing its GRAY seal and fully depressurizing it.
@@ -62,7 +65,7 @@ from the selected session's sample pages. Charts group compatible units and
 label native raw values; the sample table and JSON/CSV exports preserve all
 channels without filling missing readings with invented zeroes.
 
-Firmware retains up to 4,224 rows across eight sessions. Page size can vary up
+Pico S, Pro, C, Z, PicoStill and PicoFerm retain up to 4,224 rows across eight sessions. An extended Zymatic retains eight sessions sharing 222 samples. The compact Zymatic relies on the Hub for live monitoring. Page size on the 4,224-row devices can vary up
 to 32; `next_offset` controls continuation. The importer bounds the total read,
 rejects a schema change during a download, checks retained metadata again after
 reading, and reuses a previously verified prefix only when the same retained

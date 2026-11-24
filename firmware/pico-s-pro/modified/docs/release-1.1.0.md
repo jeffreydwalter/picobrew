@@ -1,4 +1,6 @@
-# Firmware 1.1.0
+# Archived development firmware 1.1.0
+
+This record describes an earlier development build. See the [stable 1.0.0 packages](../firmware/standalone/README.md) for current downloads and installation.
 
 This release fills an empty **Brew PicoPak** catalogue with eight real archived
 programs, supports zero-minute heating steps, and lets users restore missing

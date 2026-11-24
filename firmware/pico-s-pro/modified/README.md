@@ -1,4 +1,4 @@
-# Pico S/Pro modified firmware (v1.x)
+# Pico S/Pro standalone firmware 1.0.0
 
 Run the commands in this guide from `firmware/pico-s-pro/modified/`.
 The [machine overview](../README.md) links the separate OEM image and unchanged
@@ -24,8 +24,9 @@ Start with the [standalone guide](docs/standalone-api.md), the
 [device-key provisioning procedure](docs/standalone-provisioning.md).
 The [optional forwarding guide](docs/telemetry.md) includes a standard-library
 HTTP receiver that archives live readings in SQLite on a Mac or Linux computer.
-The [guarded macOS USB installer](docs/macos-usb-installation.md) checks a
-pinned Pico Pro profile before writing. It does not qualify other appliances.
+Use the Hub’s **USB setup and recovery** flow for the initial installation.
+The installer verifies the appliance against its own backup and flash layout
+before writing. [USB setup](../../../server/docs/firmware-packages.md#usb-setup-backup-and-stock-restoration)
 The [flash-layout analysis](docs/flash-layout.md) describes a separate example
 listing with unknown Pro/C identity.
 `make` now selects the standalone build on this branch. The preserved legacy
@@ -47,11 +48,10 @@ original backup before installation.
 | `tools/pico_flash_install.py` | Separate guarded key provisioning, application installation and stock restoration |
 
 The probe, backup and preflight tools enforce read-only flash access. The
-[guarded writer](docs/macos-usb-installation.md) requires its pinned original
-backup and verifies live protected files and allocations before mutation.
-Do not remove those checks to install a differently named image. Its current
-profile supports the pinned Pico Pro candidate; a separate Pico S image does
-not qualify a different device for this writer.
+[guarded writer](docs/macos-usb-installation.md) checks the selected S or Pro
+model, the original backup, and the brewer’s protected files and allocations
+before writing. The historical backup labeled “Pico Pro” belongs to the
+owner-identified Pico S. Use the model printed on the appliance.
 
 The recovered factory reset path relies on the former cloud service and is
 not an offline restore procedure. Standalone disables that action. Stock
@@ -74,9 +74,10 @@ physical acceptance for the current release.
 | Wi-Fi changes | Clear old addresses and reconnect through a fresh IPv4 DHCP event before reporting success |
 | Authentication | Per-device bearer key in `/local/api.key`; no shared/default credential or embedded secret |
 
-PicoStill, dedicated pause/resume REST commands and remote firmware updates
-are not implemented in this profile. Pause/resume
-uses the existing front-panel workflow. The Activity screen has been removed;
+Use the front-panel workflow for pause and resume. The Hub can update a
+provisioned Pico S or Pro over Wi-Fi. [Firmware updates](docs/hub-ota.md)
+
+The Activity screen has been removed;
 `GET /api/v1/events` retains the latest eight events from the current boot and
 remains available through the API explorer. Fatal firmware halts can still
 require a physical reset. See the guide for the exact operating and validation limits.
@@ -98,21 +99,18 @@ Outputs are isolated by model under `build/standalone/<model>/firmware/`:
 `firmware-report.json`. The default `MODEL=pico-pro` preserves the historical
 build choice. Use `--model pico-s` with `tools/build_firmware.py --standalone`
 for the equivalent CLI build. Only S and Pro are supported by this shared
-implementation. Pico C and generic Z use their own components under
-`firmware/pico-c/` and `firmware/z-series/`; Zymatic still requires its original
-image and a separate port.
+implementation. Pico C, generic Z and Zymatic each have a separate firmware
+component under `firmware/`.
 `PICO_MODEL` in `include/picobrew/model.h` controls REST identity, serial
 branding and the OLED model name. Browser branding follows that API identity.
 The build checks vectors, the complete link, the physical RAM budget, absence
 of the discontinued cloud protocol strings, and separation from test fixtures.
-For historical comparison, the 1.0.1 image was **164,600 bytes**, with **952 bytes**
-of unallocated RAM beyond the original **32 KiB stack and 32 KiB heap**
-reservations. Its history tail and optional upload frame used up to
-**4,704 bytes plus allocator overhead** through lazy allocation from that
-reserved heap. Its browser assets totaled **21,618 compressed bytes** in
-**eight serial-flash blocks**. See the [1.1.0 release notes](docs/release-1.1.0.md)
-and use the report for the exact build; layout measurements do not establish
-live stack or heap usage.
+The stable applications are **170,392 bytes** for Pico S and **170,408 bytes**
+for Pico Pro. Both reserve **32 KiB each for stack and heap** and leave
+**88 bytes of unallocated SRAM** at link time. The five compressed website
+files occupy eight serial-flash blocks. The per-model [build reports](firmware/standalone/README.md)
+record the linked memory layout and the reserved feature buffers. Runtime peak
+stack and heap use still require measurement.
 Application and SDK link-time optimization removes unused code; the legacy profile retains its
 original compilation and exhaustive symbol checks.
 The pinned standalone SDK patch omits Energia's unused eight-client TCP wrapper
@@ -331,14 +329,11 @@ free/reuse and preservation of the old allocation when reallocation fails.
 
 ## What still needs the machine
 
-The model-specific 1.2.0 images have not been physically installed or brewed
-with. Physical acceptance includes startup and version/model reporting,
-controls, recovery, board/peripheral identification, sensor calibration,
-outputs and interlocks, rotary valve/RFID operation, networking/filesystem
-behavior, and controlled thermal operation. See
-[hardware validation](docs/hardware-validation.md) for the staged procedure.
-Builds, host simulations and ARM instruction tests do not establish these
-results. The reference image and experimental replacement remain separate.
+The owner reported installing stable 1.0.0 on a Pico S. The [USB and wireless
+update record](docs/hub-ota.md) covers that brewer. A controlled brew, sensor
+calibration, interlock testing and interrupted-update trials still require
+physical validation. Qualification of the stable Pico Pro image on a separate
+Pro also remains pending. See the [hardware acceptance procedure](docs/hardware-validation.md).
 
 ## Further reading
 

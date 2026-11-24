@@ -89,11 +89,11 @@ accounts for all 27 unique added files and 18 original supporting files, includi
 the exact recovery linker and SDK helper. The later brewing firmware has a
 different memory layout, so those dependencies stay with the candidate.
 
-The 42,984-byte candidate is a separate image1 recovery application. It remains
-experimental and uninstalled; the current main-firmware installer does not
-deploy it. Imported historical documents retain their original validation
-limits and do not establish a physical recovery result. No older brewing
-firmware or installation guide replaces the current 1.1.0 source.
+At the time of consolidation, the main brewing firmware was development version
+1.1.0. Its installer did not deploy the 42,984-byte experimental image1 recovery
+application. The archived documents describe the build and tests performed at
+that time. For the public 1.0.0 release, the Hub provisions the model-specific
+recovery image during USB setup on eligible machines. [Current installation and recovery guide](../server/docs/firmware-packages.md#installation)
 
 ## Verification boundary
 

@@ -135,7 +135,7 @@ The Pico sends JSON with `Content-Type: application/json` and an explicit
 ```json
 {
   "schema_version": 1,
-  "firmware_version": "1.2.0",
+  "firmware_version": "1.0.0",
   "status": {
     "model": "pico-c", "model_name": "Pico C", "model_family": "pico-c",
     "display_variant": "ssd1325",

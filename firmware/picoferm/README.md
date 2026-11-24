@@ -11,13 +11,12 @@ Both component checksums are verified. The latest 0.2.7 image embeds Arduino
 ESP8266 2.4.1 source paths.
 
 The recovered application has a complete pinned SDK link and original execution
-comparisons. [`modified/`](modified/README.md) implements standalone 1.2.0 with
-bounded sensor acquisition, verified calibration/configuration, explicit local
-recording, persistent history, physical controls and the authenticated common
-API/browser/Hub connection. Its continuous API profile does not inherit the
-OEM cloud application or its automatic sleep behavior.
+comparisons. [Standalone 1.0.0](modified/README.md) records temperature,
+pressure and battery readings. You can start a recording on the PicoFerm
+or its website and link it to a brew in the Hub. The PicoFerm reports
+directly to the paired Hub and keeps Wi-Fi active between readings.
 
-Build with `make firmware MODEL=picoferm`. The reference package uses the
-explicit 2 MiB linker layout and a prepared, verified filesystem. Software
-comparisons and successful links do not establish installation, calibration
-accuracy, battery runtime or hardware qualification.
+Build with `make firmware MODEL=picoferm`. USB setup checks for a compatible
+2 MiB flash layout and provisions two application banks for subsequent Wi-Fi
+updates. Physical installation, calibration and battery-life trials are pending.
+[Wireless updates and recovery](modified/dual-bank-updates.md)

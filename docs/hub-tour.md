@@ -34,6 +34,8 @@ Open **Brew journal** and select a session. On **Session measurements**, click o
 
 Use **Fermentation and carbonation** to track the stages of a planned brew after it leaves the brewer. Record when you start and finish each stage, then keep tasting notes and a rating with the session.
 
+With a standalone PicoFerm on the keg, open that batch in **Brew journal** and select **Ferment**. Choose the monitor, start recording on the PicoFerm or its Hub page, then attach the recording to the batch. The session number and time distinguish recordings made on the same day. The PicoFerm reports directly to the Hub, so you can switch the brewer off. [PicoFerm pairing and recordings](../server/docs/device-connections.md)
+
 ![Brew journal with a session’s temperature traces and machine-state timeline](images/brew-journal.png)
 
 ## Firmware, device website, and integrations
