@@ -9,9 +9,9 @@
       "kind": "standalone",
       "hub_ota_protocol": 1,
       "binary_bytes": 169304,
-      "binary_sha256": "441c7b79fdd5b7c1d888f759dbb033e61dd0c98cd68960b87ce227baa4a8fb96",
-      "archive_sha256": "e9341cad98f2ca21eaffb6b3d713e4d7bae16112ad9964960cee55f38857e6ea",
-      "source_commit": "7f7226cac3cd8eb7ed9689dde46c1a4775c48af5"
+      "binary_sha256": "d92b1b073ada25ef62ebbb7c501fdf5d1a220393c873d838d480f3e1a59d7801",
+      "archive_sha256": "6c10f4f546687da07ef748573db3c5ed26294391edc192dfdee7c9abc6cd6c8b",
+      "source_commit": "9527a7514e42c2d4057d33e4d7973d55f8ee249e"
     },
     {
       "model": "pico-pro",
@@ -20,9 +20,9 @@
       "kind": "standalone",
       "hub_ota_protocol": 1,
       "binary_bytes": 169312,
-      "binary_sha256": "508d15e84e86ec96f46cf039fe05862ec066d15045a7b7431defbddac5c0e725",
-      "archive_sha256": "56bedaf8514535a9ef759b7386776e3de6691da77653e520096659f3a8d15d57",
-      "source_commit": "7f7226cac3cd8eb7ed9689dde46c1a4775c48af5"
+      "binary_sha256": "fe522d90285ab2d48fd3f28b55887192c7661f06a0a2a3037e8c1e2f59dc8a95",
+      "archive_sha256": "27b73557a88d573fe822ce3ca344062f965ad2254142ef99a1a9548362bf8414",
+      "source_commit": "9527a7514e42c2d4057d33e4d7973d55f8ee249e"
     },
     {
       "model": "pico-c",
@@ -31,10 +31,10 @@
       "kind": "standalone",
       "hub_ota_protocol": 1,
       "binary_bytes": 167400,
-      "binary_sha256": "48e770a9155c92b4953b08e8fd3019b7010045850145e532ff9a0acfbdad4c81",
-      "archive_sha256": "18baa66c1f213519657dc0917f603aa3d7a7f1e1a17fcde6c329353a81bba238",
+      "binary_sha256": "66af92c03c9f94d6388ae141b596252a8992ee3847919af87d2247c4bfffa112",
+      "archive_sha256": "1c2aa728cd47943ef3b1f4e26f334894ebb058dd1871dba6dc4a79e10533e98e",
       "display_variant": "ssd1325",
-      "source_commit": "7f7226cac3cd8eb7ed9689dde46c1a4775c48af5"
+      "source_commit": "9527a7514e42c2d4057d33e4d7973d55f8ee249e"
     },
     {
       "model": "pico-c",
@@ -43,10 +43,10 @@
       "kind": "standalone",
       "hub_ota_protocol": 1,
       "binary_bytes": 167296,
-      "binary_sha256": "4c21c1f3e3ea26537e2e83f311efbf1c8a208f734bfb23f350a3c07075c3e491",
-      "archive_sha256": "bc7d35a178d44ddadaff1f6b35d4d583c1c3958d4f54464a9799503f42d38abf",
+      "binary_sha256": "736fdc386e0c9ffd7a4f5bff371cc059f71bd5aceb1a5a77065ea4813809b5e1",
+      "archive_sha256": "b1cad2083c839059fcc1e17c3fbe102e731d58781e35afe42025dc11010e5d40",
       "display_variant": "ssd1309",
-      "source_commit": "7f7226cac3cd8eb7ed9689dde46c1a4775c48af5"
+      "source_commit": "9527a7514e42c2d4057d33e4d7973d55f8ee249e"
     },
     {
       "model": "z-series",
