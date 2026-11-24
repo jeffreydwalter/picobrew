@@ -142,7 +142,7 @@ function ConnectionForm({ device }: { device: Device }) {
                 ? 'Unsaved changes.'
                 : connection.loading
                   ? 'Loading saved connection…'
-                  : liveReadingsStatus(status)}
+                  : (device.model === 'picoferm' && status?.message) || liveReadingsStatus(status)}
             </p>
           )}
           <ErrorBanner

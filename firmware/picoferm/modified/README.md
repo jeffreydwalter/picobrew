@@ -31,6 +31,11 @@ PicoFerm has no heater, pump, fan, recipe engine, display or encoder. Those
 capabilities and routes are absent. The local browser and Hub use advertised
 capabilities to show fermentation controls and the actual sensor channels.
 
+Adding the PicoFerm in the Hub provisions a receiver through its authenticated API.
+It saves the host and port in flash and posts readings there after reboot. Check
+**Settings → Hub connection** on its local site for the destination and delivery status.
+The Hub can also recover a changed receiver address. [Pairing and reconnecting](../../../server/docs/device-connections.md)
+
 This always-awake standalone profile keeps the LAN interface available. It does
 not use the OEM cloud exchange, deep-sleep schedule or automatic recording
 resume. Its power consumption and battery runtime therefore require physical
