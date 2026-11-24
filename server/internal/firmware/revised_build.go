@@ -5,8 +5,8 @@ package firmware
 const (
 	picoSOriginalPackage = "f0d4798eb31ce28d7df870b0e29e592e0362c1ac93da307f550a0acf8856bf6d"
 	picoSOriginalApp     = "5b221f2f52afceab4c9fe7d1c391071b708f439d9e1be8cf883addef584852af"
-	picoSRevisedPackage  = "e9341cad98f2ca21eaffb6b3d713e4d7bae16112ad9964960cee55f38857e6ea"
-	picoSRevisedApp      = "441c7b79fdd5b7c1d888f759dbb033e61dd0c98cd68960b87ce227baa4a8fb96"
+	picoSRevisedPackage  = "6c10f4f546687da07ef748573db3c5ed26294391edc192dfdee7c9abc6cd6c8b"
+	picoSRevisedApp      = "d92b1b073ada25ef62ebbb7c501fdf5d1a220393c873d838d480f3e1a59d7801"
 )
 
 func (r InstallReceipt) RevisedPackageID(uid, model, version string) string {

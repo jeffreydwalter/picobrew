@@ -255,7 +255,7 @@ describe('Hub firmware packages', () => {
   it('only offers a revised build for the exact package authorized by the Hub', async () => {
     const user = userEvent.setup()
     const path = '/devices/pico-s/firmware'
-    const revisedID = 'e9341cad98f2ca21eaffb6b3d713e4d7bae16112ad9964960cee55f38857e6ea'
+    const revisedID = '6c10f4f546687da07ef748573db3c5ed26294391edc192dfdee7c9abc6cd6c8b'
     const revised = { ...uploaded, id: revisedID, firmware_version: '1.0.0', hub_ota_protocol: 1 }
     const original = { ...revised, kind: 'standalone', archive_sha256: 'd'.repeat(64) }
     let approved: string | undefined = revisedID
@@ -281,7 +281,7 @@ describe('Hub firmware packages', () => {
     const release = await screen.findByRole('option', {
       name: '1.0.0 · Release catalog (dddddddddddd)',
     })
-    const local = screen.getByRole('option', { name: '1.0.0 · Local upload (e9341cad98f2)' })
+    const local = screen.getByRole('option', { name: '1.0.0 · Local upload (6c10f4f54668)' })
     expect(select.value).toBe(revised.id)
     await user.selectOptions(select, release)
     const blocked = screen.getByRole('button', { name: 'Already installed' }) as HTMLButtonElement
