@@ -120,6 +120,9 @@ registry; the native API listener uses SimpleLink sockets directly. Wi-Fi
 reconnection uses a separate standalone-only SDK patch to require a fresh
 IPv4 lease; the legacy profile retains its recovered behavior.
 
+The local website’s **Settings → Appearance** offers System, Light, and Dark.
+System follows the browser’s color preference. Each browser remembers its own choice.
+
 The optional browser suite exercises the actual portable C API/store behind a
 local HTTP harness, with hardware boundaries simulated:
 

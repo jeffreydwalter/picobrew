@@ -39,7 +39,8 @@ telemetry setup and package downloads do not require that hardware confirmation.
   to fifteen explicitly routed steps per recipe. Eight attributed starter
   programs use the same local slots as user recipes.
 - Authenticated API v1, a device website, live OLED/encoder access, maintenance
-  commands, settings and a deferred command queue.
+  commands, settings and a deferred command queue. Website **Settings → Appearance**
+  offers System, Light, and Dark and remembers the choice in each browser.
 - A stop latch that inhibits heater and pump writes and cancels blocking C
   workflows, including marquee prompts, character editing and the C drain
   sequence. Filter removal also trips the ISR-safe output inhibition path.
