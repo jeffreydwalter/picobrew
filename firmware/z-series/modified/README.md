@@ -11,8 +11,6 @@ which physical Z1/Z2 revisions use this image. The build and package are a
 software reference, not a qualified initial installation. No build or test
 command flashes or operates a brewer.
 
-On version 1.0.1, choose **Ferment** on the home screen to view the PicoFerms registered in your Hub. Select **Link** beside a monitor to assign it to this brewer, or **Unlink** to remove the assignment. The Hub confirms the change and retains it while the monitor sleeps. Use **Refresh list** after adding a monitor or reconnecting the Hub.
-
 The idle home screen suggests Rinse after a brew and Clean after three brews. A completed cleaning program clears its reminder. The local website and authenticated status report the same machine records.
 
 ## Wireless firmware updates
@@ -163,7 +161,7 @@ and encoder interrupt dependencies in internal code and the active owner in
 internal RAM. Compiler stack estimates and object sizes do not replace physical
 heap/stack high-water measurements or brewing qualification.
 
-The [1.0.1 package](releases/z-series/1.0.1.zip) includes the release build report, both ELFs, and the application and recovery images. The [earlier standalone link report](analysis/standalone-build.json) records historical source identities and target memory measurements. The [reference-package validation](../../common/analysis/reference-package-validation.json)
+The [1.0.0 package](releases/z-series/1.0.0.zip) includes the release build report, both ELFs, and the application and recovery images. The [earlier standalone link report](analysis/standalone-build.json) records historical source identities and target memory measurements. The [reference-package validation](../../common/analysis/reference-package-validation.json)
 binds the Z, PicoStill and PicoFerm packages to their actual ELFs and build
 reports, including deterministic rebuilds, filesystem readback and rejection
 of corrupted images, changed addresses and stale build inputs.

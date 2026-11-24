@@ -1,6 +1,5 @@
 #pragma once
 #include "picobrew/standalone_engine.hpp"
-#include "picobrew/ferment_menu.h"
 #include "zseries/core_application.hpp"
 #include "zseries/head_application.hpp"
 #include "zseries/brew_recovery.hpp"
@@ -18,7 +17,6 @@ struct Ports {
     bool (*save_configuration)(void*) = nullptr;
     std::uint32_t (*pair_prompt)(void*, std::uint32_t, char code[9]) = nullptr;
     bool (*pair_decide)(void*, std::uint32_t, std::uint32_t, bool) = nullptr;
-    std::uint32_t (*request_seed)(void*) = nullptr;
     api::Storage storage;
 };
 
@@ -41,13 +39,12 @@ public:
     bool stop(const char* reason);
     bool show_home();
     bool show_recipes();
-    PicoFermentMenu* ferment_menu() noexcept;
     bool tick_wifi(std::uint32_t now);
     bool service_stage(oem::CoreTickStage, std::uint32_t);
     bool service_effect(const oem::CoreAction&, std::uint32_t&);
 private:
     bool wireless_ = false;
-    enum class Page { Home, Recipes, Original, Scanning, Networks, Pairing, Ferment };
+    enum class Page { Home, Recipes, Original, Scanning, Networks, Pairing };
     oem::CoreApplication& core_;
     oem::HeadApplication& head_;
     Ports ports_;
@@ -93,12 +90,6 @@ private:
     bool show_pairing();
     std::uint32_t pairing_ticket_ = 0;
     bool show_network();
-    bool show_ferment();
-    bool handle_ferment(const oem::HeadUiEvent&);
-    std::uint32_t next_ferment_id();
-    PicoFermentMenu ferment_{};
-    std::uint32_t ferment_serial_ = 0, ferment_start_ = 0;
-    std::uint8_t ferment_drawn_ = PICO_FERM_WAIT;
     bool start_wifi_scan();
     bool show_wifi_results(std::int32_t count);
     bool select_wifi(const oem::HeadUiEvent&);

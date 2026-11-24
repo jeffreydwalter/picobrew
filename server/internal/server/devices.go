@@ -98,9 +98,6 @@ func (s *Server) poll(ctx context.Context, d *runtimeDevice) {
 			return
 		}
 		s.refresh(ctx, d)
-		// The mailbox commits choices under deviceMu. Call it after refresh
-		// releases commandMu, following the registration-edit lock order.
-		s.syncFermentMenu(ctx, d)
 		d.mu.RLock()
 		online := d.view.Online && !d.identityMismatch
 		d.mu.RUnlock()

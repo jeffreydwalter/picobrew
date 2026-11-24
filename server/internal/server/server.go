@@ -46,7 +46,6 @@ type runtimeDevice struct {
 	cancel             context.CancelFunc
 	commandMu          sync.Mutex
 	historyMu          sync.Mutex
-	fermentMenu        fermentMenuState // owned by the polling goroutine
 	lastHistory        time.Time
 	identityMismatch   bool
 	awaitingIdentity   bool     // No authenticated application identity observed since registration was loaded.

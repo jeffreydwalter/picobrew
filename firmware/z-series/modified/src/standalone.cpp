@@ -21,9 +21,7 @@ constexpr std::uint32_t LocalRecipes = 0x10000, SelectLocalRecipe = 0x10001,
                         LocalRecovery = 0x10004, LocalResume = 0x10005,
                         LocalDiscard = 0x10006, LocalDiscardConfirmed = 0x10007,
                         LocalAbout = 0x10008, LocalPairing = 0x10009,
-                        LocalPairCancel = 0x1000a, LocalPairApprove = 0x1000b,
-                        LocalFerment = 0x1000c, FermentSlot = 0x1000d, FermentNext = 0x1000e,
-                        FermentPrev = 0x1000f, FermentRefresh = 0x10010, FermentBack = 0x10011;
+                        LocalPairCancel = 0x1000a, LocalPairApprove = 0x1000b;
 const api::CommandDescriptor commands[] = {
     {"brew",api::RecipeId,api::RecipeId},{"manual",0,0},{"sous-vide",0,0},
     {"cold-brew",0,0},{"rinse",0,0},{"clean",0,0},{"circulate",0,0},
@@ -89,7 +87,7 @@ api::DeviceServices Adapter::services() noexcept {
     out.capabilities=[](void* p){api::Capabilities caps;
         if (static_cast<Adapter*>(p)->wireless_) caps.ota_protocol = "esp32-factory-v1";
         caps.flags=api::Recipes|api::Brewing|api::Heating|api::Pump|api::Temperature|api::Pressure|api::FrontPanel;
-        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.zero_minute_steps=true;caps.z_program_maker=true;caps.ferment_menu_v1=true;caps.dedicated_pause_resume=true;return caps;};
+        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.zero_minute_steps=true;caps.z_program_maker=true;caps.dedicated_pause_resume=true;return caps;};
     out.snapshot=[](void* p,api::Snapshot& value){return static_cast<Adapter*>(p)->snapshot(value);};
     out.execute=[](void* p,const api::Command& value){return static_cast<Adapter*>(p)->execute(value);};
     out.idle=[](void* p){return static_cast<Adapter*>(p)->idle();};
@@ -296,14 +294,6 @@ api::Result Adapter::execute(const api::Command& input){
 }
 void Adapter::poll(){
     if(begun_)poll_recovery();
-    if(page_==Page::Ferment){
-        if(!ferment_menu()) page_=Page::Original; // A native alert took over the screen.
-        else {
-            if(ferment_.result==PICO_FERM_WAIT && ports_.millis(ports_.context)-ferment_start_>=45000u)
-                ferment_.result=PICO_FERM_ERROR;
-            if(ferment_drawn_!=ferment_.result) show_ferment();
-        }
-    }
     if(page_==Page::Pairing){
         auto& menu=head_.screens.menu_data;
         if(!menu.count||static_cast<std::uint32_t>(menu.items[0].event.command)!=LocalPairCancel||
@@ -535,9 +525,7 @@ bool Adapter::show_home(){
         screen.menu_data.append(resume,text("Resume interrupted","Reanudar interrumpido","Reprendre brassage"));}
     if((recovery_.present()&&!recovery_active_)||!recovery_.ready()){HeadUiEvent discard;discard.command=static_cast<UiCommand>(LocalDiscard);
         screen.menu_data.append(discard,text("Discard interrupted","Descartar pendiente","Abandonner reprise"));}
-    for(auto command:{UiCommand::StartManualBrew,UiCommand::StartSousVideWithKeg,UiCommand::CoffeeMenu})screen.menu_data.append(command);
-    screen.menu_data.append(static_cast<UiCommand>(LocalFerment),text("Ferment","Fermentar","Fermentation"));
-    for(auto command:{UiCommand::Utilities,UiCommand::Settings})screen.menu_data.append(command);
+    for(auto command:{UiCommand::StartManualBrew,UiCommand::StartSousVideWithKeg,UiCommand::CoffeeMenu,UiCommand::Utilities,UiCommand::Settings})screen.menu_data.append(command);
     if(stopped()){HeadUiEvent clear;clear.command=static_cast<UiCommand>(LocalClearStop);screen.menu_data.append(clear,text("Clear stop","Quitar parada","Effacer arret"));}
     const unsigned due=engine_?engine_->care_due():0;
     if(!stopped()&&(due&api::CleanDue))screen.menu_data.append(UiCommand::StartClean);
@@ -596,72 +584,6 @@ bool Adapter::show_pairing(){
     request.body.lines=lines;request.body.count=pairing_ticket_?2:1;
     request.menu_rows=screen.menu_data.count;request.menu_vertical=2;
     return screen.show(request)==HeadScreenResult::Ok;
-}
-std::uint32_t Adapter::next_ferment_id(){
-    if(!ferment_serial_ && ports_.request_seed) ferment_serial_=ports_.request_seed(ports_.context);
-    if(!++ferment_serial_) ++ferment_serial_;
-    return ferment_serial_;
-}
-PicoFermentMenu* Adapter::ferment_menu() noexcept {
-    const auto& menu=head_.screens.menu_data;
-    if(page_!=Page::Ferment || !menu.count) return nullptr;
-    const auto& back=menu.items[menu.count-1].event;
-    if(static_cast<std::uint32_t>(back.command)!=FermentBack || back.index!=ferment_.request) return nullptr;
-    return &ferment_;
-}
-bool Adapter::show_ferment(){
-    auto& screen=head_.screens;
-    screen.clear_data();
-    const auto add=[&](std::uint32_t command,const char* label,std::uint8_t slot){
-        HeadUiEvent event; event.command=static_cast<UiCommand>(command); event.index=ferment_.request;
-        event.flags=slot;
-        return screen.menu_data.append(event,label);
-    };
-    const char* title=text("Waiting for Hub","Esperando al Hub","Attente du Hub");
-    switch(ferment_.result){
-    case PICO_FERM_LIST:
-        title=ferment_.count?"PicoFerm":text("No PicoFerm in Hub","Sin PicoFerm en Hub","Aucun PicoFerm au Hub");
-        for(std::uint8_t i=0;i<ferment_.count;++i){
-            char label[48];
-            const char* action=ferment_.entries[i].linked?text("Unlink","Desvincular","Dissocier"):text("Link","Vincular","Associer");
-            ::snprintf(label,sizeof label,"%s %s",action,ferment_.entries[i].name);
-            if(!add(FermentSlot,label,i))return false;
-        }
-        if(ferment_.more&&!add(FermentNext,text("Next page","Siguiente pagina","Page suivante"),0))return false;
-        if(ferment_.page&&!add(FermentPrev,text("Previous page","Pagina anterior","Page precedente"),0))return false;
-        break;
-    case PICO_FERM_LINKED: title=text("PicoFerm linked","PicoFerm vinculado","PicoFerm associe"); break;
-    case PICO_FERM_UNLINKED: title=text("PicoFerm unlinked","PicoFerm desligado","PicoFerm dissocie"); break;
-    case PICO_FERM_STALE: title=text("List changed","La lista cambio","Liste modifiee"); break;
-    case PICO_FERM_ERROR: title=text("Check Hub connection","Revise el Hub","Verifiez le Hub"); break;
-    }
-    if(ferment_.result!=PICO_FERM_WAIT && !add(FermentRefresh,text("Refresh list","Actualizar lista","Actualiser la liste"),0))return false;
-    if(!add(FermentBack,text("Back","Atras","Retour"),0))return false;
-    page_=Page::Ferment;
-    ferment_drawn_=ferment_.result;
-    return screen.menu_screen(title)==HeadScreenResult::Ok;
-}
-bool Adapter::handle_ferment(const HeadUiEvent& event){
-    const auto id=static_cast<std::uint32_t>(event.command);
-    if(id==LocalFerment){
-        if(page_!=Page::Home)return true;
-        pico_ferment_list(&ferment_,next_ferment_id(),0);
-    }else{
-        if(!ferment_menu() || event.index!=ferment_.request)return true;
-        if(id==FermentBack)return show_home();
-        if(id==FermentSlot){
-            if(!pico_ferment_choose(&ferment_,next_ferment_id(),event.flags))return true;
-        }else{
-            auto page=ferment_.page;
-            if(id==FermentNext && ferment_.result==PICO_FERM_LIST && ferment_.more) ++page;
-            else if(id==FermentPrev && ferment_.result==PICO_FERM_LIST && page) --page;
-            else if(id==FermentRefresh && ferment_.result!=PICO_FERM_WAIT) page=0;
-            else return true;
-            pico_ferment_list(&ferment_,next_ferment_id(),page);
-        }
-    }
-    ferment_start_=ports_.millis(ports_.context);
-    return show_ferment();
 }
 bool Adapter::show_network(){
     auto& screen=head_.screens;screen.clear_data();
@@ -802,11 +724,10 @@ bool Adapter::handle_head(HeadEventKind kind){
         CoreWifiEvent event;head_.wifi_events.take(event);return true;
     }
     if(kind==HeadEventKind::UiCommand&&head_.ui_events.pending){const auto event=head_.ui_events.value;const auto id=static_cast<std::uint32_t>(event.command);
-        if(id>=LocalRecipes&&id<=FermentBack){HeadUiEvent consumed;head_.ui_events.take(consumed);
+        if(id>=LocalRecipes&&id<=LocalPairApprove){HeadUiEvent consumed;head_.ui_events.take(consumed);
             // Match HeadUiCommands::handle's shared menu-command prologue.
             if(!head_.services.alarm||!head_.services.alarm(head_.services.context,false))return false;
             head_.ui.transient.active=false;head_.ui.transient.deadline=0;
-            if(id>=LocalFerment)return handle_ferment(event);
             if(id==LocalAbout)return show_about();
             if(id==LocalPairing)return show_pairing();
             if(id==LocalPairApprove||id==LocalPairCancel){

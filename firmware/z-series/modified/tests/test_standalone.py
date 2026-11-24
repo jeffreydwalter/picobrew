@@ -20,18 +20,15 @@ class StandaloneTests(unittest.TestCase):
         cls.addClassCleanup(cls.temp.cleanup)
         output=Path(cls.temp.name)
         subprocess.run(['make','-s','-j4','json-adapter','ARDUINOJSON_DIR='+str(dependency())],cwd=OEM,check=True,capture_output=True,text=True)
-        objects=[]
-        for source in ('http_server','ferment_menu'):
-            obj=output/(source+'.o')
-            subprocess.run(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-I'+str(COMMON/'include'),'-c',str(COMMON/'src'/(source+'.c')),'-o',str(obj)],check=True)
-            objects.append(str(obj))
+        http=output/'http.o'
+        subprocess.run(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-I'+str(COMMON/'include'),'-c',str(COMMON/'src/http_server.c'),'-o',str(http)],check=True)
         cls.binary=output/'integration'
         sources=[ROOT/'tests/standalone_integration.cpp']+sorted((ROOT/'src').glob('*.cpp'))
         sources+=sorted(p for p in (COMMON/'src').glob('*.cpp') if p.name!='common_web_assets.cpp')
         subprocess.run(shlex.split(os.environ.get('CXX','c++'))+[
             '-std=c++11','-O1','-Wall','-Wextra','-Werror','-pedantic','-fno-fast-math','-ffp-contract=off',
             '-I'+str(ROOT/'include'),'-I'+str(OEM/'include'),'-I'+str(COMMON/'include'),'-I'+str(COMMON/'src')]+
-            [str(p) for p in sources]+objects+[str(OEM/'build/libzseries_oem_json.a'),'-o',str(cls.binary)],check=True)
+            [str(p) for p in sources]+[str(http),str(OEM/'build/libzseries_oem_json.a'),'-o',str(cls.binary)],check=True)
     def run_case(self,name):subprocess.run([str(self.binary),name],check=True,timeout=15)
     def test_program_maker_storage_execution_and_recovery_match_original(self):self.run_case('maker')
     def test_owned_recipe_native_program_and_reserved_history(self):self.run_case('recipe')
@@ -51,7 +48,6 @@ class StandaloneTests(unittest.TestCase):
     def test_remote_recipe_and_manual_start_wake_native_standby(self):self.run_case('standby-start')
     def test_recipe_step_index_ignores_common_steps_and_resume_labels(self):self.run_case('step-indices')
     def test_wifi_picker_keeps_lease_and_selects_from_deduplicated_snapshot(self):self.run_case('wifi-picker')
-    def test_ferment_menu_and_hub_mailbox(self):self.run_case('ferment')
     def test_pairing_requires_physical_selection_and_the_displayed_request(self):self.run_case('pairing')
     def test_all_native_network_entry_points_use_standalone_wifi_menu(self):self.run_case('network-menus')
     def test_rejected_resume_keeps_checkpoint_reviewable_and_discardable(self):self.run_case('recovery-rejected')

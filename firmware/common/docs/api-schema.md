@@ -28,29 +28,6 @@ Initial new model identities are `z-series` / `Pico Z` / `z-series`,
 `picoferm` / `PicoFerm` / `picoferm`. Z1/Z2 identity must not be guessed.
 An unavailable optional capability has no active route and returns 404.
 
-## PicoFerm assignment from the brewer
-
-A brewer advertising `ferment_menu_v1: true` serves the authenticated
-`/api/v1/ferment` endpoint. Opening **Ferment** on the brewer starts a list
-request. The paired Hub reads it with GET and answers with POST. Page and slot
-numbers start at zero.
-
-| GET from the brewer | POST from the Hub |
-| --- | --- |
-| `{"request":0}` | No work pending. |
-| `{"request":42,"action":"list","page":0}` | `{"request":42,"result":"list","page":0,"more":0,"entries":[{"name":"Cellar","linked":0}]}` |
-| `{"request":43,"action":"link","page":0,"slot":0,"list_request":42}` | `{"request":43,"result":"linked"}` after the association is saved. |
-| `action:"unlink"` for a displayed linked entry | `result:"unlinked"` after the association is removed. |
-
-A page holds up to four 16-character printable ASCII labels. The Hub retains
-the mapping to registered device identities and association revisions for the
-list it successfully delivered. Only the first list reply is accepted. A later
-reply or a reply to a closed request receives HTTP 409. A Hub ignores selections
-from a list it did not deliver. It replies with `result:"stale"` if the selected
-association changed and `result:"error"` if the operation failed. Reopening the
-menu requests fresh data. Sleeping PicoFerms remain eligible through their Hub
-registration. This exchange only changes the Hub association.
-
 ## Status and readings
 
 `GET /api/v1/status` retains identity, device UID, uptime, readiness, busy/stop

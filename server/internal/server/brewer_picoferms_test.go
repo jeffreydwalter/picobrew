@@ -1,14 +1,11 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"slices"
 	"testing"
 
-	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/device"
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/domain"
 )
 
@@ -92,110 +89,5 @@ func TestBrewerPicoFermJournal(t *testing.T) {
 	}
 	if detail.PicoFermID != ferm.ID || detail.PicoFermName != "Cellar" || detail.PicoFermRecordingID != "ferm-1" || detail.Notes != "retain" {
 		t.Fatalf("lost batch provenance or notes: %+v", detail.Brew)
-	}
-}
-
-type fakeFermentMailbox struct {
-	device.Adapter
-	input     device.FermentMenuRequest
-	reply     device.FermentMenuReply
-	readCount int
-	drop      bool
-}
-
-func (f *fakeFermentMailbox) FermentRequest(context.Context) (device.FermentMenuRequest, error) {
-	f.readCount++
-	return f.input, nil
-}
-func (f *fakeFermentMailbox) ReplyFerment(_ context.Context, r device.FermentMenuReply) error {
-	f.reply = r
-	if f.drop {
-		return errors.New("reply lost")
-	}
-	return nil
-}
-
-func TestPhysicalFermentMenuLink(t *testing.T) {
-	s, _, _ := newTestServer(t)
-	ctx := context.Background()
-	mail := &fakeFermentMailbox{}
-	add := func(id, name, model, owner string) *runtimeDevice {
-		m := domain.Device{ID: id, Name: name, Model: model, Adapter: "pico-standalone", Enabled: true, BrewerID: owner}
-		if _, err := s.db.Put("device", id, m, 0); err != nil {
-			t.Fatal(err)
-		}
-		d := &runtimeDevice{view: domain.DeviceView{Device: m, Online: true, Status: &domain.Status{UptimeMS: 1000}, Capabilities: &domain.Capabilities{FermentMenuV1: true}}, cancel: func() {}}
-		s.devices[id] = d
-		return d
-	}
-	b := add("brewer", "Pico S", "pico-s", "")
-	b.adapter = mail
-	other := add("other", "Other brewer", "pico-c", "")
-	for _, id := range []string{"a", "b", "c", "d", "e"} {
-		add(id, "Long same device name "+id, "picoferm", "")
-	}
-	add("owned", "Other brewer's accessory", "picoferm", other.view.ID)
-	menu := func(id, page uint32, action string, list uint32, slot *uint8) device.FermentMenuReply {
-		t.Helper()
-		mail.reply = device.FermentMenuReply{}
-		mail.input = device.FermentMenuRequest{Request: id, Page: page, Action: action, ListRequest: list, Slot: slot}
-		s.syncFermentMenu(ctx, b)
-		return mail.reply
-	}
-	slot := uint8(0)
-	b.view.Capabilities.FermentMenuV1 = false
-	menu(1, 0, "list", 0, nil)
-	if mail.readCount != 0 {
-		t.Fatal("old firmware was polled")
-	}
-	b.view.Capabilities.FermentMenuV1 = true
-	r := menu(1, 0, "list", 0, nil)
-	if len(r.Entries) != 4 || r.Result != "list" || r.More != 1 || r.Entries[0].Name == r.Entries[1].Name || len(r.Entries[1].Name) > 16 {
-		t.Fatalf("invalid first page %+v", r)
-	}
-	r = menu(2, 1, "list", 0, nil)
-	if len(r.Entries) != 1 || r.More != 0 {
-		t.Fatalf("invalid second page %+v", r)
-	}
-	if r = menu(3, 1, "link", 1, &slot); r.Request != 0 {
-		t.Fatalf("old page accepted %+v", r)
-	}
-	menu(4, 0, "list", 0, nil)
-	if _, err := s.db.SetPicoFermBrewer("a", other.view.ID, 0); err != nil {
-		t.Fatal(err)
-	}
-	if r = menu(5, 0, "link", 4, &slot); r.Result != "stale" {
-		t.Fatalf("concurrent change overwritten %+v", r)
-	}
-	mail.drop = true
-	menu(6, 0, "list", 0, nil)
-	mail.drop = false
-	if r = menu(7, 0, "link", 6, &slot); r.Request != 0 {
-		t.Fatal("unacknowledged page could make an assignment")
-	}
-	menu(8, 0, "list", 0, nil)
-	mail.drop = true
-	if r = menu(9, 0, "link", 8, &slot); r.Result != "linked" {
-		t.Fatalf("link failed %+v", r)
-	}
-	mail.drop = false
-	if r = menu(9, 0, "link", 8, &slot); r.Result != "linked" {
-		t.Fatalf("lost decision acknowledgment was not replayed %+v", r)
-	}
-	r = menu(10, 0, "list", 0, nil)
-	if r.Entries[0].Linked != 1 {
-		t.Fatalf("Hub link not reflected on OLED %+v", r)
-	}
-	if r = menu(11, 0, "unlink", 10, &slot); r.Result != "unlinked" {
-		t.Fatalf("unlink: %+v", r)
-	}
-	var saved domain.Device
-	if _, err := s.db.Get("device", "b", &saved); err != nil || saved.BrewerID != "" || saved.BrewerRevision != 2 {
-		t.Fatalf("link revisions %+v %v", saved, err)
-	}
-	menu(12, 0, "list", 0, nil)
-	b.view.Status.UptimeMS = 50
-	if r = menu(13, 0, "link", 12, &slot); r.Request != 0 {
-		t.Fatalf("pre-reboot list accepted: %+v", r)
 	}
 }
