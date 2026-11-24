@@ -417,6 +417,7 @@ export interface MachineFirmware {
   device_uid?: string
   hardware_verification_required?: boolean
   retry_package_id?: string
+  revised_package_id?: string
   install_supported: boolean
   last_install?: { package_id: string; started: string; state: string; message: string }
   reason: string

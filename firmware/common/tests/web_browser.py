@@ -35,7 +35,7 @@ def main():
                     errors, requests, commands = [], [], []
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     brewing = model == 'z-series'
-                    allowed = ['brew','manual','clean','drain','chill','stop','pause','resume','encoder','resume-interrupted','discard-interrupted'] if brewing else ['start','stop','calibrate','sample','set-sampling-interval'] if model == 'picoferm' else ['start','essential-oils','clean','stop','set-pump','set-fan']
+                    allowed = ['brew','clean','drain','chill','stop','pause','resume','encoder','resume-interrupted','discard-interrupted'] if brewing else ['start','stop','calibrate','sample','set-sampling-interval'] if model == 'picoferm' else ['start','essential-oils','clean','stop','set-pump','set-fan']
                     descriptors = {name:{'allowed':[],'required':[]} for name in allowed}
                     for name,fields in {'brew':['recipe_id'],'encoder':['delta','click'],'calibrate':['confirm'],'resume-interrupted':['confirm'],'set-sampling-interval':['value'],'set-pump':['enabled'],'set-fan':['channel','level','enabled']}.items():
                         if name in descriptors: descriptors[name]={'allowed':fields,'required':[] if name=='encoder' else fields[:2] if name=='set-fan' else fields}
@@ -103,6 +103,25 @@ def main():
                         route.fulfill(status=code,content_type='application/json',body=json.dumps(result))
                     page.route('**/api/v1**',route_api)
                     url=f'http://127.0.0.1:{server.server_port}/'
+                    page.emulate_media(color_scheme='dark')
+                    page.goto(url)
+                    appearance = page.get_by_label('Appearance', exact=True)
+                    html = page.locator('html')
+                    expect(appearance).to_have_value('system')
+                    expect(html).to_have_css('color-scheme', 'dark')
+                    dark_surface = page.locator('#publicOverview').evaluate('(card)=>getComputedStyle(card).backgroundColor')
+                    appearance.select_option('light')
+                    expect(html).to_have_css('color-scheme', 'light')
+                    assert page.locator('#publicOverview').evaluate('(card)=>getComputedStyle(card).backgroundColor') != dark_surface
+                    page.reload()
+                    expect(appearance).to_have_value('light')
+                    expect(html).to_have_css('color-scheme', 'light')
+                    appearance.select_option('system')
+                    expect(html).to_have_css('color-scheme', 'dark')
+                    page.emulate_media(color_scheme='light')
+                    expect(html).to_have_css('color-scheme', 'light')
+                    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                    page.goto('about:blank')
                     page.goto(url+('#pair='+ticket if hub_launch else ''))
                     if hub_launch:
                         expect(page).to_have_url(url)
@@ -127,7 +146,7 @@ def main():
                         pixels=page.locator('#display').evaluate('(canvas)=>Array.from(canvas.getContext("2d").getImageData(0,0,16,1).data)')
                         assert pixels[:4]==[18,38,32,255] and pixels[-4:]==[199,225,180,255]
                         assert len([path for _,path in requests if path.startswith('/display')])>=4
-                        assert set(page.locator('#program option').all_text_contents())=={'Manual brewing','Clean','Drain','Chill'}
+                        assert set(page.locator('#program option').all_text_contents())=={'Clean','Drain','Chill'}
                         expect(page.get_by_role('button',name='Pause session',exact=True)).to_be_visible()
                         expect(page.get_by_role('button',name='Resume session',exact=True)).to_be_visible()
                         expect(page.get_by_role('button',name='Pause session',exact=True)).to_be_disabled()
@@ -302,6 +321,15 @@ def main():
                     assert page.locator('#historyMetric option').all_text_contents().count('Native pressure')==1
                     assert 'sensor_pressure_native' in page.locator('#historyValues').text_content()
                     page.locator('[data-tab="settings"]').click()
+                    expect(page.locator('#settings #appearance')).to_be_visible()
+                    expect(page.locator('nav').get_by_role('button',name='Brewery',exact=True)).to_be_visible()
+                    expect(page.locator('nav').get_by_role('button',name='Brew journal',exact=True)).to_be_visible()
+                    expect(page.locator('nav').get_by_role('button',name='API explorer',exact=True)).to_be_visible()
+                    before = list(commands)
+                    appearance.select_option('dark')
+                    expect(html).to_have_css('color-scheme', 'dark')
+                    assert page.evaluate('localStorage.getItem("picobrew-theme")') == 'dark'
+                    assert commands == before
                     if not brewing:expect(page.get_by_label('Front-panel language',exact=True)).to_be_hidden()
                     page.locator('[data-tab="api"]').click()
                     options=page.locator('#apiEndpoint option').all_text_contents()

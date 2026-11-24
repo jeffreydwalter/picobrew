@@ -82,6 +82,9 @@ function api(path, method='GET', body) {
 
 function connected(value) {
   state.connected = value;
+  const appearance = $('appearanceRow');
+  if (value) $('settingsForm').before(appearance);
+  else $('publicOverview').append(appearance);
   $('publicOverview').hidden = value;
   document.querySelector('nav').hidden = !value;
   if (!value) document.querySelectorAll('.tab-panel').forEach(panel=>panel.hidden=true);

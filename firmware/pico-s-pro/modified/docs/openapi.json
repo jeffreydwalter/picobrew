@@ -555,7 +555,7 @@
         "tags": [
           "Reporting"
         ],
-        "description": "Recorded automatically on the Pico, independent of HTTP clients or Wi-Fi association. Regular snapshots every 15 seconds plus phase/step/status transitions. A current RAM tail is checkpointed at most every 60 seconds while foreground storage is available. A restart marks an unfinished session interrupted; uncommitted readings may be lost. The truncated and storage_error flags identify incomplete histories. Only brewing/manual brewing workflows are recorded; settings and maintenance do not replace them.",
+        "description": "Recorded automatically on the Pico, independent of HTTP clients or Wi-Fi association. Regular snapshots every 15 seconds plus phase/step/status transitions. A current RAM tail is checkpointed at most every 60 seconds while foreground storage is available. A restart marks an unfinished session interrupted; uncommitted readings may be lost. The truncated and storage_error flags identify incomplete histories. Existing histories can include manual brews recorded by earlier firmware.",
         "responses": {
           "200": {
             "description": "Success",
@@ -1383,7 +1383,6 @@
                 "brew",
                 "sous-vide",
                 "cold-brew",
-                "manual",
                 "rinse",
                 "first-rinse",
                 "deep-clean",
@@ -1754,7 +1753,6 @@
               "brew",
               "sous-vide",
               "cold-brew",
-              "manual",
               "rinse",
               "first-rinse",
               "deep-clean",
@@ -1858,7 +1856,6 @@
             "enum": [
               "sous-vide",
               "cold-brew",
-              "manual",
               "rinse",
               "first-rinse",
               "deep-clean",
@@ -1896,7 +1893,6 @@
             "brew": "#/components/schemas/BrewCommand",
             "sous-vide": "#/components/schemas/ProgramCommand",
             "cold-brew": "#/components/schemas/ProgramCommand",
-            "manual": "#/components/schemas/ProgramCommand",
             "rinse": "#/components/schemas/ProgramCommand",
             "first-rinse": "#/components/schemas/ProgramCommand",
             "deep-clean": "#/components/schemas/ProgramCommand",

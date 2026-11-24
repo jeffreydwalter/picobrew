@@ -180,15 +180,21 @@ func TestSimulatorDisplayProgramsAndNoOutboundTelemetry(t *testing.T) {
 	if err != nil || !caps.FrontPanel || !includes(caps.Commands, "encoder") {
 		t.Fatalf("unexpected simulator capabilities: %+v %v", caps, err)
 	}
+	if err := validateDiscoveredCommand(domain.Command{Command: "manual"}, domain.Capabilities{Commands: []string{"manual"}}); err != nil {
+		t.Fatalf("older firmware that advertises Manual Brew lost support: %v", err)
+	}
+	if includes(caps.Commands, "manual") || s.Command(ctx, domain.Command{Command: "manual"}) == nil {
+		t.Fatal("simulator still offers or accepts Manual Brew")
+	}
 	home, err := s.Display(ctx)
 	if err != nil || validateDisplay(home) != nil {
 		t.Fatalf("invalid simulator frame: %v", err)
 	}
 	pixels, _ := hex.DecodeString(home.Data)
-	// Golden produced by pico_display_logo and pico_ui_draw_menu_items(6,4,4,0)
+	// Golden produced by pico_display_logo and pico_ui_draw_menu_items(5,4,4,0)
 	// from S/Pro modified firmware with the English labels and upright rotation.
-	if fmt.Sprintf("%x", sha256.Sum256(pixels)) != "75981269cd4b56361d69739039dcb3389c7bd136379fedba0d6a11d8c76534a5" {
-		t.Fatal("idle OLED differs from the firmware renderer")
+	if fmt.Sprintf("%x", sha256.Sum256(pixels)) != "3baececc882b846efdc3390bad9efce1f6ac80d2480658a84731b1e41414adeb" {
+		t.Fatalf("idle OLED differs from the firmware renderer: %x", sha256.Sum256(pixels))
 	}
 	if err = s.Command(ctx, domain.Command{Command: "encoder", Delta: 1}); err != nil {
 		t.Fatal(err)

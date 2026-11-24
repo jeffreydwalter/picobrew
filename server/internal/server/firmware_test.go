@@ -691,6 +691,96 @@ func TestInstallUsesTheConnectedBrewersVersion(t *testing.T) {
 	}
 }
 
+// The real revised archive is the authorization boundary. Exercise it when
+// running the repository integration suite; the standalone Hub checkout has no firmware tree.
+func TestPicoSOriginalReceiptOffersRevisedBuildOnce(t *testing.T) {
+	root := os.Getenv("PICO_FIRMWARE_LIBRARY")
+	if root == "" {
+		t.Skip("repository version library is outside the standalone Hub")
+	}
+	archive, err := os.ReadFile(filepath.Join(root, "pico-s-pro", "modified", "releases", "pico-s", "1.0.0.zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, h, client, stop := startFirmwareServer(t, newTestDataDir(t))
+	defer stop()
+	csrf := signIn(t, client, h.URL)
+	code, body := uploadFirmware(t, client, h.URL, csrf, archive, nil)
+	if code != 201 {
+		t.Fatalf("upload: %d %s", code, body)
+	}
+	pkg := parseFirmwarePackage(t, body)
+	const original = "f0d4798eb31ce28d7df870b0e29e592e0362c1ac93da307f550a0acf8856bf6d"
+	const uid = "test-brewer"
+	registered := domain.Device{ID: "brewer", Model: "pico-s", ModelSource: "firmware", Enabled: true, Adapter: "pico-standalone"}
+	a := &resumeFirmwareAdapter{pairingAdapter: &pairingAdapter{
+		status: domain.Status{Model: registered.Model, ModelFamily: "pico-s-pro", DeviceUID: uid, Ready: true},
+		caps:   domain.Capabilities{Model: registered.Model, ModelFamily: "pico-s-pro", HubOTAV1: true, FirmwareVersion: "1.0.0"},
+	}, stages: make(chan string, 1)}
+	d := s.attach(registered, nil)
+	d.adapter = a
+	if _, err := s.verifiedStatus(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	path := h.URL + "/api/v1/devices/brewer/firmware"
+	install := func() (int, []byte) {
+		return request(t, client, "POST", path+"/install", csrf, map[string]any{"package_id": pkg.ID, "device_uid": uid, "confirm": true}, nil)
+	}
+	checkOffer := func(want string) {
+		t.Helper()
+		code, data := request(t, client, "GET", path, "", nil, nil)
+		var result firmware.MachineFirmware
+		if code != 200 || json.Unmarshal(data, &result) != nil || result.RevisedPackageID != want {
+			t.Fatalf("wrong revised package offer: %d %s", code, data)
+		}
+	}
+	checkDenied := func() {
+		t.Helper()
+		checkOffer("")
+		if code, body := install(); code != 409 || !bytes.Contains(body, []byte("firmware_already_installed")) {
+			t.Fatalf("same version accepted: %d %s", code, body)
+		}
+	}
+	save := func(receipt firmware.InstallReceipt) {
+		t.Helper()
+		if _, err := s.db.Put("firmware-install", registered.ID, receipt, -1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	checkDenied()
+	prior := firmware.InstallReceipt{UID: "other-brewer", Model: "pico-s", PackageID: original, State: "installed"}
+	save(prior)
+	checkDenied()
+	prior.UID = uid
+	prior.Model = "pico-pro"
+	save(prior)
+	checkDenied()
+	prior.Model = "pico-s"
+	save(prior)
+	checkOffer(pkg.ID)
+	if code, data := install(); code != 202 {
+		t.Fatalf("eligible revision rejected: %d %s", code, data)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		var receipt firmware.InstallReceipt
+		if _, err := s.db.Get("firmware-install", registered.ID, &receipt); err != nil {
+			t.Fatal(err)
+		}
+		d.mu.RLock()
+		active := d.updatingFirmware
+		d.mu.RUnlock()
+		if !active && receipt.State == "installed" && receipt.PackageID == pkg.ID && receipt.ReplacesPackageID == original {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("revised package was not confirmed: %+v", receipt)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	checkDenied()
+}
+
 func TestInterruptedFirmwareKeepsReceiptAndCanResume(t *testing.T) {
 	for _, stage := range []string{"entering", "transferring", "selecting", "confirming"} {
 		t.Run(stage, func(t *testing.T) { testInterruptedFirmwareRetry(t, stage) })

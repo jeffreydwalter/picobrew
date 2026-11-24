@@ -2,16 +2,16 @@
 #include "picobrew/web_assets.h"
 
 const PicoHttpAsset pico_web_assets[] = {
-    /* gzip SHA-256: 58592407baf503c81207e70d35dfdc08ab0c7796ca3a4b846e0686c6c7661f8b */
-    {"/", "text/html; charset=utf-8", "gzip", NULL, 6466, "/local/web/i.gz"},
-    {"/index.html", "text/html; charset=utf-8", "gzip", NULL, 6466, "/local/web/i.gz"},
-    /* gzip SHA-256: 66ba6fc6bcde20c52bea07c3f55e86c9bc937bd142fb6e32a7844c85c54d18cd */
-    {"/app.js", "application/javascript; charset=utf-8", "gzip", NULL, 6697, "/local/web/a.gz"},
-    /* gzip SHA-256: 49d7787ebd6452ab04a9ac3062726bd5b5ecb692fb0e986802cdc83e8f234b5e */
-    {"/api-explorer.js", "application/javascript; charset=utf-8", "gzip", NULL, 3548, "/local/web/e.gz"},
-    /* gzip SHA-256: 968db0c7c2ca6e5fbd56b7519134e3a5032e0cbd8d941cbae3dc49f8d1f3cbfa */
-    {"/history.js", "application/javascript; charset=utf-8", "gzip", NULL, 7222, "/local/web/h.gz"},
-    /* gzip SHA-256: bbf40ddc7967962123e660458c3109e219ab9d047fac72c22f14bf8a874899fa */
-    {"/style.css", "text/css; charset=utf-8", "gzip", NULL, 3558, "/local/web/s.gz"},
+    /* gzip SHA-256: 49bd26f5059b352052c7f6ee0bf66853f1d054405768e211acf5916d82dd8ec6 */
+    {"/", "text/html; charset=utf-8", "gzip", NULL, 6868, "/local/web/i.gz"},
+    {"/index.html", "text/html; charset=utf-8", "gzip", NULL, 6868, "/local/web/i.gz"},
+    /* gzip SHA-256: 6b76214e110a728b0e88d767ca18290b53aa96f8db617b737dc777b08d969068 */
+    {"/app.js", "application/javascript; charset=utf-8", "gzip", NULL, 6919, "/local/web/a.gz"},
+    /* gzip SHA-256: 7bde36afd82263f4e99e3bbbf395166f134203c8ee7ae5d3ffe4b55fff211075 */
+    {"/api-explorer.js", "application/javascript; charset=utf-8", "gzip", NULL, 3540, "/local/web/e.gz"},
+    /* gzip SHA-256: 44a6fc8671480c9be83642d647be646ce729bc8012f0c3c5bb30b59db6c16dbb */
+    {"/history.js", "application/javascript; charset=utf-8", "gzip", NULL, 7413, "/local/web/h.gz"},
+    /* gzip SHA-256: ebedda5bc5a6df5dbdbd09a61fc651b1e79bac7510934c74c8187f0b54471b10 */
+    {"/style.css", "text/css; charset=utf-8", "gzip", NULL, 3507, "/local/web/s.gz"},
 };
 const size_t pico_web_assets_count = sizeof(pico_web_assets) / sizeof(pico_web_assets[0]);

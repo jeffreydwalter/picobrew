@@ -278,7 +278,7 @@ func (s *Server) aiMonitor(w http.ResponseWriter, r *http.Request) {
 // This only prepares consent data; it does not send an AI request or a command.
 func (s *Server) prepareAIMonitor(ctx context.Context, d *runtimeDevice, command domain.Command, receiptID string) (aiMonitorRecord, error) {
 	if !brewCommand(command.Command) {
-		return aiMonitorRecord{}, &device.Error{StatusCode: 400, Code: "ai_monitor_command", Message: "AI monitoring can be requested only for Brew PicoPak or Manual Brew"}
+		return aiMonitorRecord{}, &device.Error{StatusCode: 400, Code: "ai_monitor_command", Message: "AI monitoring is available only for brewing sessions"}
 	}
 	if _, _, err := s.aiConfiguration(); err != nil {
 		return aiMonitorRecord{}, &device.Error{StatusCode: 409, Code: "ai_not_configured", Message: err.Error()}

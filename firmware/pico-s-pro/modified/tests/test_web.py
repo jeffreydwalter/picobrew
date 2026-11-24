@@ -158,6 +158,44 @@ class BrowserWorkflow(unittest.TestCase):
         self.assertNotIn("#", paths[0])
         self.assertNotIn(nonce, self.page.url)
 
+    def test_initial_frame_and_connection_result(self):
+        scripts, overviews = [], []
+        self.page.route("**/app.js", lambda route: scripts.append(route))
+        self.page.route("**/api/v1/overview", lambda route: overviews.append(route))
+        self.page.reload(wait_until="commit")
+        pending = self.page.locator("#publicOverview")
+        expect(pending).to_be_visible()
+        for width in (2560, 1440, 390):
+            self.page.set_viewport_size({"width": width, "height": 900})
+            self.assertGreater(pending.bounding_box()["width"], min(width, 1400) * 0.85)
+            expect(self.page.locator("#connectionText")).to_have_text("Connecting…")
+            expect(self.page.locator("#connectButton")).to_be_hidden()
+        scripts[0].continue_()
+        self.page.wait_for_load_state("domcontentloaded")
+        expect(self.page.locator("#connectionText")).to_have_text("Connecting…")
+        overviews[0].fulfill(status=503, json={"error": "unavailable"})
+        expect(self.page.locator("#publicState")).to_have_text("Machine status unavailable.")
+        expect(self.page.locator("#connectButton")).to_be_visible()
+        self.page.unroute("**/api/v1/overview")
+        self.connect()
+
+    def test_navigation_and_settings_actions(self):
+        self.connect()
+        nav = self.page.get_by_role("navigation")
+        expect(nav.get_by_role("button")).to_have_text(["Brewery", "Recipes 1", "Brew journal", "Settings", "API explorer"])
+        nav.get_by_role("button", name="Settings").click()
+        expect(nav.get_by_role("button", name="Settings")).to_have_attribute("aria-current", "page")
+        browser_access = self.page.get_by_role("region", name="Browser access")
+        expect(browser_access.get_by_role("button")).to_have_text(["Disconnect"])
+        expect(self.page.get_by_role("region", name="Machine controls").get_by_role("button")).to_have_text(["Restart brewer"])
+        for width in (2560, 1440, 390):
+            self.page.set_viewport_size({"width": width, "height": 900})
+            heading = browser_access.get_by_role("heading").bounding_box()
+            action = browser_access.get_by_role("button").bounding_box()
+            self.assertAlmostEqual(heading["x"], action["x"], delta=2)
+            self.assertLess(action["y"] - heading["y"], 120)
+            self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth"))
+
     def test_connection_live_frame_and_desktop_layout(self):
         expect(self.page.locator("#publicTemperatures")).to_contain_text("72.4°F")
         expect(self.page.locator("#startRecipe")).to_be_disabled()

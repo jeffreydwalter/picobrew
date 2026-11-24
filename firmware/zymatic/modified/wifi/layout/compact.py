@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "wifi/integration"))
 import hooks
 import pause
 import compact_build as compact
+import compact_site
 import oem_tables as tables
 import usb_stock
 import zymatic_build as extended
@@ -46,6 +47,7 @@ def stage_source(directory):
             target = directory / path
             target.parent.mkdir(exist_ok=True)
             target.write_bytes(source.extractfile(member).read())
+    compact_site.stage(directory)
     api = directory / "zymatic_api.c"
     source = api.read_text()
     if source.count(compact.PREVIEW_VERSION) != 1:

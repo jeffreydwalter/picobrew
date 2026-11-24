@@ -6,6 +6,8 @@ the recovered C controller, peripheral mappings, recipe/maintenance behavior,
 two-row UI and scrolling prompts. The new local API, storage, history, browser
 and Hub connection follow the existing S/Pro standalone contract.
 
+Choose **Brew Recipe** on the front panel to run a saved recipe. Earlier manual brews remain in history.
+
 Both native CC3200 images link and pass the documented software checks. They
 have **not been installed, run on a physical Pico C, or used for brewing**. The
 OEM comparison evidence and the new standalone tests have different scopes;
@@ -15,8 +17,8 @@ neither establishes physical timing, wiring compatibility or power-loss safety.
 
 | Selection | Logical display | Rotation | Buffer / transferred bytes | Raw image | Unallocated RAM |
 | --- | --- | --- | --- | --- | --- |
-| `ssd1325` | 128 × 64 | 180° | 1,024 / 1,024 | 168,496 bytes | 1,296 bytes |
-| `ssd1309` | 128 × 32 | 0° | 1,024 / 1,024 | 168,400 bytes | 1,296 bytes |
+| `ssd1325` | 128 × 64 | 180° | 1,024 / 1,024 | 167,400 bytes | 2,320 bytes |
+| `ssd1309` | 128 × 32 | 0° | 1,024 / 1,024 | 167,296 bytes | 2,320 bytes |
 
 The alternate OEM implementation transfers all 1,024 bytes despite exposing a
 32-row logical viewport. This behavior is preserved. The API returns the full
@@ -37,7 +39,8 @@ telemetry setup and package downloads do not require that hardware confirmation.
   to fifteen explicitly routed steps per recipe. Eight attributed starter
   programs use the same local slots as user recipes.
 - Authenticated API v1, a device website, live OLED/encoder access, maintenance
-  commands, settings and a deferred command queue.
+  commands, settings and a deferred command queue. Website **Settings → Appearance**
+  offers System, Light, and Dark and remembers the choice in each browser.
 - A stop latch that inhibits heater and pump writes and cancels blocking C
   workflows, including marquee prompts, character editing and the C drain
   sequence. Filter removal also trips the ISR-safe output inhibition path.

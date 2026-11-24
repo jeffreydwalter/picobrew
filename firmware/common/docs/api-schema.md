@@ -72,6 +72,10 @@ copy borrowed input before returning 202. Stop latches inhibition synchronously;
 foreground cancellation may then continue. The browser never automatically
 accepts preparation prompts or starts a session while pairing.
 
+On Pico S, Pro, C and Z, **Brew Recipe** starts a saved program using `brew`
+and its `recipe_id`. A client connected to older firmware can also offer
+**Manual Brew** when the device advertises `manual`.
+
 Still commands are `start` (native manual mode), `essential-oils`, `clean`,
 `stop`, `set-pump` with `enabled`, and `set-fan` with channel 1/2, level 0..100
 and optional `enabled`. Original fan, temperature and pressure interlocks stay

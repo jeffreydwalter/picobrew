@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import zymatic_build as build
+import compact_build
 import usb_layout
 import usb_application
 import usb_avr as avr
@@ -110,12 +111,12 @@ class ApplicationTest(unittest.TestCase):
         self.restore()
         self.assertEqual(self.device.flash, original_flash)
 
-    def test_upgrade_from_each_preview_preserves_identity_and_boot(self):
+    def test_upgrade_from_each_archived_build_preserves_identity_and_boot(self):
         self.key.parent.mkdir(mode=0o700)
         key = usb_application.read_key(self.key, create=True)
         uid = "ba" * 16
         for release in usb_layout.known_releases():
-            if release.VERSION == build.VERSION:
+            if release in (compact_build, build):
                 continue
             with self.subTest(version=release.VERSION):
                 prior, metadata = release.build_application(self.original, key, uid, "brew.lan")

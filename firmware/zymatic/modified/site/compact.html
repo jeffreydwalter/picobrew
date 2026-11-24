@@ -1,0 +1,28 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width">
+<title>Zymatic</title>
+<style>:root{color-scheme:light dark;font:1em system-ui}</style>
+<h1>PicoBrew Zymatic</h1>
+<form id="form">
+  <label>Device key <input type="password" required autocomplete="off"></label>
+  <button>View status</button>
+  <output name="result"></output>
+</form>
+<!-- settings -->
+<script>
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const f = event.currentTarget;
+    try {
+      const r = await fetch("/api/v1/status", {
+        headers: { Authorization: "Bearer " + f.elements[0].value }
+      });
+      if (!r.ok) throw r.status;
+      const s = await r.json();
+      f.elements.result.value = (s.busy ? "Program running" : "Monitoring") +
+        (s.wort_f ? " / " + s.wort_f + " F" : "");
+    } catch (error) {
+      f.elements.result.value = error === 401 ? "Check the device key." : "Status unavailable.";
+    }
+  };
+</script>

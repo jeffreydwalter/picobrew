@@ -22,7 +22,7 @@ static struct {
 } local;
 
 static const char *const commands[] = {
-    "", "brew", "sous-vide", "cold-brew", "manual", "rinse", "first-rinse",
+    "", "brew", "sous-vide", "cold-brew", "rinse", "first-rinse",
     "descale", "circulate", "drain-reservoir", "drain-filter", "rack-beer",
     "utilities", "settings", "deep-clean"
 };
@@ -275,17 +275,16 @@ bool pico_local_control_run_pending(void)
     case 1: pico_local_control_brew(a, local.recipe_id); break;
     case 2: pico_recipe_run_cooking_program(&a->recipe, 3); break;
     case 3: pico_recipe_run_cooking_program(&a->recipe, 4); break;
-    case 4: pico_recipe_manual_program(&a->recipe); break;
-    case 5: pico_recipe_rinse(&a->recipe); break;
-    case 6: pico_recipe_first_rinse(&a->recipe); break;
-    case 7: pico_recipe_descale(&a->recipe); break;
-    case 8: pico_recipe_circulate(&a->recipe); break;
-    case 9: pico_recipe_drain_reservoir(&a->recipe); break;
-    case 10: pico_recipe_drain_filter(&a->recipe); break;
-    case 11: pico_recipe_rack_beer(&a->recipe); break;
-    case 12: pico_utilities_menu(); break;
-    case 13: pico_settings_menu(); break;
-    case 14: pico_recipe_circulation_program(&a->recipe); break; /* Utilities > Deep Clean */
+    case 4: pico_recipe_rinse(&a->recipe); break;
+    case 5: pico_recipe_first_rinse(&a->recipe); break;
+    case 6: pico_recipe_descale(&a->recipe); break;
+    case 7: pico_recipe_circulate(&a->recipe); break;
+    case 8: pico_recipe_drain_reservoir(&a->recipe); break;
+    case 9: pico_recipe_drain_filter(&a->recipe); break;
+    case 10: pico_recipe_rack_beer(&a->recipe); break;
+    case 11: pico_utilities_menu(); break;
+    case 12: pico_settings_menu(); break;
+    case 13: pico_recipe_circulation_program(&a->recipe); break; /* Utilities > Deep Clean */
     default: break;
     }
     if (local.stopped) {

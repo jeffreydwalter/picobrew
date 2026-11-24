@@ -1,6 +1,8 @@
 # Firmware packages in PicoBrew Hub
 
-Open a machine's **Firmware** view to see wireless update versions for its exact model. Choose a version and click **Install**. The Hub fetches the selected archive, validates it and saves it for reuse. **Download** saves that version to your computer. You can downgrade to an earlier compatible OTA release. The running version cannot be reinstalled through the normal Install action.
+Open a machine's **Firmware** view to see wireless update versions for its exact model. Choose a version and click **Install**. The Hub fetches the selected archive, validates it and saves it for reuse. **Download** saves that version to your computer. You can downgrade to an earlier compatible OTA release. The running version is marked **Already installed**.
+
+If this Hub installed the original public 1.0.0 on your Pico S, choose **Install revised build** to get the **Brew Recipe** menu and light and dark themes. The Hub checks the original installation receipt and running image, then verifies the new application and website. Once the brewer confirms the update, the button reads **Already installed**.
 
 ## GitHub source and version checks
 
@@ -9,6 +11,8 @@ Open a machine's **Firmware** view to see wireless update versions for its exact
 While physical devices are registered, the Hub checks daily. The Brewery page displays a notice when a newer release is available or when the public 1.0.0 release replaces a recognized development build. Failed checks preserve the previous catalog and retry after an hour. A successful check downloads only metadata. Device keys and registered machine identifiers stay on the Hub.
 
 The public 1.0.0 catalog has seven wireless packages covering Pico S, Pico Pro, both Pico C displays, generic Z modules, PicoStill, and PicoFerm. The picker filters them for the selected machine. Pico C recovery checks the application's display marker, and the Z and accessory packages specify their recovery protocol. The Hub checks the connected device’s identity, protocol and flash layout before transfer. Both Zymatic 1.0.0 builds are provisioned over USB with the owner’s key. [USB setup and stock restoration](#usb-setup-backup-and-stock-restoration)
+
+The revised builds retain version **1.0.0**. The default branch catalog identifies each package by its SHA-256. The original GitHub tag identifies the first public build.
 
 A generic Z module and PicoStill transfer only their application over Wi-Fi. Each machine’s protected recovery and existing filesystem stay in place. PicoFerm transfers the application built for its inactive bank. After reboot the Hub reads the running image hash before confirming the new bank. A failed or unconfirmed PicoFerm trial returns to the previous bank on the next reset. Earlier single-application installations need USB setup to gain these capabilities.
 

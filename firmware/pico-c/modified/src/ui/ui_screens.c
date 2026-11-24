@@ -192,7 +192,11 @@ void pico_ui_draw_bitterness_adjustment(void)
 
 void pico_ui_draw_picopak_selection(void)
 {
+#if PICO_STANDALONE
+    pico_display_center_text(0, ui_language_text("Select recipe", "Elegir receta", "Choisir recette"));
+#else
     pico_display_center_text(0, ui_language_text("Select PicoPak", "Seleccione PicoPak", "Choisir le PicoPak"));
+#endif
 }
 
 void pico_ui_draw_registration_code(const char *code)

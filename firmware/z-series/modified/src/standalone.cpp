@@ -23,7 +23,7 @@ constexpr std::uint32_t LocalRecipes = 0x10000, SelectLocalRecipe = 0x10001,
                         LocalAbout = 0x10008, LocalPairing = 0x10009,
                         LocalPairCancel = 0x1000a, LocalPairApprove = 0x1000b;
 const api::CommandDescriptor commands[] = {
-    {"brew",api::RecipeId,api::RecipeId},{"manual",0,0},{"sous-vide",0,0},
+    {"brew",api::RecipeId,api::RecipeId},{"sous-vide",0,0},
     {"cold-brew",0,0},{"rinse",0,0},{"clean",0,0},{"circulate",0,0},
     {"drain",0,0},{"rack-beer",0,0},{"chill",0,0},{"utilities",0,0},
     {"settings",0,0},{"stop",0,0},{"clear-stop",0,0},
@@ -321,8 +321,7 @@ void Adapter::poll(){
     if(!std::strcmp(name,"brew"))result=load_recipe(queued_recipe_,true);
     else {
         UiCommand command=UiCommand::None;
-        if(!std::strcmp(name,"manual"))command=UiCommand::StartManualBrew;
-        else if(!std::strcmp(name,"sous-vide"))command=UiCommand::StartSousVideWithKeg;
+        if(!std::strcmp(name,"sous-vide"))command=UiCommand::StartSousVideWithKeg;
         else if(!std::strcmp(name,"cold-brew"))command=UiCommand::CoffeeColdBrewTweak;
         else if(!std::strcmp(name,"rinse"))command=UiCommand::StartRinse;
         else if(!std::strcmp(name,"clean"))command=UiCommand::StartClean;
@@ -469,7 +468,7 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
     // A queued resume is consumed by this attempt, including storage rejection.
     // Keep the retained checkpoint reviewable if no native session starts.
     const bool requested_resume=resuming_;resuming_=false;
-    if(stopped())return show_home();
+    if(stopped()||id==static_cast<std::uint32_t>(ZProgramId::ManualBrew))return show_home();
     const auto* program=core_.programs.find(id);
     if(!program)return false;
     const bool local_brew=id==24&&program->type==SessionType::LocalBrew;
@@ -478,7 +477,7 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
         if(!recovery_.ready()||(recovery_.present()&&!recovery_active_&&!(local_brew&&requested_resume))){
             engine_->event("session-error",recovery_.ready()?"recovery_pending":"recovery_storage");return show_home();}
         std::uint32_t token=session_token_+1;if(!token)++token;
-        const auto reserved=engine_->prepare_session(local_brew?"brew":id==28?"manual":"program",program->view.name,token);
+        const auto reserved=engine_->prepare_session(local_brew?"brew":"program",program->view.name,token);
         if(!reserved.ok()){engine_->event("session-error",reserved.error?reserved.error:"storage_error");return show_home();}
         session_token_=token;
         native_prepared_=true;
@@ -520,12 +519,12 @@ bool Adapter::handle_ui(const HeadUiAction& action){
 }
 bool Adapter::show_home(){
     auto& screen=head_.screens;screen.clear_data();HeadUiEvent recipes;recipes.command=static_cast<UiCommand>(LocalRecipes);
-    screen.menu_data.append(recipes,text("Local recipes","Recetas locales","Recettes locales"));
+    screen.menu_data.append(recipes,text("Brew Recipe","Preparar receta","Brasser une recette"));
     if(recovery_.present()&&!recovery_active_){HeadUiEvent resume;resume.command=static_cast<UiCommand>(LocalRecovery);
         screen.menu_data.append(resume,text("Resume interrupted","Reanudar interrumpido","Reprendre brassage"));}
     if((recovery_.present()&&!recovery_active_)||!recovery_.ready()){HeadUiEvent discard;discard.command=static_cast<UiCommand>(LocalDiscard);
         screen.menu_data.append(discard,text("Discard interrupted","Descartar pendiente","Abandonner reprise"));}
-    for(auto command:{UiCommand::StartManualBrew,UiCommand::StartSousVideWithKeg,UiCommand::CoffeeMenu,UiCommand::Utilities,UiCommand::Settings})screen.menu_data.append(command);
+    for(auto command:{UiCommand::StartSousVideWithKeg,UiCommand::CoffeeMenu,UiCommand::Utilities,UiCommand::Settings})screen.menu_data.append(command);
     if(stopped()){HeadUiEvent clear;clear.command=static_cast<UiCommand>(LocalClearStop);screen.menu_data.append(clear,text("Clear stop","Quitar parada","Effacer arret"));}
     const unsigned due=engine_?engine_->care_due():0;
     if(!stopped()&&(due&api::CleanDue))screen.menu_data.append(UiCommand::StartClean);

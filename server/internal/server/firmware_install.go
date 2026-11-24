@@ -223,8 +223,17 @@ func (s *Server) installFirmware(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, 409, "firmware_model", "The package model does not match this brewer")
 		return
 	}
-	if !resume && currentVersion == payload.FirmwareVersion {
-		s.fail(w, 409, "firmware_already_installed", "This firmware version is already installed on the brewer")
+	if resume {
+		payload.ReplacesPackageID = prior.ReplacesPackageID
+	} else if currentVersion == payload.FirmwareVersion {
+		if in.PackageID != prior.RevisedPackageID(in.UID, model, currentVersion) {
+			s.fail(w, 409, "firmware_already_installed", "This firmware version is already installed on the brewer")
+			return
+		}
+		payload.ReplacesPackageID = prior.PackageID
+	}
+	if payload.ReplacesPackageID != "" && !payload.IsPicoSRevision() {
+		s.fail(w, 409, "firmware_revision", "This package does not match the approved Pico S revision")
 		return
 	}
 	if stockPending(stock) {
@@ -233,11 +242,11 @@ func (s *Server) installFirmware(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	receipt := firmware.InstallReceipt{UID: in.UID, Model: model, DisplayVariant: display, PackageID: in.PackageID, Started: time.Now().UTC(), State: "running", Message: "Checking recovery, transferring the package and confirming the new boot."}
+	receipt := firmware.InstallReceipt{ReplacesPackageID: payload.ReplacesPackageID, UID: in.UID, Model: model, DisplayVariant: display, PackageID: in.PackageID, Started: time.Now().UTC(), State: "running", Message: "Checking recovery, transferring the package and confirming the new boot."}
 	previousStage := ""
 	if resume {
 		previousStage = prior.Stage
-		if previousStage == "" {
+		if previousStage == "" && payload.ReplacesPackageID == "" {
 			previousStage = "transferring"
 		}
 	}

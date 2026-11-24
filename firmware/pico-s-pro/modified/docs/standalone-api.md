@@ -6,7 +6,7 @@ REST API on the local network, without a PicoBrew account or a replacement
 PicoBrew server. The existing controller, display, encoder, and program
 workflows remain the execution path.
 
-Stable firmware **1.0.0** ships as separate Pico S and Pico Pro images.
+Firmware **1.0.0** ships as separate Pico S and Pico Pro images.
 The owner reported installing it on a Pico S. Physical brewing, interlock
 behavior and power-loss recovery still require validation. See the
 [hardware acceptance record](hardware-validation.md) and [Hub update procedure](hub-ota.md).
@@ -113,8 +113,8 @@ or prove timing on the appliance.
 
 The checked-in [Pico S](../firmware/standalone/pico-s/firmware-report.json)
 and [Pico Pro](../firmware/standalone/pico-pro/firmware-report.json) reports
-give the exact sizes and hashes of the stable 1.0.0 images. Both reserve
-32 KiB each for stack and heap. Their shared website totals 27,491 compressed
+give the exact sizes and hashes of the 1.0.0 images. Both reserve
+32 KiB each for stack and heap. Their shared website totals 28,247 compressed
 bytes in eight serial-flash blocks.
 
 The checked-in `analysis/standalone-validation.json` is an earlier development
@@ -293,13 +293,12 @@ invalid IDs, control characters, and non-ASCII labels are rejected. The local
 font and stored labels use printable ASCII. A PUT replaces the entire recipe;
 a recipe GET result can be edited and sent back as a PUT.
 
-Recipes are selected by their stored IDs through both REST and **Brew PicoPak**
+Recipes are selected by their stored IDs through both REST and **Brew Recipe**
 on the front panel. Stable firmware installs eight attributed archived PicoPak
 programs when migrating an empty catalogue. Existing nonempty collections are
 preserved. The migration is recorded in the catalogue, so later edits and
 deletions survive restarts and upgrades, including an intentionally empty list.
-See [starter recipes and recovery](recipe-catalogue.md) for IDs, provenance and
-the distinction between automatic PicoPak programs and Manual Brew.
+See [starter recipes and recovery](recipe-catalogue.md) for IDs and provenance.
 
 **Restore starter recipes** in the device web app calls
 `POST /api/v1/recipes/restore-defaults`. Send `Content-Type: application/json`
@@ -378,7 +377,7 @@ main-menu boundary.
 | Command | Behavior |
 | --- | --- |
 | `brew` | Run a local recipe; requires a valid existing `recipe_id` |
-| `sous-vide`, `cold-brew`, `manual` | Open the existing cooking/brewing program flow |
+| `sous-vide`, `cold-brew` | Open the existing cooking/brewing program flow |
 | `rinse`, `first-rinse`, `deep-clean`, `descale`, `circulate` | Run the corresponding existing maintenance flow |
 | `drain-reservoir`, `drain-filter`, `rack-beer` | Run the corresponding existing utility flow |
 | `utilities`, `settings` | Open the existing front-panel menu |
@@ -499,7 +498,7 @@ receiver that stores snapshots in SQLite. This is plain HTTP for a trusted LAN.
 
 ## Persistent brew history and export
 
-The Pico records recipe and manual brewing itself. It does not require an open
+The Pico records each recipe brew. Existing histories can also include manual brews from earlier firmware. It does not require an open
 browser, Wi-Fi association, Internet access, a Mac recorder, or a replacement
 server. Settings and maintenance programs do not create history entries.
 
@@ -547,7 +546,7 @@ console's bounded request queue and current device key. Selecting an endpoint
 never sends it automatically. The explorer is served from the Pico without a
 CDN or Swagger UI runtime.
 
-Stable firmware version is **1.0.0**, defined once in `include/picobrew/version.h`. The
+Firmware version is **1.0.0**, defined once in `include/picobrew/version.h`. The
 OLED startup label, console footer, health/discovery responses and build report
 use it. REST `api_version` remains 1. The major version marks the standalone
 release; it does not mean physical acceptance testing is complete.

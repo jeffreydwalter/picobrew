@@ -709,15 +709,12 @@ int pico_ui_draw_recipe_choices(const char *recipe_title, int allow_adjustments)
 
 void pico_ui_draw_picopak_selection(void)
 {
-    char *text;
-
-    if (pico_ui_active->network->settings->language == '\x01') {
-        text = "Seleccione PicoPak";
-    } else if (pico_ui_active->network->settings->language == '\x02') {
-        text = "Choisir le PicoPak";
-    } else {
-        text = "Select PicoPak";
-    }
+    const unsigned language = pico_ui_active->network->settings->language;
+#if PICO_STANDALONE
+    const char *text = language == 1 ? "Elegir receta" : language == 2 ? "Choisir recette" : "Select recipe";
+#else
+    const char *text = language == 1 ? "Seleccione PicoPak" : language == 2 ? "Choisir le PicoPak" : "Select PicoPak";
+#endif
     pico_display_center_text(1, text);
     pico_ui_draw_separator(3, 2, 2);
     return;

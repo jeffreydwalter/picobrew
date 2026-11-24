@@ -171,6 +171,7 @@ class LocalApi(unittest.TestCase):
         self.assertEqual(data["release_channel"], "stable")
         self.assertIn("encoder", data["commands"])
         self.assertIn("deep-clean", data["commands"])
+        self.assertNotIn("manual", data["commands"])
         self.assertFalse(data["dedicated_pause_resume"])
         health = request("GET", "/api/v1/health")[1]
         self.assertEqual(health["api_version"], 1)
@@ -442,7 +443,7 @@ class LocalApi(unittest.TestCase):
         self.assertEqual(request("POST", "/api/v1/commands", {"command": "clear-stop"})[0], 202)
         self.assertEqual(request("POST", "/api/v1/commands", {"command": "encoder", "delta": -3, "click": True})[0], 202)
         self.assertEqual((LIB.test_encoder_calls(), LIB.test_last_delta(), LIB.test_last_click()), (1, -3, 1))
-        for command in [{"command": "heater", "on": True}, {"command": "encoder", "delta": 101},
+        for command in [{"command": "manual"}, {"command": "heater", "on": True}, {"command": "encoder", "delta": 101},
                         {"command": "encoder", "delta": 0}, {"command": "rinse", "delta": 1},
                         {"command": "brew"}, {"command": "pause"}, {"command": "encoder", "click": 1}]:
             self.assertEqual(request("POST", "/api/v1/commands", command)[0], 400)

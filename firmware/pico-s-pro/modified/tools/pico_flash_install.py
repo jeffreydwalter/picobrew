@@ -60,8 +60,17 @@ UID_BLOCK = 106
 PROFILE_UID_SHA256 = "7290674610eca1cf26581779a71c7f41a9c2fc367eb7189d0e93918319964bc7"
 ORIGINAL_SIZE = 162792
 ORIGINAL_SHA256 = "e18c240fa1cf35222674bf3b4fa992a306c6e63b0b99be8793604f199085d702"
-CANDIDATE_SIZE = 170408
-CANDIDATE_SHA256 = "4e601bfe12e420bc6b50f762de9cda41898ed03d4095e8035cf8be2972f33002"
+CANDIDATE_SIZE = 169312
+CANDIDATE_SHA256 = "fe522d90285ab2d48fd3f28b55887192c7661f06a0a2a3037e8c1e2f59dc8a95"
+# Earlier 1.0.0 builds, taken from the v1.0.0 tag. The printed version
+# matches the new menu build, so the USB installer uses per-model hashes.
+STABLE_1_0_0_APPLICATIONS = {
+    "pico-pro": (170408, "4e601bfe12e420bc6b50f762de9cda41898ed03d4095e8035cf8be2972f33002"),
+    "pico-s": (170392, "5b221f2f52afceab4c9fe7d1c391071b708f439d9e1be8cf883addef584852af"),
+    "pico-c-ssd1325": (168496, "e52c444322bd78e58c1bf641fd2d1dc56ba003cfbfff3d1cc761737131bad383"),
+    "pico-c-ssd1309": (168400, "02783efd34cba08a19d7fd719db2732b9fa12554997dbac4f9f85961fa55dc31"),
+}
+
 # Pre-release applications can be recognized as USB migration sources.
 # Identities were read from the archived release packages at commit 42a22ef.
 LEGACY_APPLICATIONS = {
@@ -148,7 +157,7 @@ APPLICATION_PAYLOAD_LIMIT = (APPLICATION_ALLOCATION_BLOCKS - 2) * 4096
 KEY_NAME = "/local/api.key"
 KEY_SIZE = 65
 # Shared by the stable Pico S and Pico Pro packages.
-WEB_MANIFEST_SHA256 = "76be243e622a8a0552d2d18f082dced8887ca3b5b58d5f931abc5052a72ed68e"
+WEB_MANIFEST_SHA256 = "d73a32cbefab32c3a660ff5b1cbb1d47ab6a5161fd75dba6787290b574374864"
 WEB_DIRECTORY = Path(__file__).resolve().parents[1] / "firmware/web"
 C_FIRMWARE = Path(__file__).resolve().parents[3] / "pico-c/modified/firmware"
 C_RECOVERY = {
@@ -165,10 +174,10 @@ C_STOCK = {
     "pico-c-ssd1309": (155864, "6f2dedfcd7ab10b5a421b05dc4ee792cd44753d7e302fd8ee645ca4f6556c226"),
 }
 C_STANDALONE = {
-    "pico-c-ssd1325": (168496, "e52c444322bd78e58c1bf641fd2d1dc56ba003cfbfff3d1cc761737131bad383"),
-    "pico-c-ssd1309": (168400, "02783efd34cba08a19d7fd719db2732b9fa12554997dbac4f9f85961fa55dc31"),
+    "pico-c-ssd1325": (167400, "66af92c03c9f94d6388ae141b596252a8992ee3847919af87d2247c4bfffa112"),
+    "pico-c-ssd1309": (167296, "736fdc386e0c9ffd7a4f5bff371cc059f71bd5aceb1a5a77065ea4813809b5e1"),
 }
-C_WEB_MANIFEST_SHA256 = "bb25ffd822ca8d351a2d4b9dbcd34afebb78c041d5b9a6494881c315aa187feb"
+C_WEB_MANIFEST_SHA256 = "fd7ff21ba9fb005ff2dc40523a36bfcb943c1def131bd46eebc2b245c0161df0"
 UID_NAME = "/sys/uid.txt"
 LOADER_NAME = "/sys/mcuimg.bin"
 # These counts, flags and mirroring define the supported TI allocation shape.
@@ -376,7 +385,7 @@ def candidate_identity(model):
     if model == "pico-pro":
         return CANDIDATE_SIZE, CANDIDATE_SHA256
     if model == "pico-s":
-        return 170392, "5b221f2f52afceab4c9fe7d1c391071b708f439d9e1be8cf883addef584852af"
+        return 169304, "d92b1b073ada25ef62ebbb7c501fdf5d1a220393c873d838d480f3e1a59d7801"
     if model in C_STANDALONE:
         return C_STANDALONE[model]
     raise InstallError("Unknown target model")
@@ -463,10 +472,10 @@ def _approved_current_applications(mode, model="pico-pro"):
                                (RELEASED_1_0_1_SIZE, RELEASED_1_0_1_SHA256),
                                (RELEASED_1_1_0_SIZE, RELEASED_1_1_0_SHA256)))
         identities.extend(LEGACY_APPLICATIONS[model])
+        identities.append(STABLE_1_0_0_APPLICATIONS[model])
         identities.append(candidate_identity(model))
     if mode == "install-recovery":
-        # Only the new app can authenticate the newly versioned recovery.
-        identities = [candidate_identity(model)]
+        identities = [STABLE_1_0_0_APPLICATIONS[model], candidate_identity(model)]
     return tuple({"size_bytes": size, "sha256": digest} for size, digest in identities)
 
 

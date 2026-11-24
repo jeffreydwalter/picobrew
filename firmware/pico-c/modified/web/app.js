@@ -10,7 +10,27 @@ let requestQueue = Promise.resolve();
 let pollTimer;
 let apiExplorer;
 let brewHistory;
-const programLabels = {'sous-vide':'Sous vide', 'cold-brew':'Cold brew', manual:'Manual brewing',
+
+function setupAppearance() {
+  const select = $('appearance'), system = matchMedia('(prefers-color-scheme: dark)');
+  const apply = () => {
+    document.documentElement.style.colorScheme = select.value === 'system' ? 'light dark' : select.value;
+    brewHistory?.redraw();
+  };
+  try {
+    const saved = localStorage.getItem('picobrew-theme');
+    if (saved === 'light' || saved === 'dark') select.value = saved;
+  } catch (_) {}
+  select.addEventListener('change', () => {
+    try { localStorage.setItem('picobrew-theme', select.value); } catch (_) {}
+    apply();
+  });
+  system.addEventListener('change', apply);
+  apply();
+}
+setupAppearance();
+
+const programLabels = {'sous-vide':'Sous vide', 'cold-brew':'Cold brew',
   'deep-clean':'Deep Clean', rinse:'Rinse', 'first-rinse':'First rinse', descale:'Descale', circulate:'Circulate',
   'drain-reservoir':'Drain reservoir', 'drain-filter':'Drain step filter', 'rack-beer':'Rack beer',
   utilities:'Utilities menu', settings:'Settings menu'};
@@ -58,6 +78,7 @@ function api(path, method='GET', body) {
 
 function connected(value) {
   state.connected = value;
+  $('connectButton').hidden = false;
   $('publicOverview').hidden = value;
   document.querySelector('nav').hidden = !value;
   if (!value) document.querySelectorAll('.tab-panel').forEach(panel=>panel.hidden=true);
@@ -164,6 +185,7 @@ async function refreshRecipes() {
   if (state.recipes.some(recipe=>recipe.id===previous)) $('brewRecipe').value=previous;
   else if (state.recipes.length) $('brewRecipe').value=state.recipes[0].id;
   $('recipeCount').textContent=state.recipes.length;
+  $('recipeCount').hidden=!state.recipes.length;
   $('recipeCapacity').textContent=state.recipes.length+' / '+data.capacity;
   updateControls();
 }
@@ -323,6 +345,8 @@ async function publicOverview() {
       $('publicState').textContent='Machine status unavailable.';
       $('publicTemperatures').textContent='';
     }
+  } finally {
+    if (generation === state.generation && !state.connected && $('connectButton').hidden) connected(false);
   }
 }
 $('copyDeviceKey').addEventListener('click',async()=>{
@@ -346,9 +370,7 @@ if (hubTicket) {
   connect(state.key).catch(error=>{
     disconnect();
     notify(error.message,true);
-    publicOverview();
   });
 } else {
-  connected(false);
   publicOverview();
 }

@@ -347,7 +347,7 @@ func addFirmwareSchemas(values schemaMap) {
 	values["FirmwareStockInput"] = schemaObject(schemaMap{"device_uid": stringSchema(), "acknowledge_loss_of_hub": schemaMap{"type": "boolean", "enum": []bool{true}}, "confirm_restore": schemaMap{"type": "boolean", "enum": []bool{true}}}, "device_uid", "acknowledge_loss_of_hub", "confirm_restore")
 	values["FirmwareStockReceipt"] = schemaObject(schemaMap{"device_uid": stringSchema(), "model": stringSchema(), "stage": stringSchema(), "state": stringSchema(), "started": stringSchema(), "message": stringSchema()}, "device_uid", "model", "stage", "state", "started", "message")
 	values["FirmwareInstallInput"] = schemaObject(schemaMap{"device_uid": stringSchema(), "package_id": hash, "confirm": schemaMap{"type": "boolean", "enum": []bool{true}}}, "device_uid", "package_id", "confirm")
-	values["FirmwareInstallReceipt"] = schemaObject(schemaMap{"device_uid": stringSchema(), "model": stringSchema(), "package_id": hash, "started": stringSchema(), "stage": stringSchema(), "state": stringSchema(), "message": stringSchema()}, "device_uid", "model", "package_id", "started", "state", "message")
+	values["FirmwareInstallReceipt"] = schemaObject(schemaMap{"replaces_package_id": hash, "device_uid": stringSchema(), "model": stringSchema(), "package_id": hash, "started": stringSchema(), "stage": stringSchema(), "state": stringSchema(), "message": stringSchema()}, "device_uid", "model", "package_id", "started", "state", "message")
 	values["FirmwareImportInput"] = schemaObject(schemaMap{"repository": stringSchema(), "commit": commit, "model": model, "display_variant": displayVariant}, "repository", "commit", "model")
 	values["FirmwareHardwareInput"] = schemaObject(schemaMap{"device_uid": stringSchema(), "display_variant": displayVariant}, "device_uid", "display_variant")
 	values["FirmwareHardware"] = schemaObject(schemaMap{"device_uid": stringSchema(), "display_variant": displayVariant, "verified_at": schemaMap{"type": "string", "format": "date-time"}}, "device_uid", "display_variant", "verified_at")
@@ -401,11 +401,12 @@ func addFirmwareSchemas(values schemaMap) {
 		"hardware_verification_required": boolSchema(),
 		"stock_restore_guide":            boolSchema(),
 		"can_confirm_stock_startup":      boolSchema(), "stock_restore_wireless": boolSchema(), "stock_restore_upgrade": boolSchema(), "last_stock_restore": schemaRef("FirmwareStockReceipt"),
-		"install_supported": boolSchema(),
-		"retry_package_id":  hash,
-		"last_install":      schemaRef("FirmwareInstallReceipt"),
-		"reason":            stringSchema(),
-		"packages":          schemaArray(schemaRef("FirmwarePackage")),
+		"install_supported":  boolSchema(),
+		"retry_package_id":   hash,
+		"revised_package_id": hash,
+		"last_install":       schemaRef("FirmwareInstallReceipt"),
+		"reason":             stringSchema(),
+		"packages":           schemaArray(schemaRef("FirmwarePackage")),
 	}, "device_id", "model", "current_version", "install_supported", "reason", "packages")
 }
 

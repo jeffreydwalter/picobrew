@@ -2,7 +2,9 @@
 
 function setupHistory({session,enqueue}) {
   const el=id=>document.getElementById(id), canvas=el('historyChart'), selector=el('historySession');
-  let series=[],metric='temperature';const colors=['#1e5947','#b45e34','#765ba0','#227b9a','#a37b25','#ba4e74','#557e46','#6e6a9d'];
+  let series=[],metric='temperature';
+  const lightColors=['#1e5947','#b45e34','#765ba0','#227b9a','#a37b25','#ba4e74','#557e46','#6e6a9d'];
+  const darkColors=['#9ed6ad','#ffac82','#ccb0ef','#86d2ed','#ebc47f','#f7a8c9','#bbd88e','#b9b8ee'];
   const fieldInfo=name=>metadata?.field_metadata?.[name] || ({wort_f:{label:'Wort',unit:'F'},thermoblock_f:{label:'Thermoblock',unit:'F'},target_f:{label:'Target',unit:'F'},temperature_f:{label:'Temperature',unit:'F'},pressure_kpa:{label:'Pressure',unit:'kPa'},battery_v:{label:'Battery',unit:'V'}}[name]) || {label:name.replaceAll('_',' '),unit:'raw'};
   const axisUnit=()=>metric==='temperature'?unit:fieldInfo(metric).unit;
   const configureMetrics=()=>{
@@ -12,7 +14,7 @@ function setupHistory({session,enqueue}) {
     if(temperatures.length)selector.add(new Option('Temperature','temperature'));
     for(const name of visible)if(!['elapsed_ms','phase','controller_status','compartment','current_step','flags','device_state','step_seconds'].includes(name)&&fieldInfo(name).unit!=='F')selector.add(new Option(fieldInfo(name).label,name));
     selector.value=Array.from(selector.options).some(option=>option.value===old)?old:selector.options[0]?.value || '';metric=selector.value;
-    series=(metric==='temperature'?temperatures:[metric]).filter(Boolean).map((name,index)=>[name,fieldInfo(name).label,colors[index%colors.length]]);
+    series=(metric==='temperature'?temperatures:[metric]).filter(Boolean).map((name,index)=>[name,fieldInfo(name).label,index]);
   };
   let metadata=null, rows=[], fields=[], selected=0, wantedId=null, loading=false, run=0, generation=session().generation;
   let unit=session().temperature_unit==='C'?'C':'F';
@@ -65,6 +67,9 @@ function setupHistory({session,enqueue}) {
     context.setTransform(ratio,0,0,ratio,0,0);
     context.clearRect(0,0,width,height);geometry=null;
     if (!rows.length) return;
+    const palette=document.documentElement.dataset.theme==='dark'?darkColors:lightColors;
+    const style=getComputedStyle(canvas);
+    const color=name=>style.getPropertyValue('--'+name).trim();
     const left=65, right=width-20, columns=Math.max(1,Math.floor((width-70)/155)), top=20+Math.ceil(series.length/columns)*18, bottom=height-55;
     const first=Number(value(rows[0],'elapsed_ms')), last=Number(value(rows[rows.length-1],'elapsed_ms'));
     const span=Math.max(1000,last-first), readings=[];
@@ -73,18 +78,18 @@ function setupHistory({session,enqueue}) {
     if(readings.length){const minimum=Math.min(...readings),maximum=Math.max(...readings),padding=Math.max(metric==='temperature'?5:0.5,(maximum-minimum)*0.05);low=minimum-padding;high=maximum+padding;}
     const x=time=>left+(time-first)/span*(right-left), y=temp=>bottom-(temp-low)/(high-low)*(bottom-top);
     context.font='12px system-ui';context.lineWidth=1;
-    series.forEach(([,label,color],index)=>{context.fillStyle=color;context.textAlign='left';context.fillText(label,left+(index%columns)*155,14+Math.floor(index/columns)*18);});
+    series.forEach(([,label,index])=>{context.fillStyle=palette[index%palette.length];context.textAlign='left';context.fillText(label,left+(index%columns)*155,14+Math.floor(index/columns)*18);});
     for (let tick=0;tick<=4;tick++) {
       const temp=low+(high-low)*tick/4, yy=y(temp);
-      context.strokeStyle='#dce3dc';context.beginPath();context.moveTo(left,yy);context.lineTo(right,yy);context.stroke();
-      context.fillStyle='#64746d';context.textAlign='right';context.fillText(temp.toFixed(metric==='temperature'||axisUnit()==='raw'?0:1)+(metric==='temperature'?'°':' ')+axisUnit(),left-8,yy+4);
+      context.strokeStyle=color('border');context.beginPath();context.moveTo(left,yy);context.lineTo(right,yy);context.stroke();
+      context.fillStyle=color('muted');context.textAlign='right';context.fillText(temp.toFixed(metric==='temperature'||axisUnit()==='raw'?0:1)+(metric==='temperature'?'°':' ')+axisUnit(),left-8,yy+4);
       const time=first+span*tick/4;context.textAlign='center';context.fillText(duration(time),x(time),height-12);
     }
     let previous=rows[0], start=first;
     const band=(end,row)=>{
       const xx=x(start), ww=x(end)-xx;
-      context.fillStyle=Number(value(row,'phase'))%2?'#dce9df':'#edf1e9';context.fillRect(xx,bottom+8,ww,15);
-      if (ww>75) {context.fillStyle='#385a2e';context.textAlign='left';context.fillText(phase(row),xx+4,bottom+20,ww-8);}
+      context.fillStyle=Number(value(row,'phase'))%2?color('selection'):color('neutral');context.fillRect(xx,bottom+8,ww,15);
+      if (ww>75) {context.fillStyle=color('ink');context.textAlign='left';context.fillText(phase(row),xx+4,bottom+20,ww-8);}
     };
     for (const row of rows.slice(1)) if (phase(row)!==phase(previous)) {
       band(value(row,'elapsed_ms'),previous);start=value(row,'elapsed_ms');previous=row;
@@ -93,11 +98,11 @@ function setupHistory({session,enqueue}) {
     rows.forEach((row,index)=>{
       if (index && (value(row,'flags')&16)) {
         const from=x(value(rows[index-1],'elapsed_ms')), to=x(value(row,'elapsed_ms'));
-        context.fillStyle='#f3d7cb';context.fillRect(from,top,to-from,bottom-top+23);
+        context.fillStyle=color('chart-gap');context.fillRect(from,top,to-from,bottom-top+23);
       }
     });
-    for (const [field,,color] of series) {
-      context.strokeStyle=color;context.lineWidth=2;context.setLineDash(field==='target_f'?[5,4]:[]);context.beginPath();
+    for (const [field,,index] of series) {
+      context.strokeStyle=palette[index%palette.length];context.lineWidth=2;context.setLineDash(field==='target_f'?[5,4]:[]);context.beginPath();
       let line=false;
       for (const row of rows) {
         const temp=temperature(row,field);
@@ -108,7 +113,7 @@ function setupHistory({session,enqueue}) {
       }
       context.stroke();
     }
-    context.setLineDash([]);context.strokeStyle='#64746d';context.lineWidth=1;
+    context.setLineDash([]);context.strokeStyle=color('muted');context.lineWidth=1;
     const cursor=x(value(rows[selected],'elapsed_ms'));
     context.beginPath();context.moveTo(cursor,top);context.lineTo(cursor,bottom);context.stroke();
     geometry={left,right,first,span,width};
@@ -214,6 +219,7 @@ function setupHistory({session,enqueue}) {
     for (let i=1;i<rows.length;i++) if (Math.abs(value(rows[i],'elapsed_ms')-time)<Math.abs(value(rows[nearest],'elapsed_ms')-time)) nearest=i;
     if (nearest!==selected) choose(nearest);
   });
+  window.addEventListener('pico-theme-change',()=>{if(rows.length) draw();});
   new ResizeObserver(()=>{if (rows.length) draw();}).observe(canvas);
   setInterval(()=>{if (!document.hidden && !el('history').hidden && session().connected) load();},15000);
   clear();update();

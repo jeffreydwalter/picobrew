@@ -88,7 +88,7 @@ func invalid(message string) error {
 }
 
 var recipeID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,20}$`)
-var commands = []string{"brew", "sous-vide", "cold-brew", "manual", "rinse", "first-rinse", "deep-clean", "descale", "circulate", "drain-reservoir", "drain-filter", "rack-beer", "utilities", "settings", "stop", "clear-stop", "encoder"}
+var recipeBrewerCommands = []string{"brew", "sous-vide", "cold-brew", "rinse", "first-rinse", "deep-clean", "descale", "circulate", "drain-reservoir", "drain-filter", "rack-beer", "utilities", "settings", "stop", "clear-stop", "encoder"}
 
 func validLabel(value string, max int) bool {
 	if len(value) == 0 || len(value) > max {
@@ -123,18 +123,11 @@ func validateRecipe(recipe domain.MachineRecipe) error {
 	return nil
 }
 
-func validateCommand(command domain.Command) error {
+func validateCommand(command domain.Command, legacyManual bool) error {
 	if command.DisplayRevision != nil || command.Channel != nil || command.Level != nil || command.Enabled != nil || command.Value != nil || command.DurationSeconds != nil || command.Confirm != nil {
 		return invalid("This firmware does not advertise these command arguments")
 	}
-	known := false
-	for _, value := range commands {
-		if value == command.Command {
-			known = true
-			break
-		}
-	}
-	if !known {
+	if !includes(recipeBrewerCommands, command.Command) && !(legacyManual && command.Command == "manual") {
 		return invalid("Command is unsupported; dedicated pause/resume is unavailable")
 	}
 	switch command.Command {

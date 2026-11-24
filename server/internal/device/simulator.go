@@ -246,7 +246,7 @@ func (s *simulator) Discover(ctx context.Context) (domain.Capabilities, error) {
 	if err := simulationContext(ctx); err != nil {
 		return domain.Capabilities{}, err
 	}
-	return domain.Capabilities{APIVersion: 1, FirmwareVersion: "simulator", FrontPanel: true, Commands: append([]string(nil), commands...), RecipeCapacity: 16, StepCapacity: 15, HistoryPersistent: false, TelemetryForwarding: false, DedicatedPauseResume: false, ZeroMinuteSteps: true, RecipeCreateOnly: true}, nil
+	return domain.Capabilities{APIVersion: 1, FirmwareVersion: "simulator", FrontPanel: true, Commands: append([]string(nil), recipeBrewerCommands...), RecipeCapacity: 16, StepCapacity: 15, HistoryPersistent: false, TelemetryForwarding: false, DedicatedPauseResume: false, ZeroMinuteSteps: true, RecipeCreateOnly: true}, nil
 }
 func (s *simulator) Status(ctx context.Context) (domain.Status, error) {
 	if err := simulationContext(ctx); err != nil {
@@ -338,7 +338,7 @@ func (s *simulator) Command(ctx context.Context, command domain.Command) error {
 	if err := simulationContext(ctx); err != nil {
 		return err
 	}
-	if err := validateCommand(command); err != nil {
+	if err := validateCommand(command, false); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -386,10 +386,6 @@ func (s *simulator) startProgram(command domain.Command, now time.Time) error {
 		if !ok {
 			return &Error{StatusCode: 404, Code: "recipe_not_found", Message: "Recipe is not stored on this simulator"}
 		}
-		s.begin(recipe, command.Command, now)
-		s.advance(now)
-	case "manual":
-		recipe := domain.MachineRecipe{ID: "manual", Name: "Manual brew", Steps: []domain.MachineStep{{Name: "Manual", Location: 1, TargetF: 152, Minutes: 30}}}
 		s.begin(recipe, command.Command, now)
 		s.advance(now)
 	default:
