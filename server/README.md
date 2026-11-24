@@ -107,6 +107,10 @@ docker compose up --build -d
 docker compose logs hub
 ```
 
+To use a prebuilt container, replace `build: .` with `image: ghcr.io/jeffreydwalter/picobrew-hub:latest` in `compose.yaml`. The image supports Linux amd64, arm64 and arm/v7. The `latest` and version tags contain the binaries from the published Hub release. Development images use `sha-<full-commit>`. USB setup uses the writable 128 MiB temporary filesystem specified by Compose. On Linux, also pass the brewer’s USB device into the container and grant the Hub user permission to access it.
+
+The container workflow follows successful packaging runs on `master`. To publish the existing stable release for the first time or retry it, run `gh workflow run hub-container.yml --ref master -f release_tag=v1.0.0` with the current public release tag. The workflow verifies all three Linux Hub downloads against the release manifest, publishes their images and checks the stable tags anonymously. On first publication, set the GHCR package visibility to Public if anonymous access is disabled, then rerun the workflow.
+
 The default Compose file publishes port `8080` on the host so machines can reach the Hub, and persists the SQLite database and encryption key in the `hub-data` volume. Use the setup token from the logs to create the owner account. The image runs as a nonroot user with a read-only application filesystem.
 
 The Compose project name is pinned to `hub`, preserving the default

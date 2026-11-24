@@ -133,3 +133,43 @@ func TestCandidateOnlyFillsMissingPinnedProductionWorker(t *testing.T) {
 		})
 	}
 }
+
+func TestStageForPlatformSelectsTargetWorker(t *testing.T) {
+	input, output := t.TempDir(), t.TempDir()
+	const target = "linux-arm"
+	const name = "picobrew-usb-" + target
+	content := []byte("arm worker payload")
+	digest := sha256.Sum256(content)
+	if err := os.WriteFile(filepath.Join(input, name), content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := json.Marshal(Asset{
+		Platform: target,
+		Name:     name,
+		Bytes:    int64(len(content)),
+		SHA256:   hex.EncodeToString(digest[:]),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(input, target+".json"), manifest, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := stageForPlatform(target, input, output); err != nil {
+		t.Fatalf("stageForPlatform(%q) returned error: %v", target, err)
+	}
+	stagedManifest, err := os.ReadFile(filepath.Join(output, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Asset
+	if err := json.Unmarshal(stagedManifest, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Platform != target {
+		t.Fatalf("manifest platform = %q, want %q", got.Platform, target)
+	}
+	if err := stageForPlatform("../bad", input, output); err == nil {
+		t.Fatal("accepted invalid platform string")
+	}
+}
