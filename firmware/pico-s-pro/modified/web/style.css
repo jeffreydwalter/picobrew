@@ -4,3 +4,6 @@
 .history-card{min-width:0}.history-card>select{max-width:560px}.history-card canvas{display:block;width:100%;height:auto;max-width:100%;margin:22px 0 12px}.history-card input[type=range]{width:100%;padding:0;accent-color:var(--green)}.history-readout,#historySummary{overflow-wrap:anywhere}.history-card details{margin:18px 0}.history-card summary{cursor:pointer;font-weight:600}.history-card pre{max-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}.history-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}.history-phases{margin-top:20px}
 
 @media(max-width:680px){.settings-row{grid-template-columns:1fr;gap:8px}.settings-row>label{padding-top:0}.settings-row>.checkbox{grid-column:1}.settings-row>select{max-width:none}.settings-actions{padding-left:0}.settings-receiver{display:grid;grid-template-columns:1fr;gap:14px}.settings-port{display:block}.settings-port label{margin-bottom:8px}.settings-port input{width:100%}.settings-access{flex-direction:column;align-items:flex-start;gap:16px}}
+nav[hidden]+main{grid-column:1/-1}
+.nav-button{align-items:center;justify-content:flex-start;gap:10px}
+#recipeCount{margin-left:auto;padding:1px 5px;border-radius:4px;background:var(--green-light);color:var(--green);opacity:1}

@@ -58,6 +58,7 @@ function api(path, method='GET', body) {
 
 function connected(value) {
   state.connected = value;
+  $('connectButton').hidden = false;
   $('publicOverview').hidden = value;
   document.querySelector('nav').hidden = !value;
   if (!value) document.querySelectorAll('.tab-panel').forEach(panel=>panel.hidden=true);
@@ -164,6 +165,7 @@ async function refreshRecipes() {
   if (state.recipes.some(recipe=>recipe.id===previous)) $('brewRecipe').value=previous;
   else if (state.recipes.length) $('brewRecipe').value=state.recipes[0].id;
   $('recipeCount').textContent=state.recipes.length;
+  $('recipeCount').hidden=!state.recipes.length;
   $('recipeCapacity').textContent=state.recipes.length+' / '+data.capacity;
   updateControls();
 }
@@ -323,6 +325,8 @@ async function publicOverview() {
       $('publicState').textContent='Machine status unavailable.';
       $('publicTemperatures').textContent='';
     }
+  } finally {
+    if (generation === state.generation && !state.connected && $('connectButton').hidden) connected(false);
   }
 }
 $('copyDeviceKey').addEventListener('click',async()=>{
@@ -346,9 +350,7 @@ if (hubTicket) {
   connect(state.key).catch(error=>{
     disconnect();
     notify(error.message,true);
-    publicOverview();
   });
 } else {
-  connected(false);
   publicOverview();
 }
