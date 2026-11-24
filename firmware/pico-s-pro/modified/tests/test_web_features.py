@@ -73,6 +73,77 @@ class WebFeatures(unittest.TestCase):
 
         self.page.route('**/api/v1/history**', handler)
 
+    def test_browser_appearance_and_authentication(self):
+        root = self.page.locator('html')
+        chooser = self.page.get_by_label('Appearance', exact=True)
+        light, dark = 'rgb(245, 246, 241)', 'rgb(23, 28, 25)'
+        self.page.emulate_media(color_scheme='dark')
+        expect(root).to_have_css('background-color', dark)
+        expect(chooser).to_be_hidden()
+        self.connect()
+        self.page.locator('[data-tab="settings"]').click()
+        expect(chooser).to_have_value('system')
+        writes = []
+        self.page.on('request', lambda request: writes.append(request.url) if request.method != 'GET' else None)
+        for width in (1440, 390):
+            self.page.set_viewport_size({'width': width, 'height': 900})
+            for choice, background in [('light', light), ('dark', dark), ('system', dark)]:
+                chooser.select_option(choice)
+                expect(root).to_have_css('background-color', background)
+                chooser.focus()
+                expect(chooser).to_be_focused()
+                self.assertFalse(self.page.evaluate('document.documentElement.scrollWidth > innerWidth'))
+                self.page.screenshot(path=self.output / f'settings-{width}-{choice}.png', animations='disabled')
+        self.page.emulate_media(color_scheme='light')
+        expect(root).to_have_css('background-color', light)
+        chooser.select_option('dark')
+        self.assertEqual(writes, [])
+        self.page.reload()
+        expect(self.page.locator('#connectionText')).to_have_text('Connected')
+        self.page.locator('[data-tab="settings"]').click()
+        expect(chooser).to_have_value('dark')
+        self.page.locator('#disconnectButton').click()
+        self.page.reload()
+        expect(chooser).to_be_hidden()
+        expect(root).to_have_css('background-color', dark)
+        self.page.locator('#connectButton').click()
+        expect(self.page.locator('#connectDialog')).to_have_css('background-color', 'rgb(35, 42, 37)')
+        self.page.screenshot(path=self.output / 'connect-dark-mobile.png')
+        self.assertEqual(self.page.evaluate('({...localStorage})'), {'picobrew-theme': 'dark'})
+
+    def test_system_theme_recolors_history_and_preserves_oled(self):
+        self.page.emulate_media(color_scheme='light')
+        self.history()
+        self.connect()
+        expect(self.page.locator('#displayHint')).to_contain_text('LIVE OLED')
+        oled = self.page.locator('#display')
+        frame = oled.evaluate('canvas => canvas.toDataURL()')
+        self.page.emulate_media(color_scheme='dark')
+        self.assertEqual(oled.evaluate('canvas => canvas.toDataURL()'), frame)
+        self.page.locator('[data-tab="history"]').click()
+        expect(self.page.locator('#historyExportJson')).to_be_enabled()
+        has_gap_color = """([r,g,b]) => {
+          const canvas=document.getElementById('historyChart');
+          const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+          for(let i=0;i<pixels.length;i+=4)
+            if(pixels[i]===r && pixels[i+1]===g && pixels[i+2]===b) return true;
+          return false;
+        }"""
+        self.page.wait_for_function(has_gap_color, arg=[88,62,54])
+        self.page.emulate_media(color_scheme='light')
+        self.page.wait_for_function(has_gap_color, arg=[243,215,203])
+
+    def test_system_appearance_when_local_storage_is_blocked(self):
+        self.context.add_init_script("""Object.defineProperty(window, 'localStorage', {
+            get() { throw new Error('Storage is blocked'); }
+        });""")
+        self.page.emulate_media(color_scheme='dark')
+        self.page.reload()
+        self.connect()
+        self.page.locator('[data-tab="settings"]').click()
+        expect(self.page.get_by_label('Appearance', exact=True)).to_have_value('system')
+        expect(self.page.locator('html')).to_have_css('background-color', 'rgb(23, 28, 25)')
+
     def open_history(self):
         self.connect()
         self.page.locator('[data-tab="history"]').click()

@@ -10,6 +10,26 @@ let requestQueue = Promise.resolve();
 let pollTimer;
 let apiExplorer;
 let brewHistory;
+
+function setupAppearance() {
+  const select = $('appearance'), system = matchMedia('(prefers-color-scheme: dark)');
+  const apply = () => {
+    document.documentElement.style.colorScheme = select.value === 'system' ? 'light dark' : select.value;
+    brewHistory?.redraw();
+  };
+  try {
+    const saved = localStorage.getItem('picobrew-theme');
+    if (saved === 'light' || saved === 'dark') select.value = saved;
+  } catch (_) {}
+  select.addEventListener('change', () => {
+    try { localStorage.setItem('picobrew-theme', select.value); } catch (_) {}
+    apply();
+  });
+  system.addEventListener('change', apply);
+  apply();
+}
+setupAppearance();
+
 const programLabels = {'sous-vide':'Sous vide', 'cold-brew':'Cold brew',
   'deep-clean':'Deep Clean', rinse:'Rinse', 'first-rinse':'First rinse', descale:'Descale', circulate:'Circulate',
   'drain-reservoir':'Drain reservoir', 'drain-filter':'Drain step filter', 'rack-beer':'Rack beer',
