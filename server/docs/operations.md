@@ -86,3 +86,14 @@ The browser workspace ZIP excludes authentication and provider/device credential
 Use HTTPS for browser traffic outside a trusted local environment. The proxy should forward the original Host header and stream SSE without buffering. A cloud host needs a private route to the brewer LAN. Do not forward a brewer's HTTP API directly to the public internet.
 
 The Hub does not send emails, SMS or webhooks to third parties. There is no external messaging configuration in this release. Optional AI context goes to the provider you configure. Machine reporting starts with this Hub as its receiver. Host, port, and the live-data checkbox remain editable in Brewer preferences. Saved values persist across reconnects and restarts and are applied when the machine is available and idle.
+
+## Publish the Hub
+
+A push to `master` builds the Hub for six host platforms, tests each embedded USB programmer, and waits for the Hub and firmware CI runs on that exact master commit before publishing. The first production tag is `v1.0.0`. Later builds increment the patch number. The release manifest records the Git commit and artifact hashes. If a newer commit reaches `master` during a build, its run publishes the new release. A failed build leaves the previous downloads available.
+
+When the USB programmer, bundled firmware, or packaging inputs change, prepare the source pins before merging. This lets a source build and a release executable embed exactly the same programmer, including on a Raspberry Pi. The project’s GitHub Actions job builds and tests each candidate on its target platform.
+
+1. Open a pull request and wait for all six **Package PicoBrew Hub** builds. Download the `usb-<platform>` artifacts from that workflow run, then unpack them into one directory, for example `/tmp/picobrew-workers`.
+2. With the PR source checked out and the current release tags fetched, run `python3 server/tools/usb/release.py next-tag`. Use that tag and the Actions run and attempt numbers with the pin command, for example `python3 server/tools/usb/release.py pin v1.0.0 usb-candidate-123456-1 /tmp/picobrew-workers`. The command checks the workers, their notices, the bundled inputs, and every SHA-256 before updating `server/tools/usb-prepare/releases.json`.
+3. Publish a temporary GitHub prerelease under the candidate tag, targeting the candidate source commit. Attach the six `picobrew-usb-*` files and six `usb-notices-*.zip` archives. Commit the generated pins to the PR and wait for CI. Both a clean source build and the production workflow verify those files against the committed hashes.
+4. Merge. After the new production release appears, verify its `SHA256SUMS.txt` and its `releases.json` commit, then delete the temporary prerelease and its candidate tag. Future builds fetch the identical files from the production tag. Keep production releases referenced by current source pins.

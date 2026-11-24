@@ -26,7 +26,8 @@ import (
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/webui"
 )
 
-const Version = "0.1.0"
+// Version is set to the immutable release tag by the distribution workflow.
+var Version = "1.0.0"
 
 type Config struct {
 	DataDir, WebDir, Password string

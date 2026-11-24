@@ -39,6 +39,7 @@ func main() {
 	deviceURL := flag.String("device-url", os.Getenv("HUB_DEVICE_URL"), "Optional HTTP URL by which machines reach this Hub (normally detected automatically)")
 	data := flag.String("data", "data", "Persistent data directory")
 	web := flag.String("web", "", "Development override for web assets (default: website bundled in the binary)")
+	version := flag.Bool("version", false, "Print the Hub version and exit")
 	demo := flag.Bool("demo", false, "Use local simulation without hardware access")
 	secure := flag.Bool("secure-cookies", false, "Require HTTPS for owner cookies (enable behind TLS proxy)")
 	flag.Usage = func() {
@@ -46,6 +47,10 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	if *version {
+		fmt.Println(server.Version)
+		return
+	}
 	if flag.NArg() != 0 {
 		flag.Usage()
 		os.Exit(2)

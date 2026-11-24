@@ -260,6 +260,22 @@ def project_files():
     return sorted(files)
 
 
+def worker_inputs():
+    """Identify the firmware, packing scripts and pinned programmer dependencies."""
+    inputs = set(project_files())
+    inputs.update(SCRIPT / name for name in (
+        "build_worker.py", "build_pi32.sh", "usb_bridge.py", "AVRDUDE-COPYING",
+    ))
+    inputs.update(ROOT / name for name in (
+        "firmware/common/requirements-usb.txt", "firmware/pico-s-pro/modified/requirements-usb.txt",
+        ".github/workflows/hub-usb-tools.yml",
+    ))
+    digest = hashlib.sha256()
+    for path in sorted(inputs, key=lambda entry: entry.relative_to(ROOT).as_posix()):
+        digest.update(path.relative_to(ROOT).as_posix().encode() + b"\0" + bytes.fromhex(sha(path)))
+    return digest.hexdigest()
+
+
 def notices(key, output, avr):
     from packaging.requirements import Requirement
     from packaging.utils import canonicalize_name
@@ -379,8 +395,10 @@ def build(args):
         file = args.output / ("picobrew-usb-" + key + (".exe" if key.startswith("windows") else ""))
         shutil.copy2(built, file)
         meta = {"platform": key, "name": file.name, "bytes": file.stat().st_size, "sha256": sha(file)}
-        (args.output / (key + ".json")).write_text(json.dumps(meta, indent=2) + "\n")
         notices(key, args.output, avr)
+        meta["inputs_sha256"] = worker_inputs()
+        meta["notices_sha256"] = sha(args.output / f"usb-notices-{key}.zip")
+        (args.output / (key + ".json")).write_text(json.dumps(meta, indent=2) + "\n")
         print(json.dumps(meta))
 
 

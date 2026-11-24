@@ -321,7 +321,7 @@ export default function App() {
               <br />
               Your brew history.
             </p>
-            <small>Hub {session.version || '0.1.0'}</small>
+            <small>{session.version ? `Hub ${session.version}` : 'Hub'}</small>
           </div>
         </aside>
         <div className="main-shell">

@@ -30,8 +30,9 @@ type Asset struct {
 	Bytes    int64  `json:"bytes"`
 }
 type Index struct {
-	Tag    string           `json:"tag"`
-	Assets map[string]Asset `json:"assets"`
+	CandidateTag string           `json:"candidate_tag,omitempty"`
+	Tag          string           `json:"tag"`
+	Assets       map[string]Asset `json:"assets"`
 }
 
 func digest(path string) (string, int64) {
@@ -108,10 +109,16 @@ func stage(local, destination string) error {
 	}
 	var src io.ReadCloser
 	if fromRelease {
-		if !regexp.MustCompile("^usb-tools-v[0-9]+\\.[0-9]+\\.[0-9]+$").MatchString(index.Tag) {
+		if !regexp.MustCompile(`^(usb-tools-)?v[0-9]+\.[0-9]+\.[0-9]+$`).MatchString(index.Tag) {
 			return errors.New("invalid public USB release tag")
 		}
-		url := "https://github.com/jeffreydwalter/picobrew/releases/download/" + index.Tag + "/" + name
+		tags := []string{index.Tag}
+		if index.CandidateTag != "" {
+			if !regexp.MustCompile(`^usb-candidate-[1-9][0-9]*-[1-9][0-9]*$`).MatchString(index.CandidateTag) {
+				return errors.New("invalid USB candidate tag")
+			}
+			tags = append(tags, index.CandidateTag)
+		}
 		client := http.Client{Timeout: 3 * time.Minute, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			host := req.URL.Hostname()
 			if len(via) > 4 || req.URL.Scheme != "https" || !(host == "github.com" || strings.HasSuffix(host, ".githubusercontent.com")) {
@@ -119,15 +126,24 @@ func stage(local, destination string) error {
 			}
 			return nil
 		}}
-		resp, e := client.Get(url)
-		if e != nil {
-			return e
-		}
-		if resp.StatusCode != 200 {
+		for _, tag := range tags {
+			url := "https://github.com/jeffreydwalter/picobrew/releases/download/" + tag + "/" + name
+			resp, err := client.Get(url)
+			if err != nil {
+				return err
+			}
+			if resp.StatusCode == http.StatusOK {
+				src = resp.Body
+				break
+			}
 			resp.Body.Close()
-			return fmt.Errorf("download published USB worker: %s", resp.Status)
+			if resp.StatusCode != http.StatusNotFound {
+				return fmt.Errorf("download published USB worker: %s", resp.Status)
+			}
 		}
-		src = resp.Body
+		if src == nil {
+			return errors.New("the pinned USB worker is unavailable on GitHub")
+		}
 	} else {
 		f, e := os.Open(filepath.Join(local, name))
 		if e != nil {

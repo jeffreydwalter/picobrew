@@ -1,27 +1,37 @@
-name: Package Hub USB workers
+name: Package PicoBrew Hub
 on:
   pull_request:
     paths:
-      - 'server/tools/usb/**'
-      - 'server/tools/usb-prepare/**'
-      - 'server/internal/usbservice/**'
-      - 'firmware/**/tools/**'
-      - 'firmware/**/modified/firmware/**'
-      - 'firmware/**/modified/releases/**'
-      - 'firmware/zymatic/modified/extension/**'
-      - 'firmware/releases.json'
+      - 'server/**'
+      - 'firmware/**'
+      - 'tools/**'
       - '.github/workflows/hub-usb-tools.yml'
   push:
-    tags: ['usb-tools-v*']
+    branches: [master]
   workflow_dispatch:
 concurrency:
-  group: usb-workers-${{ github.event.pull_request.number || github.ref }}
+  group: hub-release-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
+  revision:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - id: version
+        env:
+          PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/master' && github.repository == 'jeffreydwalter/picobrew' }}
+        run: |
+          echo "tag=$(python3 server/tools/usb/release.py next-tag)" >> "$GITHUB_OUTPUT"
+          echo "release=$PUBLISH" >> "$GITHUB_OUTPUT"
   native:
-    name: USB worker / ${{ matrix.platform }}
+    name: Hub / ${{ matrix.platform }}
+    needs: revision
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +44,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 35
     steps:
+      - if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
@@ -41,14 +53,19 @@ jobs:
         with:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
-      - name: Install build-only dependencies
-        run: python -m pip install PyInstaller==6.22.3 -r firmware/common/requirements-usb.txt -r firmware/pico-s-pro/modified/requirements-usb.txt
-      - name: Test the USB protocol and build the native worker
+      - name: Build and test candidate USB worker
+        if: needs.revision.outputs.release != 'true'
         run: |
+          python -m pip install PyInstaller==6.22.3 -r firmware/common/requirements-usb.txt -r firmware/pico-s-pro/modified/requirements-usb.txt
           python -m unittest discover -s server/tools/usb -p "test_*.py"
           python server/tools/usb/build_worker.py --output artifacts
-      - name: Embed worker and test the packaged Hub
-        env: {PICOBREW_REQUIRE_USB_WORKER: "1"}
+      - name: Stage the source-pinned worker
+        if: needs.revision.outputs.release == 'true'
+        run: python server/tools/usb/release.py stage ${{ matrix.platform }} artifacts ${{ needs.revision.outputs.tag }}
+      - name: Verify the embedded programmer and the Hub version
+        env:
+          PICOBREW_REQUIRE_USB_WORKER: "1"
+          TAG: ${{ needs.revision.outputs.tag }}
         working-directory: server
         shell: bash
         run: |
@@ -56,7 +73,9 @@ jobs:
           go test ./internal/usbservice/helper -run TestEmbedded -count=1
           suffix=""
           if [ "${{ runner.os }}" = Windows ]; then suffix=.exe; fi
-          go build -trimpath -o "../artifacts/picobrew-hub-${{ matrix.platform }}${suffix}" ./cmd/picobrew-hub
+          binary="../artifacts/picobrew-hub-${{ matrix.platform }}${suffix}"
+          go build -trimpath -ldflags "-X $(go list ./internal/server).Version=${TAG#v}" -o "$binary" ./cmd/picobrew-hub
+          test "$("$binary" --version | tr -d '\r')" = "${TAG#v}"
       - uses: actions/upload-artifact@v4
         with:
           name: usb-${{ matrix.platform }}
@@ -64,7 +83,8 @@ jobs:
           retention-days: 14
 
   pi32:
-    name: USB worker / linux-arm (Pi OS 32-bit)
+    name: Hub / linux-arm (Pi OS 32-bit)
+    needs: revision
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 65
     steps:
@@ -72,22 +92,27 @@ jobs:
       - uses: docker/setup-qemu-action@v3
         with: {platforms: arm}
       - name: Package worker in 32-bit Debian Bookworm
+        if: needs.revision.outputs.release != 'true'
         run: |
           mkdir -p artifacts
           docker run --rm --platform linux/arm/v7 -v "$GITHUB_WORKSPACE:/src" -w /src debian:bookworm-slim bash server/tools/usb/build_pi32.sh
+      - name: Stage the source-pinned worker
+        if: needs.revision.outputs.release == 'true'
+        run: python3 server/tools/usb/release.py stage linux-arm artifacts ${{ needs.revision.outputs.tag }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
-      - name: Embed 32-bit worker in ARMv7 Hub
+      - name: Verify the embedded programmer and 32-bit Hub
         working-directory: server
+        env: {GOOS: linux, GOARCH: arm, GOARM: '7', CGO_ENABLED: '0', TAG: '${{ needs.revision.outputs.tag }}'}
         run: |
-          GOOS=linux GOARCH=arm GOARM=7 go build -o /tmp/picobrew-stage ./tools/usb-prepare
+          go build -o /tmp/picobrew-stage ./tools/usb-prepare
           /tmp/picobrew-stage -local ../artifacts
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go test -c -o /tmp/picobrew-usb-test ./internal/usbservice/helper
-          docker run --rm --platform linux/arm/v7 -e PICOBREW_REQUIRE_USB_WORKER=1 \
-            -v /tmp/picobrew-usb-test:/usb-test:ro debian:bookworm-slim /usb-test -test.run TestEmbedded -test.v
-          GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -o ../artifacts/picobrew-hub-linux-arm ./cmd/picobrew-hub
+          go test -c -o /tmp/picobrew-usb-test ./internal/usbservice/helper
+          docker run --rm --platform linux/arm/v7 -e PICOBREW_REQUIRE_USB_WORKER=1 -v /tmp/picobrew-usb-test:/usb-test:ro debian:bookworm-slim /usb-test -test.run TestEmbedded -test.v
+          go build -trimpath -ldflags "-X $(go list ./internal/server).Version=${TAG#v}" -o ../artifacts/picobrew-hub-linux-arm ./cmd/picobrew-hub
+          test "$(../artifacts/picobrew-hub-linux-arm --version)" = "${TAG#v}"
       - uses: actions/upload-artifact@v4
         with:
           name: usb-linux-arm
@@ -95,11 +120,16 @@ jobs:
           retention-days: 14
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/usb-tools-v')
-    needs: [native, pi32]
+    if: needs.revision.outputs.release == 'true'
+    needs: [revision, native, pi32]
     runs-on: ubuntu-latest
+    timeout-minutes: 85
     permissions:
       contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.revision.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -107,9 +137,32 @@ jobs:
           pattern: usb-*
           merge-multiple: true
           path: artifacts
-      - name: Publish the immutable build inputs and release manifest
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Verify all six builds and publish the current master revision
+        shell: bash
         run: |
-          python server/tools/usb/release.py "$GITHUB_REF_NAME" artifacts
-          gh release create "$GITHUB_REF_NAME" artifacts/* --verify-tag --title "PicoBrew Hub USB tools ${GITHUB_REF_NAME#usb-tools-v}" --notes-file server/tools/usb/release-notes.md
+          set -euo pipefail
+          state=$(python3 server/tools/usb/release.py check-ci "$GITHUB_SHA")
+          if [ "$state" != ready ]; then exit 0; fi
+          python3 server/tools/usb/release.py assemble "$TAG" artifacts "$GITHUB_SHA"
+          if git ls-remote --exit-code origin "refs/tags/$TAG" > /dev/null; then
+            git fetch --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
+            test "$(git rev-parse "$TAG^{commit}")" = "$GITHUB_SHA"
+          fi
+          if gh release view "$TAG" --json isDraft,targetCommitish > "$RUNNER_TEMP/release.json" 2>/dev/null; then
+            test "$(jq -r .targetCommitish "$RUNNER_TEMP/release.json")" = "$GITHUB_SHA"
+            test "$(jq -r .isDraft "$RUNNER_TEMP/release.json")" = false
+            exit 0
+          fi
+          draft="hub-build-$GITHUB_SHA"
+          if gh release view "$draft" --json isDraft,targetCommitish > "$RUNNER_TEMP/draft.json" 2>/dev/null; then
+            test "$(jq -r .targetCommitish "$RUNNER_TEMP/draft.json")" = "$GITHUB_SHA"
+            test "$(jq -r .isDraft "$RUNNER_TEMP/draft.json")" = true
+          else
+            gh release create "$draft" --target "$GITHUB_SHA" --draft --title "PicoBrew Hub ${TAG#v}" --notes-file server/tools/usb/release-notes.md
+          fi
+          gh release upload "$draft" artifacts/* --clobber
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/master" --jq .object.sha)" != "$GITHUB_SHA" ]; then
+            gh release delete "$draft" --yes
+            exit 0
+          fi
+          gh release edit "$draft" --tag "$TAG" --draft=false --latest --target "$GITHUB_SHA"
