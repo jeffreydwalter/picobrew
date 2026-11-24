@@ -7,12 +7,14 @@ Both 1.0.0 builds use the brewing controller from PicoBrew 1.1.14. The Hub selec
 | Stock recipe menu and physical dial | Yes | Yes |
 | Sync recipes and sessions with a configured Hub over Ethernet or Wi-Fi | Yes | Yes |
 | One USB-provisioned recipe available offline | Yes | Yes |
-| Device website over Ethernet | Status and display with device key | Public temperatures and state, dial pairing and authenticated controls |
+| Device website over Ethernet | Status with device key | Public temperatures and state, dial pairing and authenticated controls |
 | Hub front panel | Read the idle display | Mirror the OLED and send a dial movement or press when the current screen accepts it |
 | Brew history on the machine | Hub polling while connected | Eight retained session headers and a shared pool of 222 time-stamped samples |
 | Firmware installation and stock restoration | USB | USB on a unit with a verified boot window |
 
-The device and Hub websites use the original menu for brew control. Turn and press act on the displayed selection. The machine rejects input if the screen has changed, the frame is stale, a fault is active, or the current screen requires local input. During a program, the remote dial can press the original button where the firmware permits it. Pairing approval always uses the physical dial. [Controller evidence](../reverse-engineered/README.md)
+Open **Settings → Appearance** on either Ethernet site and choose **System**, **Light**, or **Dark**. The browser remembers the selection for that brewer. System follows the operating system as its appearance changes.
+
+The extended device website and Hub use the original menu for brew control. Turn and press act on the displayed selection. The machine rejects input if the screen has changed, the frame is stale, a fault is active, or the current screen requires local input. During a program, the remote dial can press the original button where the firmware permits it. Pairing approval always uses the physical dial. [Controller evidence](../reverse-engineered/README.md)
 
 History records the measurements the Zymatic actually supplies. Interrupted sessions stay available after reboot. The Hub can import them when Ethernet reconnects. [Recorded channels and retention](history.md)
 
@@ -30,7 +32,7 @@ The private reference package builder defaults to the compact profile. Use `tool
 
 CI compares the reconstructed OEM control paths and executes the overlay, screen handling, EEPROM recorder and packed OEM assets in an AVR simulator. Physical brewing, power-loss recovery on a real unit and installation of an expanded application still need hardware trials. Network firmware installation remains unavailable. [Compact build and memory details](compact-application.md) · [Offline recipe format](offline-recipe.md)
 
-The extended Ethernet website serves `/favicon.ico` from the Zymatic itself. The file contains the original 16×16 frame of [PicoBrew’s favicon](https://picobrew.com/favicon.ico), with its original colors and transparency. The USB installer also recognizes previously provisioned development images from 1.2.0 and 1.3.0–1.3.3. It verifies the entire private application before preserving its identity, key and offline recipe.
+The extended Ethernet website serves `/favicon.ico` from the Zymatic itself. The file contains the original 16×16 frame of [PicoBrew’s favicon](https://picobrew.com/favicon.ico), with its original colors and transparency. The USB installer also recognizes both initial 1.0.0 profiles and previously provisioned development images from 1.2.0 and 1.3.0–1.3.3. It verifies the entire private application before preserving its identity, key and offline recipe.
 
 On the extended build, select **Brew history** on the paired local site to read a retained
 session. It shows the outcome and samples from all available pages, with elapsed

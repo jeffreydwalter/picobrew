@@ -39,7 +39,7 @@ The original EEPROM release-migration constants stay at 1.1.14. Choosing Factory
 
 ## Rebuild and check the extension
 
-The installer composes each private application from the verified OEM bytes and an unprovisioned overlay. The compact overlay is built from the original compact source revision with the discovery version set to 1.0.0. The firmware also updates the startup and About displays. CI checks the complete compiled overlay and symbol manifest against the files shipped in the USB worker. [Pinned compact sources](https://github.com/jeffreydwalter/picobrew/tree/b278fe1735d6bc983c107c55120c2a67b4ac6ae3/firmware/zymatic/modified)
+The installer composes each private application from the verified OEM bytes and an unprovisioned overlay. The compact overlay is built from the original compact source revision with the discovery version set to 1.0.0 and the current compressed status page. The firmware also updates the startup and About displays. CI checks the complete compiled overlay and symbol manifest against the files shipped in the USB worker. [Pinned compact sources](https://github.com/jeffreydwalter/picobrew/tree/b278fe1735d6bc983c107c55120c2a67b4ac6ae3/firmware/zymatic/modified)
 
 For a developer rebuild, use a full Git checkout and the Arduino AVR GCC 7.3.0-atmel3.6.1-arduino7 toolchain. Set `ARDUINO_AVR_BIN` to its `bin` directory. [Arduino toolchain index and checksums](https://downloads.arduino.cc/packages/package_index.json)
 
