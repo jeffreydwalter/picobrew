@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -20,19 +21,23 @@ type picoFermOption struct {
 }
 
 type fermentationBatch struct {
-	ID                  string    `json:"id"`
-	RecipeName          string    `json:"recipe_name"`
-	ObservedAt          time.Time `json:"observed_at"`
-	PicoFermID          string    `json:"picoferm_id,omitempty"`
-	PicoFermName        string    `json:"picoferm_name,omitempty"`
-	PicoFermRecordingID string    `json:"picoferm_recording_id,omitempty"`
+	SessionNumber       string     `json:"session_number,omitempty"`
+	StartedAt           *time.Time `json:"started_at,omitempty"`
+	ID                  string     `json:"id"`
+	RecipeName          string     `json:"recipe_name"`
+	ObservedAt          time.Time  `json:"observed_at"`
+	PicoFermID          string     `json:"picoferm_id,omitempty"`
+	PicoFermName        string     `json:"picoferm_name,omitempty"`
+	PicoFermRecordingID string     `json:"picoferm_recording_id,omitempty"`
 }
 
 type fermentationRecording struct {
-	ID           string    `json:"id"`
-	DeviceID     string    `json:"device_id"`
-	ObservedAt   time.Time `json:"observed_at"`
-	LinkedBrewID string    `json:"linked_brew_id,omitempty"`
+	SessionNumber string     `json:"session_number,omitempty"`
+	StartedAt     *time.Time `json:"started_at,omitempty"`
+	ID            string     `json:"id"`
+	DeviceID      string     `json:"device_id"`
+	ObservedAt    time.Time  `json:"observed_at"`
+	LinkedBrewID  string     `json:"linked_brew_id,omitempty"`
 }
 
 type brewerFermentationOptions struct {
@@ -104,11 +109,20 @@ func (s *Server) fermentationOptions(brewerID string) (brewerFermentationOptions
 		if b.PicoFermRecordingID != "" {
 			claimed[b.PicoFermRecordingID] = b.ID
 		}
+		var number string
+		if b.DeviceHistoryID > 0 {
+			number = strconv.FormatUint(b.DeviceHistoryID, 10)
+		}
 		if b.DeviceID == brewerID && b.IsFermentationBatch() {
-			out.Brews = append(out.Brews, fermentationBatch{b.ID, b.RecipeName, b.ObservedAt, b.PicoFermID, b.PicoFermName, b.PicoFermRecordingID})
+			out.Brews = append(out.Brews, fermentationBatch{
+				ID: b.ID, RecipeName: b.RecipeName, StartedAt: b.StartedAt, ObservedAt: b.ObservedAt, SessionNumber: number,
+				PicoFermID: b.PicoFermID, PicoFermName: b.PicoFermName, PicoFermRecordingID: b.PicoFermRecordingID,
+			})
 		}
 		if ferms[b.DeviceID] && b.IsPicoFermRecording() {
-			out.Recordings = append(out.Recordings, fermentationRecording{ID: b.ID, DeviceID: b.DeviceID, ObservedAt: b.ObservedAt})
+			out.Recordings = append(out.Recordings, fermentationRecording{
+				ID: b.ID, DeviceID: b.DeviceID, StartedAt: b.StartedAt, ObservedAt: b.ObservedAt, SessionNumber: number,
+			})
 		}
 	}
 	for i := range out.Recordings {

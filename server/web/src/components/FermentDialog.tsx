@@ -1,19 +1,53 @@
 import { useState } from 'react'
 import { useHub, useResource } from '../context'
+import type { Device } from '../types'
 import { api, APIError, errorMessage } from '../lib/api'
 import { dateLabel } from '../lib/utils'
 import { Button, ErrorBanner, Field, Loading, Modal } from './ui'
 
+interface SessionChoice {
+  id: string
+  session_number?: string
+  observed_at: string
+  started_at?: string
+}
+
+function sessionLabel(session: SessionChoice) {
+  const time = session.started_at
+    ? 'Started ' + dateLabel(session.started_at)
+    : 'First seen ' + dateLabel(session.observed_at)
+  // Older imports without a native session number can still be distinguished.
+  const reference = session.session_number
+    ? 'Session ' + session.session_number
+    : 'Hub record ' + session.id
+  return reference + ' · ' + time
+}
+
 interface FermentChoices {
   picoferms: { id: string; name: string; brewer_id: string; revision: number }[]
-  brews: {
-    id: string
+  brews: (SessionChoice & {
     recipe_name: string
-    observed_at: string
     picoferm_id?: string
     picoferm_recording_id?: string
-  }[]
-  recordings: { id: string; device_id: string; observed_at: string; linked_brew_id?: string }[]
+  })[]
+  recordings: (SessionChoice & { device_id: string; linked_brew_id?: string })[]
+}
+
+function monitorOptions(monitors: FermentChoices['picoferms'], devices: Device[]) {
+  const options = monitors.map((monitor) => {
+    let label = monitor.name
+    if (monitors.some((other) => other.id !== monitor.id && other.name === monitor.name)) {
+      const device = devices.find((d) => d.id === monitor.id)
+      const address = device?.base_url.replace(/^https?:\/\//i, '').replace(/\/$/, '')
+      label = [label, device?.location, address].filter(Boolean).join(' · ')
+    }
+    return { ...monitor, label }
+  })
+  return options.map((option) =>
+    options.some((other) => other.id !== option.id && other.label === option.label)
+      ? { ...option, label: option.label + ' · ' + option.id }
+      : option
+  )
 }
 
 export function FermentDialog({
@@ -47,11 +81,11 @@ export function FermentDialog({
       ? hub.devices.find((d) => d.id === sensor.brewer_id)?.name || 'another brewer'
       : ''
   const attached = sensor?.brewer_id === brewerId
+  const unlink = !selectedBrew && attached
   const canSave =
     sensor &&
-    (selectedBrew
-      ? batch && (!batch.picoferm_id || (recordingId && !batch.picoferm_recording_id))
-      : !attached)
+    (!selectedBrew ||
+      (batch && (!batch.picoferm_id || (recordingId && !batch.picoferm_recording_id))))
   async function save() {
     if (pending || !sensor || !canSave) return
     setPending(true)
@@ -62,6 +96,7 @@ export function FermentDialog({
         body: {
           picoferm_id: sensor.id,
           revision: sensor.revision,
+          ...(unlink && { unlink: true }),
           ...(selectedBrew && { brew_id: selectedBrew }),
           ...(selectedBrew && recordingId && { recording_id: recordingId }),
         },
@@ -77,11 +112,13 @@ export function FermentDialog({
       return
     }
     hub.notify(
-      recordingId
-        ? 'Fermentation recording attached.'
-        : batch
-          ? 'PicoFerm assigned to this batch.'
-          : 'PicoFerm linked to brewer.'
+      unlink
+        ? 'PicoFerm unlinked from this brewer.'
+        : recordingId
+          ? 'Fermentation recording attached.'
+          : batch
+            ? 'PicoFerm assigned to this batch.'
+            : 'PicoFerm linked to brewer.'
     )
     onSaved?.()
     onClose()
@@ -104,13 +141,15 @@ export function FermentDialog({
           >
             {pending
               ? 'Saving…'
-              : previousBrewer
-                ? 'Move PicoFerm here'
-                : batch?.picoferm_id
-                  ? 'Attach recording'
-                  : selectedBrew
-                    ? 'Assign to batch'
-                    : 'Link to brewer'}
+              : unlink
+                ? 'Unlink from brewer'
+                : previousBrewer
+                  ? 'Move PicoFerm here'
+                  : batch?.picoferm_id
+                    ? 'Attach recording'
+                    : selectedBrew
+                      ? 'Assign to batch'
+                      : 'Link to brewer'}
           </Button>
         </>
       }
@@ -140,10 +179,10 @@ export function FermentDialog({
                     setRecording('')
                   }}
                 >
-                  <option value="">Link to brewer only</option>
+                  <option value="">Brewer only</option>
                   {choices.data.brews.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.recipe_name || 'Manual brew'} · {dateLabel(b.observed_at)}
+                      {b.recipe_name || 'Manual brew'} · {sessionLabel(b)}
                     </option>
                   ))}
                 </select>
@@ -159,14 +198,19 @@ export function FermentDialog({
                 }}
               >
                 <option value="">Choose a PicoFerm</option>
-                {choices.data.picoferms.map((f) => (
+                {monitorOptions(choices.data.picoferms, hub.devices).map((f) => (
                   <option key={f.id} value={f.id}>
-                    {f.name}
+                    {f.label}
                     {f.brewer_id === brewerId ? ' · Linked here' : ''}
                   </option>
                 ))}
               </select>
             </Field>
+            {unlink && (
+              <p className="help-text">
+                Unlinking this PicoFerm keeps its batches and recordings in the brew journal.
+              </p>
+            )}
             {previousBrewer && (
               <p className="notice">
                 This moves {sensor?.name} from {previousBrewer} to {brewer?.name || 'this brewer'}.
@@ -183,7 +227,7 @@ export function FermentDialog({
                   <option value="">Choose later</option>
                   {recordings.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {dateLabel(r.observed_at)} · {sensor.name}
+                      {sessionLabel(r)}
                     </option>
                   ))}
                 </select>

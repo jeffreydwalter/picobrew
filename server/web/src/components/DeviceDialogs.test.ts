@@ -8,6 +8,7 @@ import { setCSRF } from '../lib/api'
 import type { Device } from '../types'
 import { DeviceDialog, HubConnectionStatus } from './DeviceDialogs'
 import { FermentDialog } from './FermentDialog'
+import { dateLabel } from '../lib/utils'
 import { PicoFermAssociation } from './PicoFermAssociation'
 
 const fetchMock = vi.fn<typeof fetch>()
@@ -107,7 +108,19 @@ describe('automatic physical-machine connections', () => {
       brews: [{ id: 'brew', recipe_name: 'Pale ale', observed_at: '2026-11-24T12:00:00Z' }],
       picoferms: [{ id: 'sensor', name: 'Cellar keg', brewer_id: '', revision: 4 }],
       recordings: [
-        { id: 'recording', device_id: 'sensor', observed_at: '2026-11-24T12:30:00Z' },
+        {
+          id: 'recording',
+          device_id: 'sensor',
+          session_number: '42',
+          started_at: '2026-11-22T08:30:00Z',
+          observed_at: '2026-11-24T12:30:00Z',
+        },
+        {
+          id: 'second',
+          device_id: 'sensor',
+          session_number: '43',
+          observed_at: '2026-11-24T12:30:00Z',
+        },
         {
           id: 'claimed',
           device_id: 'sensor',
@@ -139,11 +152,107 @@ describe('automatic physical-machine connections', () => {
     )
     await user.selectOptions(await screen.findByLabelText('PicoFerm'), 'sensor')
     const recordings = screen.getByLabelText('Fermentation recording') as HTMLSelectElement
-    expect([...recordings.options].map((x) => x.value)).toEqual(['', 'recording'])
+    expect([...recordings.options].map((x) => x.value)).toEqual(['', 'recording', 'second'])
+    expect(recordings.options[1].text).toBe(
+      'Session 42 · Started ' + dateLabel('2026-11-22T08:30:00Z')
+    )
+    expect(recordings.options[2].text).toBe(
+      'Session 43 · First seen ' + dateLabel('2026-11-24T12:30:00Z')
+    )
     await user.selectOptions(recordings, 'recording')
     await user.click(screen.getByRole('button', { name: 'Assign to batch' }))
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'PUT')).toHaveLength(1)
+  })
+  it('unlinks equipment from the brewer without changing a batch', async () => {
+    const user = userEvent.setup()
+    const state = hub(machine())
+    fetchMock.mockImplementation(async (input, options) => {
+      expect(String(input)).toBe('/api/v1/devices/physical-s/picoferms')
+      if (options?.method === 'PUT') {
+        expect(JSON.parse(String(options.body))).toEqual({
+          picoferm_id: 'sensor',
+          revision: 7,
+          unlink: true,
+        })
+        return json({ brewer_id: '', revision: 8 })
+      }
+      return json({
+        picoferms: [{ id: 'sensor', name: 'Cellar keg', brewer_id: 'physical-s', revision: 7 }],
+        brews: [
+          {
+            id: 'brew',
+            recipe_name: 'Pale ale',
+            session_number: '1',
+            observed_at: '2026-11-24T12:00:00Z',
+          },
+        ],
+        recordings: [],
+      })
+    })
+    render(
+      createElement(
+        HubContext.Provider,
+        { value: state },
+        createElement(FermentDialog, { brewerId: 'physical-s', onClose })
+      )
+    )
+    const batch = await screen.findByLabelText('Batch')
+    await user.selectOptions(batch, 'brew')
+    await user.selectOptions(screen.getByLabelText('PicoFerm'), 'sensor')
+    expect(screen.queryByRole('button', { name: 'Unlink from brewer' })).toBeNull()
+    await user.selectOptions(batch, '')
+    await user.selectOptions(screen.getByLabelText('PicoFerm'), 'sensor')
+    await user.click(screen.getByRole('button', { name: 'Unlink from brewer' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+  })
+  it('distinguishes same-named monitors by their registered location and address', async () => {
+    const state = hub(machine())
+    state.devices.push(
+      machine({
+        id: 'west',
+        model: 'picoferm',
+        name: 'PicoFerm',
+        location: 'Cellar',
+        base_url: 'http://192.168.1.70/',
+      }),
+      machine({
+        id: 'east',
+        model: 'picoferm',
+        name: 'PicoFerm',
+        location: 'Garage',
+        base_url: 'http://192.168.1.71',
+      }),
+      machine({
+        id: 'solo',
+        model: 'picoferm',
+        name: 'Lager keg',
+        location: 'Garage',
+        base_url: 'http://192.168.1.72',
+      })
+    )
+    fetchMock.mockResolvedValue(
+      json({
+        picoferms: state.devices
+          .slice(1)
+          .map((d) => ({ id: d.id, name: d.name, brewer_id: '', revision: 0 })),
+        brews: [],
+        recordings: [],
+      })
+    )
+    render(
+      createElement(
+        HubContext.Provider,
+        { value: state },
+        createElement(FermentDialog, { brewerId: 'physical-s', onClose })
+      )
+    )
+    const select = (await screen.findByLabelText('PicoFerm')) as HTMLSelectElement
+    expect([...select.options].slice(1).map((o) => o.text)).toEqual([
+      'PicoFerm · Cellar · 192.168.1.70',
+      'PicoFerm · Garage · 192.168.1.71',
+      'Lager keg',
+    ])
   })
   it('links and unlinks a registered PicoFerm while the brewer is offline', async () => {
     const user = userEvent.setup()
