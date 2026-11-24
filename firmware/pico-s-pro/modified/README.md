@@ -8,10 +8,12 @@ The [machine overview](../README.md) links the separate OEM image and unchanged
 The Pico S/Pro implementation provides a **standalone firmware profile**
 with an on-device REST API, browser console, recipe collection, settings,
 local session identifiers, retained brew histories, and optional telemetry
-forwarding. Stable firmware **1.0.0** keeps the REST contract at `/api/v1`.
+forwarding. Firmware **1.0.0** keeps the REST contract at `/api/v1`.
 It boots without a PicoBrew account, cloud recipe
 server, registration request or firmware-update service. The browser assets
 are compressed files on the Pico's serial flash; no companion server or CDN is required.
+
+The standalone main menu opens saved recipes with **Brew Recipe**. Earlier manual brews remain in history.
 
 Firmware 1.0.0 includes separate S and Pro images, built-in PicoPak recipes,
 zero-minute heating steps, checkpoint recovery, Hub telemetry and
@@ -65,7 +67,7 @@ physical acceptance for the current release.
 | Local operation | Cloud registration, recipe/session requests, reporting and updates replaced or disabled at compile time |
 | REST API | Versioned `/api/v1` resources for status, recipes, settings, events, retained history, forwarding and commands; embedded interactive API explorer |
 | Remote front panel | Live 128 × 64 OLED image plus encoder turn/click controls for existing prompts and menus |
-| Programs | Local recipes, manual brewing, sous vide, cold brew, rinse, descale, circulation, draining and racking |
+| Programs | Local recipes, sous vide, cold brew, rinse, descale, circulation, draining and racking |
 | Stop | Latched output inhibition, cooperative cancellation and idle-only clear; filter removal during interrupt-side pumping also latches a stop |
 | Recipes | 16 on-device recipes, up to 15 steps each, with validated input and CRC-protected alternating records |
 | Browser console | Same-origin HTML/CSS/JavaScript, recipe editing/import/export, live readings, upright OLED preview, up/down controls, history graphs and display preferences |
@@ -105,9 +107,9 @@ component under `firmware/`.
 branding and the OLED model name. Browser branding follows that API identity.
 The build checks vectors, the complete link, the physical RAM budget, absence
 of the discontinued cloud protocol strings, and separation from test fixtures.
-The stable applications are **170,392 bytes** for Pico S and **170,408 bytes**
+The stable applications are **169,304 bytes** for Pico S and **169,312 bytes**
 for Pico Pro. Both reserve **32 KiB each for stack and heap** and leave
-**88 bytes of unallocated SRAM** at link time. The five compressed website
+**1,112 bytes of unallocated SRAM** at link time. The five compressed website
 files occupy eight serial-flash blocks. The per-model [build reports](firmware/standalone/README.md)
 record the linked memory layout and the reserved feature buffers. Runtime peak
 stack and heap use still require measurement.

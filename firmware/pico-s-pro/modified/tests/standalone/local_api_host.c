@@ -95,7 +95,7 @@ uint32_t pico_storage_create_mode(uint32_t size, uint32_t flags)
 }
 PicoLocalControlResult pico_local_control_command(const char *command, const char *recipe)
 {
-    static const char *names[] = {"brew", "sous-vide", "cold-brew", "manual", "rinse", "first-rinse",
+    static const char *names[] = {"brew", "sous-vide", "cold-brew", "rinse", "first-rinse",
         "deep-clean", "descale", "circulate", "drain-reservoir", "drain-filter", "rack-beer", "utilities", "settings"};
     if (!ready) return PICO_LOCAL_CONTROL_NOT_READY;
     if (!strcmp(command, "stop")) stopped = true;

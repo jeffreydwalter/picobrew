@@ -329,7 +329,7 @@ uint32_t pico_ui_select_recipe(PicoRecipe *recipe)
         if (!loaded || !list.loaded_items) {
             pico_display_stop_progress_indicator(&pico_ui_active->app->control_signals);
             pico_display_clear();
-            pico_display_center_text(0, "PicoPak recipes");
+            pico_display_center_text(0, "Saved recipes");
             pico_display_center_text(2, loaded ? "No saved recipes" : "Recipes unavailable");
             pico_display_center_text(4, loaded ? "Send from Hub or" : "Check local storage");
             if (loaded) pico_display_center_text(5, "add in local web app");

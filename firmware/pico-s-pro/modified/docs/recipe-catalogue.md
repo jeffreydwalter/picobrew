@@ -1,20 +1,10 @@
-# Local PicoPak recipes
+# Saved recipes
 
-## Manual Brew and Brew PicoPak
-
-The reconstructed stock implementation keeps separate workflows:
-
-- **Manual Brew** asks for temperature and hold time and lets the user choose
-  the next step interactively. See `pico_recipe_manual_program` in
-  `src/recipe_programs.c` and its original `pico_manual_brew_program` in
-  `legacy/src/application/brewing.c`.
-- **Brew PicoPak** selects a saved program, follows preparation prompts, and
-  runs the ordered compartments, temperatures, holds and drains automatically.
-  Stock recipe selection used `getAssociatedPaks`/`getRecipe`; standalone
-  `src/network/api.c` reads the local recipe store for the same menu instead.
-
-Neither menu is renamed. The starter set supplies the real local slots used
-by the front panel, device browser and Hub installed-recipe editor.
+Choose **Brew Recipe** on the front panel to select a saved recipe. Follow the
+preparation prompts, then start the brew. The brewer runs the recipe's ordered
+compartments, temperatures, holds and drains. The front panel, local website
+and Hub all use the same saved recipes, including the original PicoPak starter
+programs listed below.
 
 ## Starter set
 

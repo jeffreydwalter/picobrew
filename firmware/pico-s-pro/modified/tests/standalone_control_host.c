@@ -343,6 +343,7 @@ static void test_guards_and_queue(void)
     assert(pico_local_control_command("deep-clean",NULL)==PICO_LOCAL_CONTROL_STOPPED);
     assert(pico_local_control_command("clear-stop",NULL)==PICO_LOCAL_CONTROL_OK);
     assert(pico_local_control_command("unknown",NULL)==PICO_LOCAL_CONTROL_INVALID);
+    assert(pico_local_control_command("manual",NULL)==PICO_LOCAL_CONTROL_INVALID);
     assert(pico_local_control_command("brew","../../bad")==PICO_LOCAL_CONTROL_INVALID);
     assert(pico_local_control_command("circulate",NULL)==PICO_LOCAL_CONTROL_OK);
     assert(pico_local_control_busy() && outputs_off());
@@ -458,6 +459,13 @@ static void test_model_menu_heading(void)
     assert(pico_local_control_command("stop", NULL) == PICO_LOCAL_CONTROL_OK);
     sim.click_on_clock = true;
     pico_application_loop(&app);
+    const unsigned actions[] = {12, 13, 14, 16, 17};
+    const char *labels[] = {"Brew Recipe", "Sous Vide", "Cold Brew", "Utilities", "Settings"};
+    assert(app.state.menu.count == sizeof actions / sizeof actions[0]);
+    for (unsigned i = 0; i < app.state.menu.count; ++i) {
+        assert(app.state.menu.actions[i] == actions[i]);
+        assert(strcmp(app.ui.menu_labels[i], labels[i]) == 0);
+    }
     memcpy(menu, app.ui.display.framebuffer, sizeof menu);
 
     pico_display_clear_row(1);
@@ -483,7 +491,7 @@ static void test_update_notice_expires_on_idle_menu(void)
     pico_display_initialize();
     pico_display_clear();
     pico_display_logo();
-    pico_display_center_text(4, "Brew PicoPak");
+    pico_display_center_text(4, "Brew Recipe");
     memcpy(menu, app.ui.display.framebuffer, sizeof menu);
     /* Trial inspection during startup can precede entry into the menu. */
     pico_local_control_show_update_notice("Verifying firmware");
