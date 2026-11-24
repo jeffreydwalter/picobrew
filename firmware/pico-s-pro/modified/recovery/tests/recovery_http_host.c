@@ -4,7 +4,8 @@
 #include <string.h>
 
 static PicoRecovery core;
-static uint8_t files[PICO_RECOVERY_FILE_COUNT][8192], boot_record[8];
+enum { TEST_FILE_CAPACITY = 188416 };
+static uint8_t files[PICO_RECOVERY_FILE_COUNT][TEST_FILE_CAPACITY], boot_record[8];
 static PicoRecoveryFileInfo info[PICO_RECOVERY_FILE_COUNT];
 static bool present[PICO_RECOVERY_FILE_COUNT];
 static unsigned writes, boot_writes, write_opens;
@@ -71,7 +72,7 @@ void recovery_http_reset(void)
     memset(files, 0, sizeof files); memset(info, 0, sizeof info); memset(present, 0, sizeof present);
     static const uint8_t initial[] = {0, 0x3d, 0, 0x20, 0xba, 0xdc, 0xcd, 0xab};
     memcpy(boot_record, initial, 8); present[PICO_RECOVERY_IMAGE2] = true;
-    info[PICO_RECOVERY_IMAGE2].allocated = 188416;
+    info[PICO_RECOVERY_IMAGE2].allocated = TEST_FILE_CAPACITY;
     writes = boot_writes = write_opens = 0; open_file = -1;
     pico_recovery_init(&core, &ops, NULL, 77);
 }
