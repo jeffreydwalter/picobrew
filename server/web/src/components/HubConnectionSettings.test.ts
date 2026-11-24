@@ -73,6 +73,25 @@ afterEach(() => {
 })
 
 describe('saved live-reading connection', () => {
+  it('lets a PicoFerm select this Hub again without resubmitting the old address', async () => {
+    const user = userEvent.setup()
+    connection = { enabled: false, host: 'old.example', port: 8181, state: 'disabled' }
+    fetchMock.mockImplementation(async (_url, options) => {
+      if (options?.method === 'PUT') {
+        expect(JSON.parse(String(options.body))).toEqual({ mode: 'automatic' })
+        connection = { enabled: true, host: 'new.example', port: 8080, state: 'configured' }
+      }
+      return json(connection)
+    })
+    show({ model: 'picoferm' })
+    await ready()
+    await user.click(screen.getByRole('button', { name: 'Use this Hub' }))
+    await waitFor(() =>
+      expect((screen.getByLabelText('Receiver host') as HTMLInputElement).value).toBe('new.example')
+    )
+    expect(writes()).toHaveLength(1)
+    expect((screen.getByLabelText('Send live readings') as HTMLInputElement).checked).toBe(true)
+  })
   it('always shows the saved receiver fields and saves only their three values', async () => {
     const user = userEvent.setup()
     const view = show()

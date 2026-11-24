@@ -6,7 +6,11 @@
 
 The original Z Program Maker and PicoStill interfaces can also appear here. **Open device website** opens Program Maker or the Still’s readings page. A stock PicoFerm exposes its setup page while the Hub computer is connected to the PicoFerm’s own setup Wi-Fi. During normal fermentation it sleeps between outbound reports. A Zymatic that recently contacted this Hub’s recipe sync service offers **Use for recipe sync**, which selects its serial number for the recipe library’s stock transfer flow. For stock Zymatic network setup, see [Stock Zymatic recipe sync](stock-zymatic.md).
 
-After adding a PicoFerm, choose **Linked brewer** on its machine page and save. The brewer’s page links back to its PicoFerms. You can change the link between batches, or select **Unassigned**. Linking groups registered equipment in the Hub. Each accessory recording keeps its own journal entry.
+**Adding a PicoFerm with standalone firmware** uses the device key from USB setup. The Hub writes its reachable HTTP hostname or IPv4 address and port to the PicoFerm and verifies the saved settings. The PicoFerm posts temperature, pressure and battery readings directly to the Hub and uses the same destination after a restart. Open **Settings → Hub connection** on the PicoFerm’s local site to see where it sends readings and the result of its latest delivery.
+
+**Assign a PicoFerm to a brewer** from **Ferment** on the brewer’s Hub page, or **Linked brewer** on the PicoFerm’s page. Choose **Link to brewer only** for an equipment assignment. On compatible brewer firmware, the physical **Ferment** menu lists monitors already registered with that Hub. The Hub must be running to confirm a menu selection. Use the Hub for the Zymatic or a brewer with older firmware.
+
+**Monitor a batch** by opening the brewing session in **Brew journal → Ferment** and choosing the monitor on that keg. Start the recording on the PicoFerm or its Hub page. In **Ferment**, select that recording when it appears to open its measurements from the batch. Moving the PicoFerm to the next keg preserves the previous batch’s recording.
 
 On firmware that supports pairing, compare the code in the browser with the one on the brewer under **About → Pair with Hub** and approve it at the physical dial. On a pairing-capable Zymatic, use Ethernet and **About Zymatic**. When continuing from a completed Hub USB setup, the form uses the key saved with that job and checks the machine’s identity. For models without dial pairing or for an existing key file, choose **Use an existing key instead**.
 
@@ -14,7 +18,7 @@ Once registered, open **Manage machine** on its machine page for **Test connecti
 
 **Brewer preferences** contains the machine's display preferences and a **Live readings** form. Receiver host, receiver port, and **Send live readings** are always visible for a physical machine. The live-data settings stay editable while the appliance is offline; display settings still require its connection.
 
-The Hub stores the receiver settings and sends them to the machine when it connects or when the settings are saved. New connections start with this Hub's verified address. Existing custom host/port values and disabled sending settings are preserved. There is no automatic/manual selector or return-to-automatic action.
+The Hub stores the receiver settings and sends them to the machine when it connects or when the settings are saved. New connections start with this Hub's verified address. Existing custom host/port values and disabled sending settings are preserved. On a PicoFerm, **Device preferences → Live readings → Use this Hub** selects the current Hub again and enables automatic receiver recovery.
 
 Saving while offline or busy retains the changes in the Hub and shows that application is pending. The Hub verifies the appliance identity and applies the settings after reconnecting and once the machine is idle. A successful save is distinct from a confirmed device update. These options do not change the Hub's saved machine address or API key. No destination form is required on the firmware website.
 

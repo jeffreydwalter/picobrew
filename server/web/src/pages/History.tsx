@@ -1,3 +1,4 @@
+import { FermentDialog } from '../components/FermentDialog'
 import { MachineCare } from '../components/MachineCare'
 import { ConditioningJournal } from '../components/ConditioningJournal'
 import { sessionState } from '../lib/sessionState'
@@ -207,6 +208,7 @@ function BrewPage({ id, analyze }: { id: string; analyze: boolean }) {
   const [marker, setMarker] = useState<number | null>(null)
   const [showSamples, setShowSamples] = useState(false)
   const [samplePage, setSamplePage] = useState(0)
+  const [ferment, setFerment] = useState(false)
   const [analysisOpen, setAnalysisOpen] = useState(analyze)
   useEffect(() => {
     if (analyze) setAnalysisOpen(true)
@@ -247,6 +249,16 @@ function BrewPage({ id, analyze }: { id: string; analyze: boolean }) {
   if (resource.loading && !brew) return <Loading label="Opening the brew journal…" />
   if (!brew) return <ErrorBanner message={resource.error} retry={resource.reload} />
   const accessory = ['picoferm', 'picostill'].includes(brew.model)
+  const canFerment =
+    brew.source === 'device' &&
+    ['brew', 'manual'].includes(brew.command) &&
+    hub.devices.some(
+      (d) =>
+        d.id === brew.device_id &&
+        d.adapter === 'pico-standalone' &&
+        ['pico-s', 'pico-pro', 'pico-c', 'z-series', 'zymatic'].includes(d.model) &&
+        !d.model_error
+    )
   const samples = brew.samples || []
   const last = samples.at(-1)
   return (
@@ -258,6 +270,11 @@ function BrewPage({ id, analyze }: { id: string; analyze: boolean }) {
         description={`${modelLabel(brew.model)} · ${brew.source === 'device' ? 'Machine history' : brew.source === 'simulation' ? 'Simulation' : brew.source}${accessory ? '' : ` · ${brew.recipe_revision ? `Recipe revision ${brew.recipe_revision}` : 'Recipe revision not recorded'}`}`}
         actions={
           <>
+            {canFerment && (
+              <Button variant="secondary" onClick={() => setFerment(true)}>
+                Ferment
+              </Button>
+            )}
             <Badge tone={brew.state === 'completed' ? 'green' : 'copper'}>{brew.state}</Badge>
             <Button variant="secondary" onClick={() => void exportBrew('csv')}>
               <Download size={16} />
@@ -271,6 +288,29 @@ function BrewPage({ id, analyze }: { id: string; analyze: boolean }) {
         }
       />
       <ErrorBanner message={error || resource.error} />
+      {ferment && (
+        <FermentDialog
+          brewerId={brew.device_id}
+          brewId={brew.id}
+          onClose={() => setFerment(false)}
+          onSaved={resource.reload}
+        />
+      )}
+      {brew.picoferm_id && (
+        <div className="inline-actions">
+          <span>PicoFerm · {brew.picoferm_name || 'Assigned monitor'}</span>
+          {brew.picoferm_recording_id && (
+            <Button
+              variant="ghost"
+              onClick={() =>
+                hub.navigate('/history/' + encodeURIComponent(brew.picoferm_recording_id!))
+              }
+            >
+              View fermentation recording <ArrowUpRight size={15} />
+            </Button>
+          )}
+        </div>
+      )}
       {(brew.gap_count > 0 || brew.truncated) && (
         <div className="notice">
           {brew.gap_count > 0 ? `${brew.gap_count} gaps were reported in this session. ` : ''}

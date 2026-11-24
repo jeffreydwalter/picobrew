@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useHub, useResource } from '../context'
 import { api, errorMessage } from '../lib/api'
 import { liveReadingsStatus } from '../lib/utils'
@@ -57,15 +57,14 @@ function ConnectionForm({ device }: { device: Device }) {
     setError('')
   }
 
-  async function save(event: FormEvent) {
-    event.preventDefault()
+  async function save(useHubReceiver = false) {
     if (busy || connection.loading || !loaded) return
     setBusy(true)
     setError('')
     try {
       const result = await api<Telemetry>(`/devices/${device.id}/telemetry`, {
         method: 'PUT',
-        body: form,
+        body: useHubReceiver ? { mode: 'automatic' } : form,
       })
       setForm(fields(result))
       setStatus(result)
@@ -85,7 +84,12 @@ function ConnectionForm({ device }: { device: Device }) {
         <h3>Live readings</h3>
       </div>
       <div className="settings-fields">
-        <form onSubmit={save}>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            void save()
+          }}
+        >
           <div className="form-grid">
             <Field label="Receiver host">
               <input
@@ -117,9 +121,21 @@ function ConnectionForm({ device }: { device: Device }) {
             />
             Send live readings
           </label>
-          <Button type="submit" disabled={busy || connection.loading || !loaded}>
-            {busy ? 'Saving…' : 'Save connection'}
-          </Button>
+          <div className="inline-actions">
+            <Button type="submit" disabled={busy || connection.loading || !loaded}>
+              {busy ? 'Saving…' : 'Save connection'}
+            </Button>
+            {device.model === 'picoferm' && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy || connection.loading || !loaded}
+                onClick={() => void save(true)}
+              >
+                Use this Hub
+              </Button>
+            )}
+          </div>
           {(dirty.current || connection.loading || !connection.error) && (
             <p className="help-text" role="status">
               {dirty.current

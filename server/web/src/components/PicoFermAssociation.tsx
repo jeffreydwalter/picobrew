@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { FermentDialog } from './FermentDialog'
 import { ArrowUpRight } from 'lucide-react'
 import { useHub, useResource } from '../context'
 import { api, APIError, errorMessage } from '../lib/api'
@@ -88,10 +89,28 @@ export function LinkedPicoFerms({ brewerId }: { brewerId: string }) {
   const devices = hub.devices.filter(
     (device) => device.model === 'picoferm' && device.brewer_id === brewerId
   )
-  if (!devices.length) return null
+  const [ferment, setFerment] = useState(false)
+  const brewer = hub.devices.find((device) => device.id === brewerId)
+  if (
+    brewer?.adapter !== 'pico-standalone' ||
+    !brewerModels.includes(brewer.model) ||
+    brewer.model_error
+  )
+    return null
   return (
     <section className="panel">
-      <SectionHeading title="Linked PicoFerms" />
+      <SectionHeading
+        title="Fermentation"
+        actions={
+          <Button variant="secondary" onClick={() => setFerment(true)}>
+            Ferment
+          </Button>
+        }
+      />
+      {ferment && <FermentDialog brewerId={brewerId} onClose={() => setFerment(false)} />}
+      {!devices.length && (
+        <p className="help-text">Choose a PicoFerm to monitor a keg from this brewer.</p>
+      )}
       <div className="inline-actions">
         {devices.map((device) => (
           <Button

@@ -72,7 +72,7 @@ Press **Ctrl+C** to stop the Hub. Restart it from the same folder to reopen your
 
 #### Pair the brewer
 
-Join your brewery network, then open **Brewery → Add machine**. Choose your device under **On your network**, or enter its address manually. After Hub USB setup, continue with **Add machine** from the completed job so the Hub can use the pairing information it saved. For dial pairing on a Pico S, Pro, C, or Z, open **Settings → About → Pair with Hub**. On a pairing-capable Zymatic, connect Ethernet and open **About Zymatic**. Compare the code and approve it at the dial. Once you’ve added a PicoFerm, open its page and choose its **Linked brewer**. [Pairing instructions](server/docs/device-connections.md)
+Join your brewery network, then open **Brewery → Add machine**. Choose your device under **On your network**, or enter its address manually. After Hub USB setup, continue with **Add machine** from the completed job so the Hub can use the pairing information it saved. For dial pairing on a Pico S, Pro, C, or Z, open **Settings → About → Pair with Hub**. On a pairing-capable Zymatic, connect Ethernet and open **About Zymatic**. Compare the code and approve it at the dial. Adding a standalone PicoFerm sets it up to send readings directly to the Hub. Open **Ferment** on the brewer’s Hub page to link it to that brewer or a batch. [Pairing instructions](server/docs/device-connections.md)
 
 If you want to keep the original Zymatic firmware, the Hub can also serve recipes to its **1.1.14** sync menu. [Connect a stock Zymatic](server/docs/stock-zymatic.md)
 

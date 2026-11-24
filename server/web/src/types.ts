@@ -296,6 +296,9 @@ export interface Conditioning {
   }[]
 }
 export interface Brew {
+  picoferm_id?: string
+  picoferm_name?: string
+  picoferm_recording_id?: string
   recovered_after_restart?: boolean
   conditioning?: Conditioning
   step_names?: Record<number, string>

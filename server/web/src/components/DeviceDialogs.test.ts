@@ -7,6 +7,7 @@ import { HubContext, type HubState } from '../context'
 import { setCSRF } from '../lib/api'
 import type { Device } from '../types'
 import { DeviceDialog, HubConnectionStatus } from './DeviceDialogs'
+import { FermentDialog } from './FermentDialog'
 import { PicoFermAssociation } from './PicoFermAssociation'
 
 const fetchMock = vi.fn<typeof fetch>()
@@ -99,6 +100,51 @@ afterEach(() => {
 })
 
 describe('automatic physical-machine connections', () => {
+  it('assigns a journal batch to the chosen PicoFerm and offers only its unclaimed recordings', async () => {
+    const user = userEvent.setup()
+    const state = hub(machine())
+    const resources = {
+      brews: [{ id: 'brew', recipe_name: 'Pale ale', observed_at: '2026-11-24T12:00:00Z' }],
+      picoferms: [{ id: 'sensor', name: 'Cellar keg', brewer_id: '', revision: 4 }],
+      recordings: [
+        { id: 'recording', device_id: 'sensor', observed_at: '2026-11-24T12:30:00Z' },
+        {
+          id: 'claimed',
+          device_id: 'sensor',
+          observed_at: '2026-11-20T12:00:00Z',
+          linked_brew_id: 'older',
+        },
+        { id: 'other', device_id: 'other-sensor', observed_at: '2026-11-24T13:00:00Z' },
+      ],
+    }
+    fetchMock.mockImplementation(async (input, options) => {
+      expect(String(input)).toBe('/api/v1/devices/physical-s/picoferms')
+      if (options?.method === 'PUT') {
+        expect(JSON.parse(String(options.body))).toEqual({
+          picoferm_id: 'sensor',
+          revision: 4,
+          brew_id: 'brew',
+          recording_id: 'recording',
+        })
+        return json({ brewer_id: 'physical-s', revision: 5 })
+      }
+      return json(resources)
+    })
+    render(
+      createElement(
+        HubContext.Provider,
+        { value: state },
+        createElement(FermentDialog, { brewerId: 'physical-s', brewId: 'brew', onClose })
+      )
+    )
+    await user.selectOptions(await screen.findByLabelText('PicoFerm'), 'sensor')
+    const recordings = screen.getByLabelText('Fermentation recording') as HTMLSelectElement
+    expect([...recordings.options].map((x) => x.value)).toEqual(['', 'recording'])
+    await user.selectOptions(recordings, 'recording')
+    await user.click(screen.getByRole('button', { name: 'Assign to batch' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'PUT')).toHaveLength(1)
+  })
   it('links and unlinks a registered PicoFerm while the brewer is offline', async () => {
     const user = userEvent.setup()
     let saved = { brewer_id: '', revision: 0 }

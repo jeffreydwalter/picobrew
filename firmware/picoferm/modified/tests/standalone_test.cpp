@@ -172,6 +172,56 @@ struct World {
         return {response.status,std::string(reinterpret_cast<const char*>(response.body),response.body_length)};
     }
 };
+// Capture the TCP destination and bytes that the PicoFerm would send.
+struct HubReceiver {
+    std::string host, frame;
+    unsigned port = 0;
+    api::TelemetryIo binding() {
+        api::TelemetryIo io;
+        io.context = this;
+        io.begin = [](void* ctx, const char* hostname, std::uint16_t port) {
+            auto& self = *static_cast<HubReceiver*>(ctx);
+            self.host = hostname; self.port = port; self.frame.clear();
+            return true;
+        };
+        io.poll_connect = [](void*) { return 1; };
+        io.send = [](void* ctx, const std::uint8_t* data, std::size_t size) {
+            static_cast<HubReceiver*>(ctx)->frame.append(reinterpret_cast<const char*>(data), size);
+            return static_cast<int>(size);
+        };
+        io.receive = [](void*, std::uint8_t* out, std::size_t capacity) {
+            const char response[] = "HTTP/1.1 202 Accepted\r\n";
+            const auto n = std::min(capacity, sizeof(response)-1);
+            std::memcpy(out, response, n);
+            return static_cast<int>(n);
+        };
+        io.close = [](void*) {};
+        return io;
+    }
+};
+
+void paired_receiver_cases() {
+    for (const std::string host : {"brewery.example", "192.0.2.17"}) {
+        HubReceiver receiver;
+        World world;
+        const auto settings = std::string("{\"enabled\":true,\"host\":\"") + host + "\",\"port\":8181}";
+        require(world.api_call(PICO_HTTP_PUT, "/api/v1/telemetry", settings.c_str()).first == 200,
+                "the Hub can provision a receiver through the PicoFerm API");
+        world.reboot();
+        world.engine->set_telemetry_io(receiver.binding());
+        world.advance(1000);
+        require(receiver.host == host && receiver.port == 8181, "saved receiver is used after restart");
+        require(receiver.frame.find("POST /api/v1/telemetry HTTP/1.0\r\nHost: " + host + ":8181\r\n") == 0,
+                "sensor report goes directly to the paired Hub");
+        for (const char* id : {"temperature", "pressure_native", "battery"}) {
+            require(receiver.frame.find(std::string("\"id\":\"") + id + "\"") != std::string::npos,
+                    "sensor report contains the PicoFerm measurement");
+        }
+        const auto status = world.api_call(PICO_HTTP_GET, "/api/v1/telemetry");
+        require(status.first == 200 && field(status.second, "last_http_status") == 202,
+                "the local website can read the receiver acknowledgment");
+    }
+}
 void controller_cases(){
     World world;auto current=world.snapshot();require(current.ready&&!current.busy&&!current.recording,"standalone ready without cloud or session resume");
     const auto care = world.api_call(PICO_HTTP_POST, "/api/v1/commands", "{\"command\":\"ack-sanitize-seal\"}");
@@ -243,4 +293,4 @@ void session_failure_and_fault_cases(){
     failed.controller->long_press();require(failed.snapshot().recording,"physical long press starts explicit local session");failed.controller->long_press();require(!failed.snapshot().recording,"physical long press stops session");
 }
 }
-int main(){acquisition_cases();control_cases();storage_cases();controller_cases();calibration_cases();session_failure_and_fault_cases();std::printf("{\"checks\":%u,\"complete\":true}\n",checks);}
+int main(){acquisition_cases();control_cases();storage_cases();paired_receiver_cases();controller_cases();calibration_cases();session_failure_and_fault_cases();std::printf("{\"checks\":%u,\"complete\":true}\n",checks);}
