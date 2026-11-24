@@ -74,7 +74,8 @@ jobs:
           suffix=""
           if [ "${{ runner.os }}" = Windows ]; then suffix=.exe; fi
           binary="../artifacts/picobrew-hub-${{ matrix.platform }}${suffix}"
-          go build -trimpath -ldflags "-X $(go list ./internal/server).Version=${TAG#v}" -o "$binary" ./cmd/picobrew-hub
+          go build -buildvcs=true -trimpath -ldflags "-X $(go list ./internal/server).Version=${TAG#v}" -o "$binary" ./cmd/picobrew-hub
+          go version -m "$binary" | grep -F "vcs.revision=$GITHUB_SHA"
           test "$("$binary" --version | tr -d '\r')" = "${TAG#v}"
       - uses: actions/upload-artifact@v4
         with:
@@ -111,7 +112,8 @@ jobs:
           /tmp/picobrew-stage -local ../artifacts
           go test -c -o /tmp/picobrew-usb-test ./internal/usbservice/helper
           docker run --rm --platform linux/arm/v7 -e PICOBREW_REQUIRE_USB_WORKER=1 -v /tmp/picobrew-usb-test:/usb-test:ro debian:bookworm-slim /usb-test -test.run TestEmbedded -test.v
-          go build -trimpath -ldflags "-X $(go list ./internal/server).Version=${TAG#v}" -o ../artifacts/picobrew-hub-linux-arm ./cmd/picobrew-hub
+          go build -buildvcs=true -trimpath -ldflags "-X $(go list ./internal/server).Version=${TAG#v}" -o ../artifacts/picobrew-hub-linux-arm ./cmd/picobrew-hub
+          go version -m ../artifacts/picobrew-hub-linux-arm | grep -F "vcs.revision=$GITHUB_SHA"
           test "$(../artifacts/picobrew-hub-linux-arm --version)" = "${TAG#v}"
       - uses: actions/upload-artifact@v4
         with:
