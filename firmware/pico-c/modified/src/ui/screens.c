@@ -175,9 +175,14 @@ void pico_screen_ending_step(const char *title)
 
 bool pico_screen_loading(int picopak)
 {
+#if PICO_STANDALONE
+    const char *text = picopak ? ui_language_text("Loading recipe", "Cargando receta", "Chargement recette")
+                               : ui_language_text("Loading", "Cargando", "Remplissage");
+#else
     char text[32];
     snprintf(text, sizeof text, "%s%s", ui_language_text("Loading", "Cargando", "Remplissage"),
              picopak ? " PicoPak" : "");
+#endif
     ui_interrupts_disable();
     pico_display_center_text(0, text);
     pico_display_flush();

@@ -453,6 +453,15 @@ class InstallWireTests(unittest.TestCase):
         self.assertEqual(recovery.files[APP_NAME], packaged.read_bytes())
         self.assertEqual(recovery.files[KEY_NAME], KEY)
 
+    def test_stable_predecessor_can_upgrade_or_provision_recovery_only_on_matching_model(self):
+        for model, (length, digest) in installer.STABLE_1_0_0_APPLICATIONS.items():
+            self.assertNotEqual((length, digest), installer.candidate_identity(model))
+            record = {"size_bytes": length, "sha256": digest}
+            for operation in ("install", "install-recovery"):
+                for target in installer.STABLE_1_0_0_APPLICATIONS:
+                    allowed = installer._approved_current_applications(operation, target)
+                    self.assertEqual(record in allowed, target == model, (operation, target, model))
+
     def test_legacy_application_sources_are_isolated_by_hardware(self):
         for model, releases in installer.LEGACY_APPLICATIONS.items():
             with self.subTest(model=model):

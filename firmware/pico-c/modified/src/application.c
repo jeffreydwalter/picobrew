@@ -1084,7 +1084,7 @@ void pico_application_setup(PicoApplication *a)
     pico_network_ensure_connection(&a->network);
     a->settings.offline_mode = 0;
     if (pico_local_recipes_initialize(&a->network) != PICO_LOCAL_STORE_OK)
-        log_message(a, "W", "LOCAL", "Could not initialize PicoPak catalogue; existing files preserved");
+        log_message(a, "W", "LOCAL", "Could not initialize starter recipes; existing files preserved");
     pico_local_control_ready(true);
 #else
     if (!a->settings.offline_mode) {
@@ -1144,7 +1144,7 @@ final_startup:
 void pico_application_loop(PicoApplication *a)
 {
 #if PICO_STANDALONE
-    uint32_t actions[] = {0, 12, 13, 14, 15, 16, 17};
+    uint32_t actions[] = {0, 12, 13, 14, 16, 17};
     unsigned due = pico_care_due();
     if (!pico_local_control_stopped()) {
         if (due & PICO_CARE_DEEP_CLEAN) actions[0] = 42;
@@ -1161,7 +1161,8 @@ void pico_application_loop(PicoApplication *a)
     pico_display_logo();
 #endif
 #if PICO_STANDALONE
-    pico_menu_populate_action_labels(actions + !actions[0], actions[0] ? 7 : 6,
+    pico_menu_populate_action_labels(actions + !actions[0],
+                                     sizeof actions / sizeof actions[0] - !actions[0],
                                      a->settings.language, a->settings.detailed_status);
     if (actions[0]) strcpy(a->ui.menu_labels[0], actions[0] == 42 ? "Deep clean due" :
         actions[0] == 41 ? "Rinse due" : "Check descaling");
@@ -1208,9 +1209,11 @@ void pico_application_loop(PicoApplication *a)
     case 14:
         pico_recipe_run_cooking_program(&a->recipe, 4);
         break;
+#if !PICO_STANDALONE
     case 15:
         pico_recipe_manual_program(&a->recipe);
         break;
+#endif
     case 16:
         pico_utilities_menu();
         break;

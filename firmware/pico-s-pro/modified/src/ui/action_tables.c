@@ -41,7 +41,11 @@ const char *const pico_action_labels[50][3] = {
     {"Toggle Status", "Estado palanca", "Etat changer"},
     {"Change Temp", "Cambiar la temp", "Changer la temp"},
     {"Stop", "Salida", "Quitter"},
+#if PICO_STANDALONE
+    {"Brew Recipe", "Preparar receta", "Brasser recette"},
+#else
     {"Brew PicoPak", "Cerveza PicoPak", "PicoPak"},
+#endif
     {"Sous Vide", "Sous Vide", "Sous Vide"},
     {"Cold Brew", "Cold Brew", "Cold Brew"},
     {"Manual Brew", "Manual Brew", "Manual Brew"},

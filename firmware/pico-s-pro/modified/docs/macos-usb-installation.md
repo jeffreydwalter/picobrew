@@ -143,7 +143,7 @@ command needs a fresh programming session using the procedure above.
 
 ## Stage 2: install the pinned standalone candidate
 
-The commands below install the **stable 1.0.0 Pico Pro update**. The installer recognizes earlier standalone development builds by their exact model, byte length and digest, including the original shared 1.0.0. Their bytes must match an allowed source exactly.
+The commands below install the **1.0.0 Pico Pro update**. The installer identifies each supported application by its model, byte length and SHA-256 digest. This distinguishes the Brew Recipe build from earlier images that also report 1.0.0.
 
 Proceed with the existing provisioned key. Do not rerun key provisioning after
 installing standalone firmware; that separate stage intentionally requires the

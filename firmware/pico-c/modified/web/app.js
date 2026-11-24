@@ -10,7 +10,7 @@ let requestQueue = Promise.resolve();
 let pollTimer;
 let apiExplorer;
 let brewHistory;
-const programLabels = {'sous-vide':'Sous vide', 'cold-brew':'Cold brew', manual:'Manual brewing',
+const programLabels = {'sous-vide':'Sous vide', 'cold-brew':'Cold brew',
   'deep-clean':'Deep Clean', rinse:'Rinse', 'first-rinse':'First rinse', descale:'Descale', circulate:'Circulate',
   'drain-reservoir':'Drain reservoir', 'drain-filter':'Drain step filter', 'rack-beer':'Rack beer',
   utilities:'Utilities menu', settings:'Settings menu'};

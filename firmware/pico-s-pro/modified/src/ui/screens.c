@@ -151,7 +151,13 @@ bool pico_screen_loading(int is_picopak)
     }
     strcpy(message, loading_label);
     if (is_picopak != 0) {
+#if PICO_STANDALONE
+        unsigned language = pico_ui_active->network->settings->language;
+        strcpy(message, language == 1 ? "Cargando receta" :
+                        language == 2 ? "Chargement recette" : "Loading recipe");
+#else
         strcat(message, " PicoPak");
+#endif
     }
     ui_interrupts_disable();
     pico_display_center_text(3, message);
