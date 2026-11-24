@@ -667,7 +667,7 @@ func TestInstallUsesTheConnectedBrewersVersion(t *testing.T) {
 		status: domain.Status{Model: registered.Model, ModelFamily: "pico-s-pro", DeviceUID: "uid", Ready: true},
 		caps:   domain.Capabilities{Model: registered.Model, ModelFamily: "pico-s-pro", HubOTAV1: true, FirmwareVersion: "1.0.0"},
 	}, stages: make(chan string, 1)}
-	d := s.attach(registered)
+	d := s.attach(registered, nil)
 	d.adapter = a
 	if _, err := s.verifiedStatus(context.Background(), d); err != nil {
 		t.Fatal(err)
@@ -713,7 +713,7 @@ func testInterruptedFirmwareRetry(t *testing.T, stage string) {
 	status := domain.Status{Model: saved.Model, ModelFamily: "pico-s-pro", DeviceUID: uid, Ready: true}
 	caps := domain.Capabilities{Model: saved.Model, ModelFamily: "pico-s-pro", FirmwareVersion: "2.0.0", HubOTAV1: true}
 	a := &resumeFirmwareAdapter{pairingAdapter: &pairingAdapter{status: status, caps: caps}, stages: make(chan string, 1)}
-	d := s.attach(saved)
+	d := s.attach(saved, nil)
 	d.adapter = a // No saved key in this fixture, so attach starts no poller.
 	if _, err := s.verifiedStatus(context.Background(), d); err != nil {
 		t.Fatal(err)
@@ -792,7 +792,7 @@ func testInterruptedFirmwareRetry(t *testing.T, stage string) {
 
 	// Recreate runtime state as on startup: an offline application in recovery
 	// cannot provide /status. The saved identity and interrupted package survive.
-	restarted := s.attach(saved)
+	restarted := s.attach(saved, nil)
 	restarted.adapter = a
 	a.statusErr = errors.New("application offline")
 	if _, err := s.verifiedStatus(context.Background(), restarted); err == nil {
@@ -832,7 +832,7 @@ func TestPicoCInstallationRequiresIndependentlyVerifiedController(t *testing.T) 
 		status: domain.Status{Model: model, ModelFamily: model, DisplayVariant: "ssd1325", DeviceUID: uid, Ready: true},
 		caps:   domain.Capabilities{Model: model, ModelFamily: model, DisplayVariant: "ssd1325", HubOTAV1: true, FirmwareVersion: "1.0.0"},
 	}, stages: make(chan string, 1)}
-	d := s.attach(domain.Device{ID: "brewer", Model: model, ModelSource: "firmware", Enabled: true, Adapter: "pico-standalone"})
+	d := s.attach(domain.Device{ID: "brewer", Model: model, ModelSource: "firmware", Enabled: true, Adapter: "pico-standalone"}, nil)
 	d.adapter = a
 	if _, err := s.verifiedStatus(context.Background(), d); err != nil {
 		t.Fatal(err)

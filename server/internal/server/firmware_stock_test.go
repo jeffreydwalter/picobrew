@@ -189,7 +189,7 @@ func TestStockRestoreHTTPRequiresConsentAndCompetingOperationsFailClosed(t *test
 		}
 	}
 	a := &resumeFirmwareAdapter{pairingAdapter: &pairingAdapter{status: domain.Status{Model: "pico-s", ModelFamily: "pico-s-pro", DeviceUID: "unit", Ready: true}, caps: domain.Capabilities{Model: "pico-s", ModelFamily: "pico-s-pro", HubOTAV1: true, FirmwareVersion: "1.0.0"}}, stages: make(chan string, 1)}
-	d := s.attach(domain.Device{ID: "brewer", Model: "pico-s", ModelSource: "firmware", Adapter: "pico-standalone", Enabled: true})
+	d := s.attach(domain.Device{ID: "brewer", Model: "pico-s", ModelSource: "firmware", Adapter: "pico-standalone", Enabled: true}, nil)
 	d.adapter = &stockAdapterStub{a}
 	if _, err := s.verifiedStatus(context.Background(), d); err != nil {
 		t.Fatal(err)

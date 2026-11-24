@@ -497,3 +497,62 @@ func TestConcurrentFirmwareRefreshAndFleetReads(t *testing.T) {
 		t.Fatal("concurrent identification lost model")
 	}
 }
+
+func TestAddPicoFermProvisionsBrowserReceiverBeforeFirstPoll(t *testing.T) {
+	for _, host := range []string{"brewery.example", "192.0.2.23"} {
+		t.Run(host, func(t *testing.T) {
+			s, h, client := newTestServer(t)
+			csrf := signIn(t, client, h.URL)
+			target := telemetryTarget{Enabled: true, Host: host, Port: 8181}
+			a := &pairingAdapter{
+				Adapter: device.NewSimulator("unused", "pico-s"),
+				caps: domain.Capabilities{Model: "picoferm", ModelFamily: "picoferm",
+					APIVersion: 1, FirmwareVersion: "1.0.0", TelemetryForwarding: true},
+				status: domain.Status{Model: "picoferm", ModelFamily: "picoferm",
+					DeviceUID: "fermentation-monitor", Ready: true},
+				applyWrite: true, target: telemetryTarget{Port: 8080},
+			}
+			s.newDeviceAdapter = func(_, _ string) (device.Adapter, error) { return a, nil }
+			origin := host + ":8181"
+			s.telemetryClient = &http.Client{Transport: receiverTransport(func(r *http.Request) (*http.Response, error) {
+				w := httptest.NewRecorder()
+				if r.URL.Host == origin {
+					s.telemetryReceiverProbe(w, r)
+				} else {
+					w.WriteHeader(404)
+				}
+				return w.Result(), nil
+			})}
+			client.Transport = receiverTransport(func(r *http.Request) (*http.Response, error) {
+				r = r.Clone(r.Context())
+				r.Host = origin
+				return http.DefaultTransport.RoundTrip(r)
+			})
+			in := keyDeviceInput("Keg monitor", strings.Repeat("ab", 32))
+			in["enabled"], in["model"] = true, ""
+			added := saveKeyDevice(t, client, h.URL+"/api/v1/devices", csrf, "", in)
+			deadline := time.Now().Add(4 * time.Second)
+			for {
+				record, err := s.readTelemetryRecord(added.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if record.Owned.sameConfig(target) && record.Desired != nil && record.Pending == nil {
+					if !record.Desired.sameConfig(target) || record.Origin != "http://"+origin {
+						t.Fatalf("incorrect paired destination: %+v", record)
+					}
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("first poll did not confirm the PicoFerm destination: %+v", record)
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			a.mu.Lock()
+			defer a.mu.Unlock()
+			if a.writes != 1 || a.commands != 0 || !a.target.sameConfig(target) {
+				t.Fatalf("pairing wrote %d settings, issued %d commands, destination %+v", a.writes, a.commands, a.target)
+			}
+		})
+	}
+}

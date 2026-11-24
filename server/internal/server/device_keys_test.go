@@ -180,7 +180,7 @@ func TestDeviceKeyReuseAdvisoryRestartsAndCredentialFailureIsVisible(t *testing.
 		t.Fatal(err)
 	}
 	assertReuseViews(t, s.fleet(), map[string]bool{"first": true, "second": true})
-	s.attach(devices[1])
+	s.attach(devices[1], nil)
 	for _, view := range s.fleet() {
 		if view.ID == "second" && (view.Error != "Device credentials or address could not be loaded" || view.Online || view.KeyReused) {
 			t.Fatalf("credential failure was hidden or leaked detail: %+v", view)
@@ -189,7 +189,7 @@ func TestDeviceKeyReuseAdvisoryRestartsAndCredentialFailureIsVisible(t *testing.
 	if err := s.saveSecret("device:second", key); err != nil {
 		t.Fatal(err)
 	}
-	s.attach(devices[1])
+	s.attach(devices[1], nil)
 	assertReuseViews(t, s.fleet(), map[string]bool{"first": true, "second": true})
 }
 
