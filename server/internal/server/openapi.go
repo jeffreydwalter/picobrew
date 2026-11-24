@@ -39,6 +39,8 @@ var endpoints = []endpoint{
 	{"POST", "/devices/{id}/website", "Open the machine website with a single-use sign-in", nil},
 	{"GET", "/devices", "List fleet status", nil}, {"POST", "/devices", "Register a machine", map[string]any{"name": "My Pico", "model": "", "adapter": "pico-standalone", "base_url": "http://192.168.1.50", "api_key": "64-hex-character-device-key", "location": "Brew room"}},
 	{"GET", "/devices/{id}/events", "Read recent volatile events from the connected machine", nil},
+	{"GET", "/devices/{id}/picoferms", "List PicoFerms, batches and fermentation recordings for a brewer", nil},
+	{"PUT", "/devices/{id}/picoferms", "Assign or unlink a PicoFerm, optionally attaching an explicit batch and recording", map[string]any{"picoferm_id": "registered-picoferm-id", "revision": 0}},
 	{"GET", "/devices/{id}/brewer", "Read the brewer associated with this PicoFerm", nil},
 	{"PUT", "/devices/{id}/brewer", "Choose a brewer for this PicoFerm, or clear its association", map[string]any{"brewer_id": "registered-brewer-id", "revision": 0}},
 	{"GET", "/devices/{id}", "Read one machine", nil}, {"PUT", "/devices/{id}", "Update a machine connection", map[string]any{"name": "My Pico", "model": "", "adapter": "pico-standalone", "base_url": "http://192.168.1.50", "location": "Brew room"}}, {"DELETE", "/devices/{id}", "Remove an idle machine", nil}, {"POST", "/devices/{id}/test", "Probe connection and discover capabilities", map[string]any{}}, {"GET", "/devices/{id}/display", "Read raw OLED framebuffer and display geometry", nil}, {"POST", "/devices/{id}/commands", "Queue a capability-checked command once", map[string]any{"command": "encoder", "delta": 1}}, {"GET", "/devices/{id}/recipes", "Read recipes stored on the appliance", nil}, {"GET", "/devices/{id}/settings", "Read device preferences", nil}, {"PATCH", "/devices/{id}/settings", "Update device preferences", map[string]any{"temperature_unit": "F"}}, {"GET", "/devices/{id}/telemetry", "Read the saved live-data receiver settings", nil}, {"PUT", "/devices/{id}/telemetry", "Save live-data receiver settings and apply them when the machine is available", map[string]any{"enabled": true, "host": "192.168.1.20", "port": 8080}}, {"POST", "/devices/{id}/sync-history", "Archive retained device history", map[string]any{}}, {"POST", "/devices/{id}/deploy", "Compile and deploy a reviewed recipe without starting it", map[string]any{"recipe_id": "recipe-id", "profile_id": "pico-pro", "batch_liters": 5, "source_revision": 1}},
@@ -223,6 +225,8 @@ func buildSchemas() schemaMap {
 		r.properties(name)["machine_versions"] = schemaMap{"type": "array", "items": schemaRef("Adapted"), "readOnly": true, "description": "Current model adaptations on ingredient recipe detail, save and import responses."}
 	}
 	r.properties("DeviceView")["key_reused"] = schemaMap{"type": "boolean", "readOnly": true, "description": "Advisory: another registered physical machine has the same recorded hexadecimal API key, including disabled machines. Derived in memory; no key or fingerprint is returned. Use a separately provisioned key for each brewer. Saving a connection does not change its firmware key."}
+	r.describe(reflect.TypeOf(brewerFermentationOptions{}))
+	r.describe(reflect.TypeOf(brewerPicoFermInput{}))
 	r.values["PicoFermBrewer"] = schemaObject(schemaMap{
 		"brewer_id": schemaMap{"type": "string", "description": "Registered physical brewer ID. An empty string clears the association."},
 		"revision":  schemaMap{"type": "integer", "minimum": 0, "description": "Use the current association revision when saving."},
@@ -473,6 +477,8 @@ func requestSchema(e endpoint) (schemaMap, bool) {
 		name = "DeviceInput"
 	case "/devices/{id}/commands":
 		name = "CommandInput"
+	case "/devices/{id}/picoferms":
+		name = "brewerPicoFermInput"
 	case "/devices/{id}/brewer":
 		name = "PicoFermBrewer"
 	case "/devices/{id}/ai-monitor":
@@ -573,6 +579,12 @@ func successResponses(e endpoint) schemaMap {
 		schema = schemaRef("DeviceView")
 	case "/devices/{id}/events":
 		schema = schemaRef("DeviceEvents")
+	case "/devices/{id}/picoferms":
+		if e.method == "GET" {
+			schema = schemaRef("brewerFermentationOptions")
+		} else {
+			schema = schemaRef("PicoFermBrewer")
+		}
 	case "/devices/{id}/brewer":
 		schema = schemaRef("PicoFermBrewer")
 	case "/devices/{id}/display":

@@ -102,6 +102,7 @@ type FieldMetadata struct {
 	Kind  string `json:"kind"`
 }
 type Capabilities struct {
+	FermentMenuV1           bool                     `json:"ferment_menu_v1,omitempty"`
 	ReleaseChannel          string                   `json:"release_channel,omitempty"`
 	EventsPersistent        *bool                    `json:"events_persistent,omitempty"`
 	SystemRestart           bool                     `json:"system_restart,omitempty"`
@@ -144,6 +145,8 @@ func (c Capabilities) Supports(name string) bool {
 		return c.RecipeCapacity > 0
 	case "front_panel":
 		return c.FrontPanel
+	case "ferment_menu_v1":
+		return c.FermentMenuV1
 	case "pairing_v1":
 		return c.PairingV1
 	case "brewing", "heating", "temperature", "pump":
@@ -397,6 +400,9 @@ type Conditioning struct {
 	Stages         []ConditioningStage `json:"stages"`
 }
 type Brew struct {
+	PicoFermID            string                   `json:"picoferm_id,omitempty"`
+	PicoFermName          string                   `json:"picoferm_name,omitempty"`
+	PicoFermRecordingID   string                   `json:"picoferm_recording_id,omitempty"`
 	Conditioning          *Conditioning            `json:"conditioning,omitempty"`
 	StepNames             map[int]string           `json:"step_names,omitempty"`
 	ID                    string                   `json:"id"`

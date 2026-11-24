@@ -178,14 +178,21 @@ func routeReceiver(ctx context.Context, baseURL string, port int) (telemetryTarg
 }
 
 func (s *Server) automaticReceiver(ctx context.Context, baseURL, origin string) (telemetryTarget, string) {
+	return s.findReceiver(ctx, baseURL, origin, nil)
+}
+
+// During recovery, bypass the address the accessory has already tried.
+func (s *Server) findReceiver(ctx context.Context, baseURL, origin string, failed *telemetryTarget) (telemetryTarget, string) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if s.cfg.DeviceURL != "" {
 		target, err := parseReceiverURL(s.cfg.DeviceURL)
-		if err == nil && s.probeReceiver(ctx, target) {
+		if err == nil && (failed == nil || !target.sameReceiver(*failed)) && s.probeReceiver(ctx, target) {
 			return target, ""
 		}
-		return telemetryTarget{}, "The configured Hub device URL does not reach this Hub's HTTP receiver. Live readings and history remain available."
+		if failed == nil {
+			return telemetryTarget{}, "The configured Hub device URL does not reach this Hub's HTTP receiver. Live readings and history remain available."
+		}
 	}
 	var candidates []telemetryTarget
 	if target, err := parseReceiverURL(origin); err == nil {
@@ -208,7 +215,7 @@ func (s *Server) automaticReceiver(ctx context.Context, baseURL, origin string) 
 	seen := map[string]bool{}
 	for _, target := range candidates {
 		key := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
-		if seen[key] {
+		if seen[key] || (failed != nil && target.sameReceiver(*failed)) {
 			continue
 		}
 		seen[key] = true

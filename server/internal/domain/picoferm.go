@@ -22,3 +22,13 @@ func (d *Device) ClearInapplicableBrewer() {
 		d.BrewerRevision++
 	}
 }
+
+// Fermentation batches come from a brewer's recorded brewing sessions. Cleaning,
+// diagnostics, simulator data and accessory measurements have different meanings.
+func (b Brew) IsFermentationBatch() bool {
+	return b.Source == "device" && (b.Command == "brew" || b.Command == "manual")
+}
+
+func (b Brew) IsPicoFermRecording() bool {
+	return b.Model == "picoferm" && b.Source == "device" && b.Command == "start"
+}

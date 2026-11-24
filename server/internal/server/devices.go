@@ -17,7 +17,7 @@ import (
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/store"
 )
 
-func (s *Server) attach(d domain.Device) *runtimeDevice {
+func (s *Server) attach(d domain.Device, pairingRequest *http.Request) *runtimeDevice {
 	var a device.Adapter
 	var err error
 	var fingerprint [32]byte
@@ -62,6 +62,11 @@ func (s *Server) attach(d domain.Device) *runtimeDevice {
 	}
 	s.updateKeyReuseLocked()
 	s.mu.Unlock()
+	// Save the browser's LAN origin before the first poll chooses a receiver.
+	// Startup uses the receiver already saved for this registration.
+	if pairingRequest != nil {
+		s.requestTelemetryPairing(rt, pairingRequest)
+	}
 	if d.Enabled && err == nil {
 		s.wg.Add(1)
 		go func() { defer s.wg.Done(); s.poll(ctx, rt) }()
@@ -93,6 +98,9 @@ func (s *Server) poll(ctx context.Context, d *runtimeDevice) {
 			return
 		}
 		s.refresh(ctx, d)
+		// The mailbox commits choices under deviceMu. Call it after refresh
+		// releases commandMu, following the registration-edit lock order.
+		s.syncFermentMenu(ctx, d)
 		d.mu.RLock()
 		online := d.view.Online && !d.identityMismatch
 		d.mu.RUnlock()
@@ -521,13 +529,12 @@ func (s *Server) saveDevice(w http.ResponseWriter, r *http.Request) {
 		pairing.claimedKey = ""
 		pairing.nonce = ""
 	}
-	rt := s.attach(d)
+	rt := s.attach(d, r)
 	if disabledTelemetry != nil {
 		rt.mu.Lock()
 		rt.view.Telemetry = *disabledTelemetry
 		rt.mu.Unlock()
 	}
-	s.requestTelemetryPairing(rt, r)
 	rt.mu.RLock()
 	view := rt.view
 	rt.mu.RUnlock()
