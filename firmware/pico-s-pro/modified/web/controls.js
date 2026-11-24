@@ -16,7 +16,7 @@ function updateControls() {
   $('stopButton').disabled = !ready || stopped || state.stopPending || !advertised('stop');
   $('clearStop').hidden = !stopped;
   $('clearStop').disabled = !available || busy || !idlePhase || !advertised('clear-stop');
-  $('restartBrewer').hidden = !state.restartSupported;
+  $('machineControls').hidden = !state.restartSupported;
   $('restartBrewer').disabled = !available || busy || stopped || !idlePhase;
   $('newRecipe').disabled = !available || busy;
   $('restoreRecipes').disabled = !available || busy || !state.restoreDefaults;
