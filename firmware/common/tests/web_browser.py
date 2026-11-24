@@ -103,6 +103,25 @@ def main():
                         route.fulfill(status=code,content_type='application/json',body=json.dumps(result))
                     page.route('**/api/v1**',route_api)
                     url=f'http://127.0.0.1:{server.server_port}/'
+                    page.emulate_media(color_scheme='dark')
+                    page.goto(url)
+                    appearance = page.get_by_label('Appearance', exact=True)
+                    html = page.locator('html')
+                    expect(appearance).to_have_value('system')
+                    expect(html).to_have_css('color-scheme', 'dark')
+                    dark_surface = page.locator('#publicOverview').evaluate('(card)=>getComputedStyle(card).backgroundColor')
+                    appearance.select_option('light')
+                    expect(html).to_have_css('color-scheme', 'light')
+                    assert page.locator('#publicOverview').evaluate('(card)=>getComputedStyle(card).backgroundColor') != dark_surface
+                    page.reload()
+                    expect(appearance).to_have_value('light')
+                    expect(html).to_have_css('color-scheme', 'light')
+                    appearance.select_option('system')
+                    expect(html).to_have_css('color-scheme', 'dark')
+                    page.emulate_media(color_scheme='light')
+                    expect(html).to_have_css('color-scheme', 'light')
+                    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                    page.goto('about:blank')
                     page.goto(url+('#pair='+ticket if hub_launch else ''))
                     if hub_launch:
                         expect(page).to_have_url(url)
@@ -302,6 +321,15 @@ def main():
                     assert page.locator('#historyMetric option').all_text_contents().count('Native pressure')==1
                     assert 'sensor_pressure_native' in page.locator('#historyValues').text_content()
                     page.locator('[data-tab="settings"]').click()
+                    expect(page.locator('#settings #appearance')).to_be_visible()
+                    expect(page.locator('nav').get_by_role('button',name='Brewery',exact=True)).to_be_visible()
+                    expect(page.locator('nav').get_by_role('button',name='Brew journal',exact=True)).to_be_visible()
+                    expect(page.locator('nav').get_by_role('button',name='API explorer',exact=True)).to_be_visible()
+                    before = list(commands)
+                    appearance.select_option('dark')
+                    expect(html).to_have_css('color-scheme', 'dark')
+                    assert page.evaluate('localStorage.getItem("picobrew-theme")') == 'dark'
+                    assert commands == before
                     if not brewing:expect(page.get_by_label('Front-panel language',exact=True)).to_be_hidden()
                     page.locator('[data-tab="api"]').click()
                     options=page.locator('#apiEndpoint option').all_text_contents()

@@ -1,5 +1,43 @@
 'use strict';
 
+// Read the browser preference before the stylesheet paints the public or paired page.
+if (typeof window !== 'undefined') {
+  const key = 'picobrew-theme';
+  const system = window.matchMedia('(prefers-color-scheme: dark)');
+  const valid = value => value === 'dark' || value === 'light' ? value : 'system';
+  let preference = 'system';
+  try { preference = valid(localStorage.getItem(key)); } catch {}
+  function apply() {
+    const theme = preference === 'system' ? (system.matches ? 'dark' : 'light') : preference;
+    const selector = document.getElementById('appearance');
+    if (selector) selector.value = preference;
+    if (document.documentElement.dataset.theme === theme) return;
+    document.documentElement.dataset.theme = theme;
+    window.dispatchEvent(new Event('pico-theme-change'));
+  }
+  apply();
+  system.addEventListener('change', apply);
+  window.addEventListener('storage', event => {
+    if (event.key === key || event.key === null) {
+      preference = valid(event.newValue);
+      apply();
+    }
+  });
+  document.addEventListener('DOMContentLoaded', () => {
+    const selector = document.getElementById('appearance');
+    apply();
+    selector.addEventListener('change', () => {
+      preference = valid(selector.value);
+      try {
+        if (preference === 'system') localStorage.removeItem(key);
+        else localStorage.setItem(key, preference);
+      } catch {}
+      apply();
+    });
+  });
+}
+
+
 // Shared presentation of the standalone API. Capability flags, rather than a
 // guessed hardware family, decide which controls and reads the browser uses.
 const PicoDevice = (() => {
