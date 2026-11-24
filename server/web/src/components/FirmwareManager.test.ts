@@ -252,6 +252,78 @@ describe('Hub firmware packages', () => {
       )
     }
   )
+  it('only offers a revised build for the exact package authorized by the Hub', async () => {
+    const user = userEvent.setup()
+    const path = '/devices/pico-s/firmware'
+    const revisedID = 'e9341cad98f2ca21eaffb6b3d713e4d7bae16112ad9964960cee55f38857e6ea'
+    const revised = { ...uploaded, id: revisedID, firmware_version: '1.0.0', hub_ota_protocol: 1 }
+    const original = { ...revised, kind: 'standalone', archive_sha256: 'd'.repeat(64) }
+    let approved: string | undefined = revisedID
+    fetchMock.mockImplementation(async (url, opts) => {
+      if (String(url).endsWith(path))
+        return json({
+          model: 'pico-s',
+          current_version: '1.0.0',
+          install_supported: true,
+          revised_package_id: approved,
+          device_uid: 'paired-brewer',
+          packages: [revised],
+        })
+      if (String(url).endsWith('/firmware/updates')) return json({ releases: [original] })
+      if (String(url).endsWith('/install')) {
+        approved = undefined
+        return json({ state: 'running' }, 202)
+      }
+      return response(url, opts)
+    })
+    show(createElement(MachineFirmwareDialog, { deviceID: 'pico-s', onClose: close }))
+    const select = (await screen.findByLabelText('Firmware version')) as HTMLSelectElement
+    const release = await screen.findByRole('option', {
+      name: '1.0.0 · Release catalog (dddddddddddd)',
+    })
+    const local = screen.getByRole('option', { name: '1.0.0 · Local upload (e9341cad98f2)' })
+    expect(select.value).toBe(revised.id)
+    await user.selectOptions(select, release)
+    const blocked = screen.getByRole('button', { name: 'Already installed' }) as HTMLButtonElement
+    expect(blocked.disabled).toBe(true)
+    await user.click(blocked)
+    expect(calls(path + '/install', 'POST')).toHaveLength(0)
+    await user.selectOptions(select, local)
+    await user.click(screen.getByRole('button', { name: 'Install revised build' }))
+    await waitFor(() => expect(calls(path + '/install', 'POST')).toHaveLength(1))
+    expect(JSON.parse(String(calls(path + '/install', 'POST')[0][1]?.body))).toEqual({
+      device_uid: 'paired-brewer',
+      package_id: revised.id,
+      confirm: true,
+    })
+    expect(calls('/stage', 'POST')).toHaveLength(0)
+    expect(
+      ((await screen.findByRole('button', { name: 'Already installed' })) as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+  })
+
+  it('keeps a newer release ahead of the permitted same-version revision', async () => {
+    const path = '/devices/pico-s/firmware'
+    const revised = { ...uploaded, hub_ota_protocol: 1, firmware_version: '1.0.0' }
+    const newer = { ...revised, id: 'd'.repeat(64), firmware_version: '1.0.1' }
+    fetchMock.mockImplementation(async (url, opts) => {
+      if (String(url).endsWith(path))
+        return json({
+          model: 'pico-s',
+          current_version: '1.0.0',
+          install_supported: true,
+          revised_package_id: revised.id,
+          packages: [revised, newer],
+        })
+      return response(url, opts)
+    })
+    show(createElement(MachineFirmwareDialog, { deviceID: 'pico-s', onClose: close }))
+    const select = (await screen.findByLabelText('Firmware version')) as HTMLSelectElement
+    expect(select.value).toBe(newer.id)
+    expect(screen.getByRole('button', { name: 'Install' })).toBeTruthy()
+  })
+
   it('allows finishing a pinned interrupted update even when the trial app reports the target version', async () => {
     const path = '/devices/pico-s/firmware'
     fetchMock.mockImplementation(async (url, opts) => {
