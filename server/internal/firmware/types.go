@@ -120,14 +120,15 @@ type Package struct {
 }
 
 type InstallReceipt struct {
-	DisplayVariant string    `json:"display_variant,omitempty"`
-	Stage          string    `json:"stage,omitempty"`
-	UID            string    `json:"device_uid"`
-	Model          string    `json:"model"`
-	PackageID      string    `json:"package_id"`
-	Started        time.Time `json:"started"`
-	State          string    `json:"state"`
-	Message        string    `json:"message"`
+	ReplacesPackageID string    `json:"replaces_package_id,omitempty"`
+	DisplayVariant    string    `json:"display_variant,omitempty"`
+	Stage             string    `json:"stage,omitempty"`
+	UID               string    `json:"device_uid"`
+	Model             string    `json:"model"`
+	PackageID         string    `json:"package_id"`
+	Started           time.Time `json:"started"`
+	State             string    `json:"state"`
+	Message           string    `json:"message"`
 }
 
 // USBRestoreTarget identifies the physical registration for a local guide.
@@ -147,6 +148,7 @@ type StockReceipt struct {
 }
 
 type MachineFirmware struct {
+	RevisedPackageID       string        `json:"revised_package_id,omitempty"`
 	CanConfirmStockStartup bool          `json:"can_confirm_stock_startup,omitempty"`
 	StockRestoreWireless   bool          `json:"stock_restore_wireless,omitempty"`
 	StockRestoreUpgrade    bool          `json:"stock_restore_upgrade,omitempty"`

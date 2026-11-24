@@ -1,6 +1,8 @@
 # Firmware packages in PicoBrew Hub
 
-Open a machine's **Firmware** view to see wireless update versions for its exact model. Choose a version and click **Install**. The Hub fetches the selected archive, validates it and saves it for reuse. **Download** saves that version to your computer. You can downgrade to an earlier compatible OTA release. The running version cannot be reinstalled through the normal Install action.
+Open a machine's **Firmware** view to see wireless update versions for its exact model. Choose a version and click **Install**. The Hub fetches the selected archive, validates it and saves it for reuse. **Download** saves that version to your computer. You can downgrade to an earlier compatible OTA release. The running version is marked **Already installed**.
+
+For a Pico S running the original public 1.0.0 build, **Install revised build** replaces it with the 1.0.0 build that has the **Brew Recipe** menu. The Hub offers this when it has the original successful installation receipt for that brewer. It checks the running application’s hash before entering recovery and verifies the revised application and website. After confirmation, that package shows **Already installed**.
 
 ## GitHub source and version checks
 

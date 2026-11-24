@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -53,10 +54,11 @@ func TestMatchingLiveVersionNeverEntersRecovery(t *testing.T) {
 // CI also runs this test against the actual recovery dispatcher and flash model.
 func TestHubOTAWithNativeRecovery(t *testing.T) {
 	for _, target := range []struct{ model, display string }{{"pico-s", ""}, {"pico-c", "ssd1309"}, {"pico-c", "ssd1325"}} {
-		t.Run(target.model+target.display, func(t *testing.T) { testHubOTAWithNativeRecovery(t, target.model, target.display) })
+		t.Run(target.model+target.display, func(t *testing.T) { testHubOTAWithNativeRecovery(t, target.model, target.display, false) })
 	}
+	t.Run("revised Pico S 1.0.0", func(t *testing.T) { testHubOTAWithNativeRecovery(t, "pico-s", "", true) })
 }
-func testHubOTAWithNativeRecovery(t *testing.T, model, display string) {
+func testHubOTAWithNativeRecovery(t *testing.T, model, display string, revision bool) {
 	harness := os.Getenv("PICO_HUB_RECOVERY_TEST")
 	if harness == "" {
 		t.Skip("set PICO_HUB_RECOVERY_TEST to the recovery HTTP host fixture")
@@ -96,6 +98,20 @@ func testHubOTAWithNativeRecovery(t *testing.T, model, display string) {
 		pkg.Files[i] = append([]byte{0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3}, bytes.Repeat([]byte{byte(i)}, 1400)...)
 	}
 	old := otaIdentity{UID: uid, Model: pkg.Model, DisplayVariant: display, Digest: strings.Repeat("f", 64)}
+	installedVersion := "1.2.0"
+	if revision {
+		archive, err := os.ReadFile(filepath.Join(filepath.Dir(harness), "../releases/pico-s/1.0.0.zip"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		pkg, err = firmware.ReadUpdatePayload(archive)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pkg.ReplacesPackageID = "f0d4798eb31ce28d7df870b0e29e592e0362c1ac93da307f550a0acf8856bf6d"
+		installedVersion = pkg.FirmwareVersion
+		image = pkg.Files[0]
+	}
 	target := otaIdentity{UID: uid, Model: pkg.Model, DisplayVariant: display, Digest: pkg.BinarySHA256}
 	key := strings.Repeat("a", 64)
 	var mu sync.Mutex
@@ -164,7 +180,7 @@ func testHubOTAWithNativeRecovery(t *testing.T, model, display string) {
 		case "/api/v1":
 			version := pkg.FirmwareVersion
 			if state == "normal" {
-				version = "1.2.0"
+				version = installedVersion
 			}
 			json.NewEncoder(w).Encode(map[string]any{"model": pkg.Model, "display_variant": display, "firmware_version": version, "hub_ota_v1": true})
 		default:
@@ -176,9 +192,23 @@ func testHubOTAWithNativeRecovery(t *testing.T, model, display string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkpoint := func(string) error { return nil }
+	lastStage := ""
+	checkpoint := func(stage string) error { lastStage = stage; return nil }
 	if err = p.InstallFirmware(ctx, "other-device", pkg, "", checkpoint); err == nil {
 		t.Fatal("changed device identity accepted")
+	}
+	if revision {
+		if err = p.InstallFirmware(ctx, uid, pkg, "", checkpoint); err == nil || lastStage != "" {
+			t.Fatal("unrecognized live source entered the migration")
+		}
+		mu.Lock()
+		old.Digest = "5b221f2f52afceab4c9fe7d1c391071b708f439d9e1be8cf883addef584852af"
+		mu.Unlock()
+		other := pkg
+		other.ArchiveSHA256 = strings.Repeat("0", 64)
+		if err = p.InstallFirmware(ctx, uid, other, "", checkpoint); err == nil || lastStage != "" {
+			t.Fatal("different archive accepted for migration")
+		}
 	}
 	if err = p.InstallFirmware(ctx, uid, pkg, "", checkpoint); err == nil {
 		t.Fatal("lost acknowledgement reported success")
@@ -204,11 +234,21 @@ func testHubOTAWithNativeRecovery(t *testing.T, model, display string) {
 			t.Fatal("recovery selected image for a different display")
 		}
 	}
-	if err = p.InstallFirmware(ctx, uid, pkg, "transferring", checkpoint); err != nil {
+	resumeStage := "transferring"
+	if revision {
+		if lastStage != "entering" {
+			t.Fatalf("lost source verification checkpoint: %q", lastStage)
+		}
+		resumeStage = lastStage
+	}
+	if err = p.InstallFirmware(ctx, uid, pkg, resumeStage, checkpoint); err != nil {
 		t.Fatal(err)
 	}
 	if err = p.InstallFirmware(ctx, uid, pkg, "confirming", checkpoint); err != nil {
 		t.Fatal(err)
+	}
+	if revision && p.InstallFirmware(ctx, uid, pkg, "", checkpoint) == nil {
+		t.Fatal("confirmed revised application accepted a fresh same-version installation")
 	}
 	mu.Lock()
 	defer mu.Unlock()

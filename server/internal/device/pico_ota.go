@@ -74,6 +74,9 @@ func (p *pico) InstallFirmware(ctx context.Context, uid string, pkg firmware.Upd
 	defer p.unlock()
 	// Long flash readbacks need more time than the usual polling deadline.
 	remote := &pico{base: p.base, key: p.key, client: &http.Client{Transport: p.client.Transport, CheckRedirect: p.client.CheckRedirect, Timeout: 30 * time.Second}}
+	if pkg.ReplacesPackageID != "" && !pkg.IsPicoSRevision() {
+		return otaFailure("Invalid revised firmware package")
+	}
 	if pkg.OTAProtocol != "" {
 		return remote.installESP(ctx, uid, pkg, previousStage, checkpoint)
 	}
@@ -103,7 +106,15 @@ func (p *pico) InstallFirmware(ctx context.Context, uid string, pkg firmware.Upd
 			if !caps.HubOTAV1 || caps.Model != pkg.Model || caps.DisplayVariant != pkg.DisplayVariant || caps.FirmwareVersion == "" {
 				return otaFailure("The brewer did not confirm its model, installed version and OTA support")
 			}
-			if caps.FirmwareVersion == pkg.FirmwareVersion {
+			if pkg.ReplacesPackageID != "" {
+				if caps.FirmwareVersion != pkg.FirmwareVersion || !pkg.ReplacesRunningImage(before.Digest) {
+					return otaFailure("The running Pico S application does not match the original build for this revision")
+				}
+				// Only after verifying the source image may a retry proceed directly in recovery.
+				if err := checkpoint("entering"); err != nil {
+					return err
+				}
+			} else if caps.FirmwareVersion == pkg.FirmwareVersion {
 				return &Error{StatusCode: 409, Code: "firmware_already_installed", Message: "This firmware version is already installed on the brewer"}
 			}
 			var entered otaState

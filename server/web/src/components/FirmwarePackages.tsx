@@ -23,6 +23,12 @@ function firmwareModelName(model: string) {
           'Not identified'
 }
 
+const packageSources = {
+  catalog: 'Release catalog',
+  upload: 'Local upload',
+  saved: 'Saved package',
+}
+
 function matchesWirelessPackage(item: FirmwareCandidate, machine: MachineFirmware | null) {
   if (item.ota_protocol) {
     return (
@@ -128,7 +134,7 @@ export function MachineFirmwareDialog({
       setActivity('')
     }
   }
-  const items = new Map<string, FirmwareCandidate & { remote: boolean }>()
+  const items = new Map<string, FirmwareCandidate & { source: keyof typeof packageSources }>()
   for (const item of updates.data?.releases || []) {
     if (
       ((item.kind === 'standalone' && !item.ota_protocol) ||
@@ -136,19 +142,27 @@ export function MachineFirmwareDialog({
         (item.kind === 'picoferm-ab' && item.ota_protocol === 'esp8266-ab-v1')) &&
       matchesWirelessPackage(item, machine)
     ) {
-      items.set(item.archive_sha256, { ...item, remote: true })
+      items.set(item.archive_sha256, { ...item, source: 'catalog' })
     }
   }
   for (const item of machine?.packages || []) {
     if (!items.has(item.id) && matchesWirelessPackage(item, machine)) {
-      items.set(item.id, { ...item, remote: false })
+      items.set(item.id, {
+        ...item,
+        source: item.provenance?.source === 'upload' ? 'upload' : 'saved',
+      })
     }
   }
+  const versionCounts = new Map<string, number>()
+  for (const { firmware_version } of items.values()) {
+    versionCounts.set(firmware_version, (versionCounts.get(firmware_version) || 0) + 1)
+  }
   const versions = [...items].sort(
-    ([, a], [, b]) =>
+    ([aID, a], [bID, b]) =>
       Number(a.firmware_version.startsWith('preview')) -
         Number(b.firmware_version.startsWith('preview')) ||
-      b.firmware_version.localeCompare(a.firmware_version, 'en', { numeric: true })
+      b.firmware_version.localeCompare(a.firmware_version, 'en', { numeric: true }) ||
+      Number(bID === machine?.revised_package_id) - Number(aID === machine?.revised_package_id)
   )
   const id = items.has(chosen)
     ? chosen
@@ -162,8 +176,17 @@ export function MachineFirmwareDialog({
     !!selected &&
     (machine.model !== 'pico-c' || machine.verified_display_variant === selected.display_variant) &&
     (!machine.retry_package_id || resuming)
-  const alreadyInstalled =
+  const currentVersionSelected =
     !!selected && selected.firmware_version === machine?.current_version && !resuming
+  const revisedBuild = currentVersionSelected && id === machine?.revised_package_id
+  const alreadyInstalled = currentVersionSelected && !revisedBuild
+  const installLabel = resuming
+    ? 'Resume update'
+    : alreadyInstalled
+      ? 'Already installed'
+      : revisedBuild
+        ? 'Install revised build'
+        : 'Install'
   async function checkUpdates() {
     setActivity('Checking…')
     setVerificationError('')
@@ -180,7 +203,7 @@ export function MachineFirmwareDialog({
     setVerificationError('')
     setActivity(install ? 'Preparing update…' : 'Downloading…')
     try {
-      if (selected.remote) {
+      if (selected.source === 'catalog') {
         const saved = await api<FirmwarePackage>(`/firmware/releases/${id}/stage`, {
           method: 'POST',
         })
@@ -370,7 +393,11 @@ export function MachineFirmwareDialog({
                   <option key={key} value={key}>
                     {v.firmware_version}
                     {v.display_variant ? ' · ' + v.display_variant.toUpperCase() : ''}
-                    {v.firmware_version === machine?.current_version ? ' · Current version' : ''}
+                    {(versionCounts.get(v.firmware_version) ?? 0) > 1
+                      ? ` · ${packageSources[v.source]} (${key.slice(0, 12)})`
+                      : v.firmware_version === machine?.current_version
+                        ? ' · Current version'
+                        : ''}
                   </option>
                 ))}
               </select>
@@ -381,7 +408,7 @@ export function MachineFirmwareDialog({
                   disabled={alreadyInstalled || !!activity || saving}
                   onClick={() => void useVersion(true)}
                 >
-                  {resuming ? 'Resume update' : alreadyInstalled ? 'Already installed' : 'Install'}
+                  {installLabel}
                 </Button>
               )}
               <Button
