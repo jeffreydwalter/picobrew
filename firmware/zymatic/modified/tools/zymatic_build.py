@@ -20,7 +20,9 @@ LIMIT = 0x1fc00
 BSS = 0x2c8a
 VERSION = "1.0.0"
 PROFILE = "extended"
+INITIAL_RELEASE = "1.0.0-initial"
 ARCHIVED_MANIFESTS = {
+    INITIAL_RELEASE: "84dae779c27ad23dbed576352cda79ab92c0e29ccd37137197ac2f6a85d1942e",
     "1.3.3": "c279cbc302297af4238f28de1dd61174383c79b4a4f59910885ce7c79a2dc55e",
     "1.3.2": "6eda0d88047c6171f2e138386180add9cf0be201f2bdac7750cff0a26d573173",
     "1.3.0": "cc70f6d3ea0d137def6b669533b8b12fba25110b33220be4f0dbb3798f55f9e1",
@@ -70,7 +72,7 @@ def template_directory(version):
 
 
 def seek_layout(version):
-    return version in (VERSION, "1.3.3")
+    return version in (VERSION, INITIAL_RELEASE, "1.3.3")
 
 
 def template(version=VERSION):
@@ -167,7 +169,7 @@ def patch_list(symbols, port=80, version=VERSION):
             patches.append((label, pc, load_pointer(register, 80), load_pointer(register, port)))
     # About Zymatic and the startup banner both convert three literal unsigned
     # components with base-10 itoa. The stock wire protocol remains 1.1.14.
-    _, minor, patch = map(int, version.split("."))
+    _, minor, patch = map(int, version.partition("-")[0].split("."))
     for label, pc, old, new in [("about-minor", 0x8428, 1, minor), ("about-patch", 0x844c, 14, patch),
                                 ("boot-minor", 0xa444, 1, minor), ("boot-patch", 0xa468, 14, patch)]:
         patches.append((label, pc, immediate(0xe000, 24, old), immediate(0xe000, 24, new)))
@@ -234,7 +236,7 @@ def build_application(original, key, uid, hub_host="picobrew.com", offline_progr
     image[where:where+2] = struct.pack("<H", legacy_sum(image))
     image[-4:] = struct.pack("<I", zlib.crc32(image[:-4]))
     metadata = {
-        "schema_version": 1, "model": "zymatic", "firmware_version": version, "build_profile": PROFILE,
+        "schema_version": 1, "model": "zymatic", "firmware_version": version.partition("-")[0], "build_profile": PROFILE,
         "oem_application_sha256": stock.APP_SHA256, "binary_sha256": sha(image),
         "application_bytes": len(image), "uid": uid, "hub_host": hub_host, "hub_port": port,
         "offline_program": recipes.unpack_program(fields["provision_recipe"]),

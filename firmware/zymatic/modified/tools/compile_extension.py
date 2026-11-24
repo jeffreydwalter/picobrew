@@ -10,6 +10,7 @@ import tarfile
 import tempfile
 
 import compact_build
+import compact_site
 import zymatic_build as build
 
 
@@ -29,6 +30,7 @@ def compile_compact(toolchain, destination):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(source.extractfile(entry).read())
         root = work / "firmware/zymatic/modified"
+        compact_site.stage(root)
         path = root / "zymatic_api.c"
         code = path.read_text()
         if code.count(compact_build.PREVIEW_VERSION) != 1:

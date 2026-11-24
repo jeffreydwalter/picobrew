@@ -1,0 +1,19 @@
+<details><summary>Settings</summary>
+<label>Appearance <select id="theme">
+  <option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option>
+</select></label></details>
+<script>
+{
+  const picker = document.getElementById("theme");
+  const key = "picobrew-theme";
+  function apply(value) {
+    picker.value = value === "light" || value === "dark" ? value : "system";
+    document.documentElement.style.colorScheme = picker.selectedIndex ? picker.value : "";
+  }
+  try { apply(localStorage[key]); } catch {}
+  picker.onchange = () => {
+    apply(picker.value);
+    try { localStorage[key] = picker.value; } catch {}
+  };
+}
+</script>

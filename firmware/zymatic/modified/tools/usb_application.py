@@ -57,7 +57,7 @@ def install_pages(before, original, installed, key_file, host, offline_program=N
     path = key_file(uid) if callable(key_file) else key_file
     key = read_key(path, create=not installed)
     if installed:
-        prior_release = usb_layout.release_for(installed["build_profile"], installed["firmware_version"])
+        prior_release = usb_layout.installed_release(installed)
         prior, _ = prior_release.build_application(original, key, uid, installed["hub_host"], installed["offline_program"])
         if before[:len(prior)] != prior:
             raise ValueError("Supplied API key does not match the installed image")

@@ -19,14 +19,14 @@ MAX_APPLICATION = 0x1fc00
 def release_for(profile, version=build.VERSION):
     if profile == build.PROFILE and version in (build.VERSION, *build.ARCHIVED_MANIFESTS):
         module = build
-    elif profile == compact_build.PROFILE and version in (build.VERSION, compact_build.PREVIEW_VERSION):
+    elif profile == compact_build.PROFILE and version in (build.VERSION, build.INITIAL_RELEASE, compact_build.PREVIEW_VERSION):
         module = compact_build
     else:
         raise ValueError("Unknown Zymatic build profile or firmware version")
     if version == build.VERSION:
         return module
     return SimpleNamespace(
-        VERSION=version, PROFILE=profile, template=partial(module.template, version=version),
+        VERSION=version.partition("-")[0], PROFILE=profile, template=partial(module.template, version=version),
         build_application=partial(module.build_application, version=version),
         recognize_private_application=partial(module.recognize_private_application, version=version),
     )
@@ -35,9 +35,18 @@ def release_for(profile, version=build.VERSION):
 def known_releases():
     yield compact_build
     yield build
+    yield release_for(compact_build.PROFILE, build.INITIAL_RELEASE)
     yield release_for(compact_build.PROFILE, compact_build.PREVIEW_VERSION)
     for version in build.ARCHIVED_MANIFESTS:
         yield release_for(build.PROFILE, version)
+
+
+def installed_release(installed):
+    for release in known_releases():
+        if release.PROFILE == installed["build_profile"] and release.VERSION == installed["firmware_version"]:
+            if release.template()[1]["extension_sha256"] == installed["extension_sha256"]:
+                return release
+    raise ValueError("Unknown installed Zymatic firmware build")
 
 
 def identify(flash):
