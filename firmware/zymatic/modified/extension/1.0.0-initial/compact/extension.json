@@ -1,0 +1,31 @@
+{
+  "compiler": "Arduino AVR GCC 7.3.0-atmel3.6.1-arduino7",
+  "extension_bytes": 8960,
+  "extension_sha256": "1d47cb29ec2c5fb8405104380bd47ff0d60b0093f89d5a5e8807127cf29cafac",
+  "source_sha256": "5036954443044bfd6ce20c153448a3943b71485cbf3ae8c7c6bb98e33e51de30",
+  "symbols": {
+    "__extension_bss_end": 8400636,
+    "provision_crc": 122620,
+    "provision_host": 122490,
+    "provision_key": 122587,
+    "provision_legacy_sum": 121972,
+    "provision_recipe": 121974,
+    "provision_uid": 122554,
+    "zymatic_after_loop": 118160,
+    "zymatic_begin_brew": 118736,
+    "zymatic_brew_button": 118102,
+    "zymatic_factory_compare": 119698,
+    "zymatic_factory_stamp": 119706,
+    "zymatic_hub_authority": 8400011,
+    "zymatic_hub_host": 8400075,
+    "zymatic_image_invalid": 119694,
+    "zymatic_menu_button": 118138,
+    "zymatic_read_stock_serial": 118018,
+    "zymatic_recover_recipe": 118646,
+    "zymatic_setup": 118168,
+    "zymatic_start_session": 118666,
+    "zymatic_sync_or_local": 118780,
+    "zymatic_wifi_boot_branch": 119716,
+    "zymatic_wifi_or_offline": 118458
+  }
+}

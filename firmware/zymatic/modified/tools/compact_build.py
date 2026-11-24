@@ -9,7 +9,7 @@ import zlib
 
 import offline_program as recipes
 import usb_stock as stock
-from zymatic_build import VERSION
+from zymatic_build import INITIAL_RELEASE, VERSION
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "extension"
@@ -48,6 +48,9 @@ def sha(data):
 def template(version=VERSION):
     if version == VERSION:
         directory = TEMPLATE / "compact"
+        manifest_hash = "b79e19e6967bdcf48a9baab497a3938a551d6a75a594222c63fe1795e6bbe248"
+    elif version == INITIAL_RELEASE:
+        directory = TEMPLATE / INITIAL_RELEASE / PROFILE
         manifest_hash = "0c236a65358e2b8583b6d57c053509493b234387fe17f51f464693bce1d18840"
     elif version == PREVIEW_VERSION:
         directory = TEMPLATE / PREVIEW_VERSION
@@ -124,7 +127,7 @@ def patch_list(symbols, port=80, version=VERSION):
             patches.append((label, pc, load_pointer(register, 80), load_pointer(register, port)))
     # About Zymatic and the startup banner both convert three literal unsigned
     # components with base-10 itoa. The stock wire protocol remains 1.1.14.
-    _, minor, patch = map(int, version.split("."))
+    _, minor, patch = map(int, version.partition("-")[0].split("."))
     for label, pc, old, new in [("about-minor", 0x8428, 1, minor), ("about-patch", 0x844c, 14, patch),
                                 ("boot-minor", 0xa444, 1, minor), ("boot-patch", 0xa468, 14, patch)]:
         patches.append((label, pc, immediate(0xe000, 24, old), immediate(0xe000, 24, new)))
@@ -178,7 +181,7 @@ def build_application(original, key, uid, hub_host="picobrew.com", offline_progr
     image[where:where+2] = struct.pack("<H", legacy_sum(image))
     image[-4:] = struct.pack("<I", zlib.crc32(image[:-4]))
     metadata = {
-        "schema_version": 1, "model": "zymatic", "firmware_version": version, "build_profile": PROFILE,
+        "schema_version": 1, "model": "zymatic", "firmware_version": version.partition("-")[0], "build_profile": PROFILE,
         "oem_application_sha256": stock.APP_SHA256, "binary_sha256": sha(image),
         "application_bytes": len(image), "uid": uid, "hub_host": hub_host, "hub_port": port,
         "offline_program": recipes.unpack_program(fields["provision_recipe"]),

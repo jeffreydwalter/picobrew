@@ -138,10 +138,12 @@ static uint8_t read_at(uint16_t a, void *data, uint8_t size)
 #endif
     return available;
 }
+/* The AVR linker would otherwise duplicate the EEPROM address and queue helpers
+ * in multiple recording paths, consuming the local website's flash allowance. */
 static uint8_t slot(uint32_t id) { return (uint8_t)(id - 1u) & 7u; }
-static uint16_t meta_addr(uint8_t s) { return HEADER + s * 32u; }
-static uint16_t row_addr(uint8_t n) { return DATA + n * 16u; }
-static uint8_t plus(uint8_t pos, uint8_t count)
+static __attribute__((noinline)) uint16_t meta_addr(uint8_t s) { return HEADER + s * 32u; }
+static __attribute__((noinline)) uint16_t row_addr(uint8_t n) { return DATA + n * 16u; }
+static __attribute__((noinline)) uint8_t plus(uint8_t pos, uint8_t count)
 {
     uint16_t n = (uint16_t)pos + count;
     return (uint8_t)(n >= ZH_ROWS ? n - ZH_ROWS : n);
@@ -155,7 +157,7 @@ static uint8_t header_ok(Header *v)
     return v->id && v->first < ZH_ROWS && !v->name[20] && v->check == crc(&v->id, 26);
 }
 static uint8_t row_ok(Sample *v) { return v->check == crc(&v->id, 13); }
-void zymatic_history_init(void)
+__attribute__((noinline)) void zymatic_history_init(void)
 {
     memset(&h, 0, sizeof(h));
     while (!ready())
@@ -227,7 +229,7 @@ void zymatic_factory_clear_byte(void *object, uint16_t address, uint8_t value)
         zymatic_history_init();
 }
 
-static void queue(uint16_t addr, uint8_t len)
+static __attribute__((noinline)) void queue(uint16_t addr, uint8_t len)
 {
     h.addr = addr;
     h.len = len;

@@ -3,21 +3,23 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { minify } = require("terser");
 const { gzipAsync } = require("@gfx/zopfli");
+const scriptOptions = { toplevel: true, compress: { passes: 3 } };
 const site = path.join(__dirname, "../site");
 
 async function embed(name, symbol, section) {
   let source = fs.readFileSync(path.join(site, name));
   if (name.endsWith(".js")) {
-    const { code } = await minify(source.toString(), {
-      toplevel: true,
-      compress: { passes: 3 },
-    });
+    const { code } = await minify(source.toString(), scriptOptions);
     source = Buffer.from(code);
   } else if (name.endsWith(".html")) {
+    let html = source.toString().replace("<!-- settings -->", fs.readFileSync(path.join(site, "settings.html"), "utf8"));
+    for (const [tag, script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+      const { code } = await minify(script, scriptOptions);
+      html = html.replace(tag, "<script>" + code + "</script>");
+    }
     // Keep spaces between neighboring inline elements. Remove line indentation.
     source = Buffer.from(
-      source
-        .toString()
+      html
         .trim()
         .replace(/\s*\n\s*/g, ""),
     );
@@ -47,6 +49,7 @@ ${rows.join(",\n")}
 }
 
 Promise.all([
+  embed("compact.html", "zymatic_compact_site", "PROGMEM"),
   embed("index.html", "zymatic_site", "PROGMEM"),
   embed("pair.js", "zymatic_pair_js", "ZYMATIC_SITE_SECTION"),
   embed("favicon.ico", "zymatic_favicon", "PROGMEM"),
