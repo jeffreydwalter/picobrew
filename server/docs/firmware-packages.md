@@ -2,7 +2,7 @@
 
 Open a machine's **Firmware** view to see wireless update versions for its exact model. Choose a version and click **Install**. The Hub fetches the selected archive, validates it and saves it for reuse. **Download** saves that version to your computer. You can downgrade to an earlier compatible OTA release. The running version is marked **Already installed**.
 
-For a Pico S running the original public 1.0.0 build, **Install revised build** replaces it with the 1.0.0 build with the **Brew Recipe** menu and selectable light and dark themes on the device website. The Hub offers this when it has the original successful installation receipt for that brewer. It checks the running application’s hash before entering recovery and verifies the revised application and website. After confirmation, that package shows **Already installed**.
+If this Hub installed the original public 1.0.0 on your Pico S, choose **Install revised build** to get the **Brew Recipe** menu and light and dark themes. The Hub checks the original installation receipt and running image, then verifies the new application and website. Once the brewer confirms the update, the button reads **Already installed**.
 
 ## GitHub source and version checks
 
@@ -12,7 +12,7 @@ While physical devices are registered, the Hub checks daily. The Brewery page di
 
 The public 1.0.0 catalog has seven wireless packages covering Pico S, Pico Pro, both Pico C displays, generic Z modules, PicoStill, and PicoFerm. The picker filters them for the selected machine. Pico C recovery checks the application's display marker, and the Z and accessory packages specify their recovery protocol. The Hub checks the connected device’s identity, protocol and flash layout before transfer. Both Zymatic 1.0.0 builds are provisioned over USB with the owner’s key. [USB setup and stock restoration](#usb-setup-backup-and-stock-restoration)
 
-The revised Pico S, Pro, C and Z packages still report **1.0.0**. On the updated machine, **Brew Recipe** opens the saved recipe list. Each ZIP has its own SHA-256 in the catalog. Select **Check for Updates** to refresh a previously cached catalog. For a Pico S that this Hub updated to the original 1.0.0, the firmware dialog can offer the revised package at the same version. The Hub checks its earlier install receipt and the brewer’s running image before entering recovery. Once the brewer confirms the revised build, the dialog shows **Already installed**. The original GitHub tag retains the first set of packages.
+The revised builds retain version **1.0.0**. The default branch catalog identifies each package by its SHA-256. The original GitHub tag identifies the first public build.
 
 A generic Z module and PicoStill transfer only their application over Wi-Fi. Each machine’s protected recovery and existing filesystem stay in place. PicoFerm transfers the application built for its inactive bank. After reboot the Hub reads the running image hash before confirming the new bank. A failed or unconfirmed PicoFerm trial returns to the previous bank on the next reset. Earlier single-application installations need USB setup to gain these capabilities.
 
