@@ -2,7 +2,9 @@
 
 Each standalone brewer build serves a local website and API directly from the machine. The Z-series build targets one module. The Zymatic serves incoming requests over Ethernet, and its available controls depend on the installed memory profile. Both Zymatic builds retain the original 1.1.14 brew controller. PicoStill and PicoFerm also serve their own websites and APIs for accessory-specific functions.
 
-The table describes the public **1.0.0** applications. Build and simulator results establish software behavior. Installation, sensors and brewing require hardware checks. [Matching an image to a machine](machine-identity.md)
+The tables describe the standalone applications in this checkout. Build and simulator results establish software behavior. Installation, sensors and brewing require hardware checks. [Matching an image to a machine](machine-identity.md)
+
+On Pico S, Pro, C and Z, **Brew Recipe** runs a saved machine recipe. On S, Pro and C, this is the menu previously called **Brew PicoPak**. Recipes made in the Hub and imported PicoPak programs use the same menu. Firmware 1.0.0 also has a separate **Manual Brew** mode for interactive brewing. Older sessions remain available in history.
 
 ## Common behavior
 
@@ -38,7 +40,7 @@ See the [firmware architecture and verification](../firmware/zymatic/modified/ap
 | Installed recipe catalogue | Sixteen recipes, up to fifteen steps | Sixteen recipes, up to fifteen steps | Not advertised | Not advertised |
 | Starter recipes and restore | Attributed model recipes | Requires an attributed native conversion; not advertised | Not applicable | Not applicable |
 | Physical panel and remote display/input | Native monochrome panel and encoder | Native grayscale panel, four display pages and ordered encoder input | No panel invented | No panel invented |
-| Normal operating programs | Native brewer programs and maintenance | Native manual, beer, sous vide, coffee and maintenance programs | Native manual, essential-oil and cleaning modes | Explicit recording, sampling and calibration |
+| Normal operating programs | Native brewer programs and maintenance | Saved beer recipes, sous vide, coffee and maintenance programs | Native manual, essential-oil and cleaning modes | Explicit recording, sampling and calibration |
 | Interrupted-operation recovery | Explicit confirmation with unchanged-recipe checks | Explicit confirmation of a retained owned recipe/program checkpoint | Interrupted history; no automatic mode restart | Interrupted history; no automatic recording restart |
 | Outputs | Recovered brewer controls | Recovered heater and MSP pump/valve controls | Pump and two fan channels; no heater | No heater, pump or fan controls |
 | Readings | Recovered brewer sensors | Recovered brewer and auxiliary sensors | Named temperatures and pressure | Temperature, raw pressure and battery voltage |

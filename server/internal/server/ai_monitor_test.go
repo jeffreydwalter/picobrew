@@ -147,7 +147,7 @@ func TestAIStartConsentBindsOnceAndNeverStartsOrControlsTheBrewer(t *testing.T) 
 		t.Fatalf("monitor rate/control boundary: provider=%d commands=%d", calls.Load(), adapter.calls.Load())
 	}
 	// A subsequent physical brew can replace the current one between Hub polls.
-	physicalBrew(t, adapter, "manual")
+	physicalBrew(t, adapter, "brew")
 	commandCount := adapter.calls.Load()
 	s.monitorTick(context.Background())
 	finished := readAIMonitor(t, client, base, csrf)
@@ -221,7 +221,7 @@ func TestAIPendingConsentCannotSurviveFailureExpiryCancellationOrAmbiguousSessio
 
 func TestAIExplicitLiveOptInAcceptsVerifiedFrontPanelBrewHistory(t *testing.T) {
 	s, client, base, csrf, adapter, calls := aiMonitorFixture(t)
-	physicalBrew(t, adapter, "manual")
+	physicalBrew(t, adapter, "brew")
 	adapter.Adapter.(*aiBoundaryAdapter).statusCommand.Store("front-panel")
 	current := readAIMonitor(t, client, base, csrf)
 	if current.CurrentBrewID == "" || current.Enabled {
@@ -248,7 +248,7 @@ func TestAIMonitorRequiresExplicitCurrentBrewAndPreservesCommandConfirmation(t *
 	if code != 400 || adapter.calls.Load() != 0 {
 		t.Fatalf("AI was armed for maintenance: %d %s", code, body)
 	}
-	physicalBrew(t, adapter, "manual")
+	physicalBrew(t, adapter, "brew")
 	current := readAIMonitor(t, client, base, csrf)
 	for _, id := range []string{"", "machine-old", "other-machine-1"} {
 		code, body = request(t, client, "PUT", base+"/api/v1/devices/machine/ai-monitor", csrf, map[string]any{"enabled": true, "brew_id": id}, nil)
@@ -288,7 +288,7 @@ func TestAIActiveConsentSurvivesRejectedCommandsButNeverChangesSession(t *testin
 	if code != 200 {
 		t.Fatalf("enable: %d %s", code, body)
 	}
-	code, _ = aiStartCommand(t, client, base, csrf, "manual", false)
+	code, _ = aiStartCommand(t, client, base, csrf, "rinse", false)
 	if code != 409 {
 		t.Fatal("busy brew did not reject a different program")
 	}
@@ -306,7 +306,7 @@ func TestAIActiveConsentSurvivesRejectedCommandsButNeverChangesSession(t *testin
 	if after.State != "active" || after.BrewID != current.CurrentBrewID {
 		t.Fatal("uncertain command moved the existing exact-session consent")
 	}
-	physicalBrew(t, adapter, "manual")
+	physicalBrew(t, adapter, "brew")
 	s.monitorTick(context.Background())
 	if after = readAIMonitor(t, client, base, csrf); after.Enabled || after.State != "finished" {
 		t.Fatalf("later session inherited consent after uncertain command: %+v", after)

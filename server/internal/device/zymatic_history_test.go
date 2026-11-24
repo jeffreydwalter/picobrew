@@ -118,7 +118,7 @@ func TestGuardedZymaticDialPreservesFrameRevision(t *testing.T) {
 	if err := p.Command(ctx, domain.Command{Command: "encoder", Click: true, DisplayRevision: &rev}); err != nil || !seen {
 		t.Fatal(err)
 	}
-	if validateCommand(domain.Command{Command: "encoder", Click: true, DisplayRevision: &rev}) == nil {
+	if validateDiscoveredCommand(domain.Command{Command: "encoder", Click: true, DisplayRevision: &rev}, domain.Capabilities{Commands: []string{"encoder"}}) == nil {
 		t.Fatal("legacy encoder accepted a foreign argument")
 	}
 }

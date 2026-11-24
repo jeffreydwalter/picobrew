@@ -29,10 +29,9 @@ var simContentFrame []byte
 type panelItem struct{ label, action string }
 
 var mainPanel = []panelItem{
-	{"Brew PicoPak", "recipes"},
+	{"Brew Recipe", "recipes"},
 	{"Sous Vide", "sous-vide"},
 	{"Cold Brew", "cold-brew"},
-	{"Manual Brew", "manual"},
 	{"Utilities", "utilities"},
 	{"Settings", "settings"},
 }

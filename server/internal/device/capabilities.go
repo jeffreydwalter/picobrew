@@ -33,7 +33,7 @@ func validateDiscoveredCommand(command domain.Command, caps domain.Capabilities)
 	}
 	descriptor, described := caps.CommandFields[command.Command]
 	if !described {
-		return validateCommand(command)
+		return validateCommand(command, includes(caps.Commands, "manual"))
 	}
 	if !commandName.MatchString(command.Command) {
 		return invalid("Command name is invalid")
