@@ -624,7 +624,7 @@ bool Adapter::show_ferment(){
         for(std::uint8_t i=0;i<ferment_.count;++i){
             char label[48];
             const char* action=ferment_.entries[i].linked?text("Unlink","Desvincular","Dissocier"):text("Link","Vincular","Associer");
-            std::snprintf(label,sizeof label,"%s %s",action,ferment_.entries[i].name);
+            ::snprintf(label,sizeof label,"%s %s",action,ferment_.entries[i].name);
             if(!add(FermentSlot,label,i))return false;
         }
         if(ferment_.more&&!add(FermentNext,text("Next page","Siguiente pagina","Page suivante")))return false;

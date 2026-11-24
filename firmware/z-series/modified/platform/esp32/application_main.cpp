@@ -117,7 +117,7 @@ struct Application {
             else if(req->method==PICO_HTTP_GET || req->method==PICO_HTTP_POST)
                 status=pico_ferment_http(self.adapter.ferment_menu(),req->method==PICO_HTTP_POST,
                                          req->body,req->body_length,arena,capacity);
-            if(status==401 || status==405) std::snprintf(arena,capacity,"{}");
+            if(status==401 || status==405) ::snprintf(arena,capacity,"{}");
             *res={status,"application/json",reinterpret_cast<const std::uint8_t*>(arena),std::strlen(arena),nullptr};
             return true;
         }
