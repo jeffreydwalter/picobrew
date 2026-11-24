@@ -15,7 +15,7 @@ async function embed(name, symbol, section) {
     let html = source.toString().replace("<!-- settings -->", fs.readFileSync(path.join(site, "settings.html"), "utf8"));
     for (const [tag, script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
       const { code } = await minify(script, scriptOptions);
-      html = html.replace(tag, "<script>" + code + "</script>");
+      html = html.replace(tag, () => "<script>" + code + "</script>");
     }
     // Keep spaces between neighboring inline elements. Remove line indentation.
     source = Buffer.from(
