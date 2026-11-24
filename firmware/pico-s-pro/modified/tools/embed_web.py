@@ -51,8 +51,11 @@ def generate():
         # to 256-byte units; each file adds 512 metadata bytes before the 4 KiB
         # block rounding. These maxima use the whole final block without
         # accidentally allocating another block just for metadata.
-        if len(packed) > 65024:
-            raise ValueError('Browser asset exceeds the supported allocation range: ' + name)
+        # The installed recovery's pico_recovery_file_limit uses these fixed
+        # per-file maxima, even if the aggregate serial flash has free space.
+        limit = 3584 if name in ('style.css', 'api-explorer.js') else 7680
+        if len(packed) > limit:
+            raise ValueError(f'{name}: {len(packed)} gzip bytes exceed the recovery limit of {limit}')
         blocks = (len(packed) + 512 + 4095) // 4096
         entry = {'source': name, 'file_path': '/local/web/' + DEVICE_NAMES[name],
                  'payload': payload, 'content_type': content_type,
