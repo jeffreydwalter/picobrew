@@ -58,6 +58,8 @@ The modified Z profile uses Wi-Fi for its local API. Its recovered OEM source
 also retains the original W5500 Ethernet and vendor protocols. Modified
 firmware does not expose those cloud settings as required setup steps.
 
+On stock Z firmware, Group Brewing offers a session started on one unit to the other units. Standalone 1.0.0 supports independent programs on each registered unit. The factory group invitation and multi-machine starts are unavailable in the Hub. [Z Series manual](https://www.picobrew.com/about/manual?p=z_manual.txt)
+
 ## Recipe checks and manufacturer care
 
 The Hub checks ingredient recipes against the Pico S, Pro, C, generic Z and Zymatic brewing profiles. A recipe can remain in the planning library when the selected brewer cannot run it. During transfer the Hub applies the target’s limits and rejects unsupported mash methods, mash routes that bypass the grain, and schedules that would change timed hop contact. An intermediate drain can interrupt a timed hop addition. The Hub flags that timing conflict before transfer. It also blocks a generated stock Z export if an unheated step would inherit a previous heating target. Standalone Z can execute that transition. PicoFerm and PicoStill have their own session controls.
