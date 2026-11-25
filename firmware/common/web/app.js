@@ -671,6 +671,9 @@ function readRecipeFile(text) {
       current.add(key);
     }
   }
+  // A revision belongs to the source brewer. An imported copy gets a new one.
+  if(recipe && Object.hasOwn(recipe,'id') && Number.isInteger(recipe.revision) &&
+     recipe.revision>0 && recipe.revision<=0xffffffff)delete recipe.revision;
   const validId=id=>typeof id==='string' && id.length>=1 && id.length<=20 && !/[^a-zA-Z0-9_-]/.test(id);
   if(recipe && (Object.hasOwn(recipe,'Steps') || Object.hasOwn(recipe,'z_program'))) {
     if(state.info.z_program_maker!==true)throw new Error('This brewer does not support Z Program Maker files.');

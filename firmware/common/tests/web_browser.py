@@ -85,8 +85,10 @@ def main():
                             if request.method=='PUT':
                                 payload=request.post_data_json
                                 assert payload.get('create_only') == (True if key not in saved_recipes else None)
+                                assert 'revision' not in payload
+                                assert payload.get('if_revision') == (1 if key in saved_recipes else None)
                                 saved_recipes[key]=payload['z_program']
-                            result={'id':key,'z_program':saved_recipes[key]}
+                            result={'id':key,'revision':1,'z_program':saved_recipes[key]}
                         elif path=='/telemetry':result={'enabled':False,'host':'','port':8080,'status':{'state':'disabled'}}
                         elif path=='/commands':
                             body=request.post_data_json;commands.append(body);result={'accepted':True,'command':body['command']};code=202
@@ -226,7 +228,7 @@ def main():
                             expect(page.locator('#notice')).to_contain_text(re.compile('unsupported|repeated|conflicting'))
                             expect(page.locator('#recipeName')).to_have_value(original['Name'])
                         page.once('dialog',lambda d:d.accept())
-                        import_wire(json.dumps({'id':'native-id','z_program':original}))
+                        import_wire(json.dumps({'id':'native-id','revision':42,'z_program':original}))
                         expect(page.locator('#recipeId')).to_have_value('native-id')
                         page.locator('#saveRecipe').click()
                         expect(page.locator('#notice')).to_contain_text('Recipe saved')
