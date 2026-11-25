@@ -9,6 +9,7 @@ import secrets
 
 import usb_layout
 import usb_stock as stock
+from zymatic_build import has_oem_recipe_label
 
 PAGE = 256
 EXTENSION_LIMIT = usb_layout.CONSERVATIVE
@@ -58,7 +59,9 @@ def install_pages(before, original, installed, key_file, host, offline_program=N
     key = read_key(path, create=not installed)
     if installed:
         prior_release = usb_layout.installed_release(installed)
-        prior, _ = prior_release.build_application(original, key, uid, installed["hub_host"], installed["offline_program"])
+        # The two menu variants of 1.0.0 share an extension. Reproduce the exact installed image.
+        prior, _ = prior_release.build_application(original, key, uid, installed["hub_host"], installed["offline_program"],
+                                                   legacy_menu=has_oem_recipe_label(before))
         if before[:len(prior)] != prior:
             raise ValueError("Supplied API key does not match the installed image")
         if offline_program is None:

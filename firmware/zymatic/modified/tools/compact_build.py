@@ -9,7 +9,7 @@ import zlib
 
 import offline_program as recipes
 import usb_stock as stock
-from zymatic_build import INITIAL_RELEASE, VERSION
+from zymatic_build import INITIAL_RELEASE, RECIPE_MENU_PATCH, VERSION, has_oem_recipe_label
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "extension"
@@ -88,7 +88,7 @@ def call(address):
     return b"\x0e\x94" + struct.pack("<H", address // 2)
 
 
-def patch_list(symbols, port=80, version=VERSION):
+def patch_list(symbols, port=80, version=VERSION, *, legacy_menu=False):
     end = symbols["__extension_bss_end"] - 0x800000
     host = symbols["zymatic_hub_host"] - 0x800000
     authority = symbols["zymatic_hub_authority"] - 0x800000
@@ -109,6 +109,8 @@ def patch_list(symbols, port=80, version=VERSION):
         ("zero-bss-low", 0x233c, bytes.fromhex("aa38"), immediate(0x3000, 26, end & 255)),
         ("malloc-start", 0x1bb10, struct.pack("<H", BSS), struct.pack("<H", end)),
     ]
+    if version == VERSION and not legacy_menu:
+        patches.append(RECIPE_MENU_PATCH)
     for pc in SERIAL_READS:
         patches.append(("stock-serial", pc, bytes.fromhex("0e94a121"),
                         call(symbols["zymatic_read_stock_serial"])))
@@ -159,7 +161,7 @@ def provisioning(key, uid, hub_host):
             "provision_host": hub_host.encode("ascii").ljust(64, b"\0")}
 
 
-def build_application(original, key, uid, hub_host="picobrew.com", offline_program=None, *, version=VERSION):
+def build_application(original, key, uid, hub_host="picobrew.com", offline_program=None, *, version=VERSION, legacy_menu=False):
     if not stock.is_original_app(original):
         raise ValueError("Use the verified, decoded application from the Zymatic 1.1.14 archive")
     image = bytearray(original + b"\xff"*(START - len(original)))
@@ -167,7 +169,7 @@ def build_application(original, key, uid, hub_host="picobrew.com", offline_progr
     image.extend(code)
     symbols = record["symbols"]
     _, port = hub_origin(hub_host)
-    patches = patch_list(symbols, port, version)
+    patches = patch_list(symbols, port, version, legacy_menu=legacy_menu)
     for name, pc, before, after in patches:
         if image[pc:pc+len(before)] != before:
             raise ValueError(f"Original 1.1.14 bytes differ at {name}")
@@ -212,14 +214,16 @@ def recognize_private_application(flash, *, version=VERSION):
     except ValueError:
         return None
     recovered = bytearray(application[:stock.APP_SIZE])
-    for name, pc, before, after in patch_list(symbols, port, version):
+    legacy_menu = has_oem_recipe_label(application)
+    for name, pc, before, after in patch_list(symbols, port, version, legacy_menu=legacy_menu):
         if recovered[pc:pc+len(after)] != after:
             return None
         recovered[pc:pc+len(before)] = before
     if not stock.is_original_app(recovered):
         return None
     try:
-        expected, metadata = build_application(bytes(recovered), values["provision_key"], uid, host, recipe, version=version)
+        expected, metadata = build_application(bytes(recovered), values["provision_key"], uid, host, recipe,
+                                               version=version, legacy_menu=legacy_menu)
     except ValueError:
         return None
     if expected != application:

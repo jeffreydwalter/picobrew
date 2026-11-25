@@ -132,6 +132,26 @@ class ApplicationTest(unittest.TestCase):
                 self.assertEqual(usb_layout.identify(new_flash), current)
                 self.assertEqual(new_flash[limit:], boot)
 
+    def test_upgrade_from_previous_menu_on_both_profiles(self):
+        self.key.parent.mkdir(mode=0o700)
+        key = bytes(range(32))
+        stock.save_private(self.key, key.hex().encode())
+        uid = "ab" * 16
+        for release, limit, prior_sha in (
+            (compact_build, avr.BOOT_MIN, "cf793d22c7a5d042b326d8b335b4124ff1e1cf06913a67a27cac8ca09c673bfb"),
+            (build, usb_layout.MAX_APPLICATION, "d445722d5d50cfa44ea414bf379f71646369cf850c9ce8e881a2b73e8015ec39"),
+        ):
+            with self.subTest(profile=release.PROFILE):
+                prior, metadata = release.build_application(self.original, key, uid, "brew.lan", legacy_menu=True)
+                self.assertEqual(sha256(prior).hexdigest(), prior_sha)
+                flash = prior.ljust(avr.FLASH, b"\xff")
+                self.assertEqual(usb_layout.identify(flash), metadata)
+                target, current = usb_application.install_pages(flash, self.original, metadata, self.key, None, limit=limit)
+                expected, _ = release.build_application(self.original, key, uid, "brew.lan")
+                self.assertNotEqual(prior, expected)
+                self.assertEqual(target[:len(expected)], expected)
+                self.assertEqual(usb_layout.identify(target), current)
+
     def test_profiles_report_same_version_and_different_capabilities(self):
         for limit, profile in ((0x1e000, "compact"), (0x1f000, "compact"),
                                (0x1f800, "compact"), (0x1fc00, "extended")):
