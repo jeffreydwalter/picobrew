@@ -61,14 +61,21 @@ bool cloud_step(void* context,std::size_t index,HttpRecipeStep& out){
     out.name=step.name;out.location=step.location;
     out.temperature_fahrenheit=step.target_f;out.temperature_scan_fahrenheit=step.target_f;
     out.minutes=step.minutes;out.drain_minutes=step.drain_minutes;
+    out.action=step.pak.action;out.minimum_minutes=step.pak.minimum;out.maximum_minutes=step.pak.maximum;
     return true;
 }
 ProgramBuildResult build(ProgramBuffer& buffer,const api::Recipe& recipe,double pressure,double boil){
-    if(recipe.z_cloud_water_ml){
+    if(recipe.z_cloud_water_ml || recipe.pak.recipe_id){
         HttpRecipe input;
         input.name=recipe.name;input.type_code=recipe.is_beer?"Beer":"Other";input.is_beer=recipe.is_beer;
         input.start_water_liters=archive_water_liters(recipe.z_cloud_water_ml);
         input.step_count=recipe.step_count;input.context=const_cast<api::Recipe*>(&recipe);input.step=cloud_step;
+        if(recipe.pak.recipe_id){
+            input.pico_abv=recipe.pak.abv;input.pico_ibu=recipe.pak.ibu;
+            ProgramParameters settings;settings.abv=recipe.pak.selected_abv;settings.ibu=recipe.pak.selected_ibu;
+            return build_http_recipe(buffer,input,HttpRecipeFormat::PicoPak,SessionType::LocalBrew,
+                recipe.pak.recipe_id,settings,RecipeEnvironment(pressure,boil));
+        }
         // This source grammar uses the Z/Zymatic cloud compiler, even when the
         // kit passed through a PicoPak library. The PicoPak compiler is distinct.
         return build_http_recipe(buffer,input,HttpRecipeFormat::Zymatic,SessionType::LocalBrew,0,
@@ -117,7 +124,7 @@ api::DeviceServices Adapter::services() noexcept {
     out.capabilities=[](void* p){api::Capabilities caps;
         if (static_cast<Adapter*>(p)->wireless_) caps.ota_protocol = "esp32-factory-v1";
         caps.flags=api::Recipes|api::Brewing|api::Heating|api::Pump|api::Temperature|api::Pressure|api::FrontPanel;
-        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus|api::AutoCycle;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.group_brewing_v1=true;caps.picostill_brewer_link_v1=true;caps.zero_minute_steps=true;caps.z_program_maker=true;caps.z_cloud_program_v1=true;caps.z_state_v1=true;caps.dedicated_pause_resume=true;return caps;};
+        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus|api::AutoCycle;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.group_brewing_v1=true;caps.picostill_brewer_link_v1=true;caps.zero_minute_steps=true;caps.z_program_maker=true;caps.z_cloud_program_v1=true;caps.z_picopak_v1=true;caps.z_state_v1=true;caps.dedicated_pause_resume=true;return caps;};
     out.snapshot=[](void* p,api::Snapshot& value){return static_cast<Adapter*>(p)->snapshot(value);};
     out.execute=[](void* p,const api::Command& value){return static_cast<Adapter*>(p)->execute(value);};
     out.idle=[](void* p){return static_cast<Adapter*>(p)->idle();};
@@ -287,7 +294,7 @@ bool Adapter::clear_stop(){
     return true;
 }
 api::Result Adapter::validate_recipe(const api::Recipe& recipe){
-    if(!api::detail::recipe_valid(recipe,true,true,true))return {400,"invalid_recipe","Recipe exceeds supported Z program bounds"};
+    if(!api::detail::recipe_valid(recipe,true,true,true,true))return {400,"invalid_recipe","Recipe exceeds supported Z program bounds"};
     ProgramBuffer temporary;
     if(build(temporary,recipe,101325,100)!=ProgramBuildResult::Ok)return {400,"invalid_recipe","Recipe cannot be represented by the native Z program"};
     return {};
@@ -615,7 +622,7 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
     // The legacy builder uses 11.36 L to estimate heating time. Local API
     // recipes contain no starting water volume. Leave the session quantity
     // unspecified so the native loading screen gives its generic water prompt.
-    if(local_brew&&!selected_recipe_.z_cloud_water_ml)core_.program.parameters.water={0,Unit::Liter};
+    if(local_brew&&!selected_recipe_.z_cloud_water_ml&&!selected_recipe_.pak.recipe_id)core_.program.parameters.water={0,Unit::Liter};
     if(distilling)hold_still_outputs();
     const bool ok=original_core_.perform(original_core_.context,action,result);
     if(ok&&core_.core.state.id==CoreStateId::Starting&&core_.core.state.program_id==id){

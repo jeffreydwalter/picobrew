@@ -46,6 +46,7 @@ struct Capabilities {
     bool dedicated_pause_resume = false;
     bool z_program_maker = false;
     bool z_cloud_program_v1 = false;
+    bool z_picopak_v1 = false;
     bool z_state_v1 = false;
     bool group_brewing_v1 = false;
     bool picostill_brewer_link_v1 = false;
@@ -127,11 +128,20 @@ struct ZProgramStep {
     std::uint16_t drain_seconds = 0;
     bool pause = false, null_target = false, has_time = false;
 };
+struct PicoPakStepOptions {
+    std::int16_t minimum = -1, maximum = -1;
+    std::uint8_t action = 0;
+};
+struct PicoPakOptions {
+    std::uint32_t recipe_id = 0, beer_id = 0;
+    std::int8_t abv = -1, ibu = -1, selected_abv = -1, selected_ibu = -1;
+};
 struct RecipeStep {
     char name[22] = {};
     std::uint8_t location = 0, target_f = 0;
     std::uint16_t minutes = 0, drain_minutes = 0;
     ZProgramStep z;
+    PicoPakStepOptions pak;
 };
 struct Recipe {
     char id[21] = {};
@@ -140,6 +150,7 @@ struct Recipe {
     std::uint8_t step_count = 0;
     // A nonzero charge selects the archived Z cloud grammar (locations 0–6).
     std::uint16_t z_cloud_water_ml = 0;
+    PicoPakOptions pak;
     bool z_program = false, is_beer = true, use_pico_pak = false;
     bool has_metric = false, is_metric = false;
 };

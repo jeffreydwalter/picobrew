@@ -84,6 +84,38 @@ class StandaloneTests(unittest.TestCase):
                 with self.subTest(recipe=row['id']):
                     subprocess.run([self.binary,'original-z',original,wire],check=True)
 
+    def test_pak_invalid_replacements_leave_the_saved_copy_intact(self):self.run_case('pak-input')
+    def test_original_picopak_archive_and_native_strength_compiler(self):
+        catalog=ROOT.parents[2]/'server/internal/catalog/data/catalog.zip'
+        corpus=Path(self.temp.name)/'pak-corpus.jsonl'
+        count=0
+        with zipfile.ZipFile(catalog) as archive, corpus.open('w') as out:
+            for entry in json.loads(archive.read('index.json')):
+                if entry['source_model']!='pico' or entry['source_id']!='picopak-library':continue
+                detail=json.loads(archive.read('entries/'+entry['id']+'.json'))
+                rec=next(r for r in detail['source_records'] if r['sha256']==detail['provenance']['sha256'] and r['path']==detail['provenance']['path'])
+                data=archive.read('originals/'+detail['source_id']+'/'+rec['path'])
+                self.assertEqual(hashlib.sha256(data).hexdigest(),rec['sha256'])
+                raw=json.loads(data);p=detail['native_program']
+                if len(p['name'])>31 or not all(' '<=c<='~' for c in p['name']):continue
+                self.assertEqual(len(raw['Steps']),len(p['steps']))
+                opts=[{'action':s['Action'],**{field:s[key] for key,field in [('MinTime','min_time'),('MaxTime','max_time')]
+                                                     if s.get(key) is not None}} for s in raw['Steps']]
+                ident={'recipe_id':raw['PicoRecipeID'],'beer_id':raw['PicoBeerID'],'abv':raw['Abv'],'ibu':raw['Ibu'],'step_options':opts}
+                # z_pak comes before steps to test object-field order independence.
+                body={'name':p['name'],'z_pak':ident,'steps':p['steps']}
+                def write():
+                    out.write(json.dumps(raw,separators=(',',':'))+'\t'+json.dumps(body,separators=(',',':'))+'\n')
+                write();count+=1
+                for key,route in [('abv',lambda l:l==2),('ibu',lambda l:3<=l<=6)]:
+                    if 1<=ident[key]<=9 and any(s['Action']==0 and route(s['Location']) and
+                        s.get('MinTime') is not None and s.get('MaxTime') is not None for s in raw['Steps']):
+                        ident['selected_'+key]=0;write()
+                        ident['selected_'+key]=10;write()
+                        del ident['selected_'+key]
+            self.assertEqual(count,3694)
+        subprocess.run([self.binary,'pak-corpus',corpus],check=True)
+
     def test_original_z_state_is_authenticated_and_complete(self):self.run_case('native-state')
     def test_wifi_picker_keeps_lease_and_selects_from_deduplicated_snapshot(self):self.run_case('wifi-picker')
     def test_pairing_requires_physical_selection_and_the_displayed_request(self):self.run_case('pairing')
