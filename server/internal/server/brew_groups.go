@@ -21,26 +21,28 @@ type brewGroup struct {
 	MemberSince map[string]time.Time `json:"member_since"`
 }
 type brewInvite struct {
-	ID             string    `json:"id"`
-	GroupID        string    `json:"group_id"`
-	GroupName      string    `json:"group_name"`
-	SourceDeviceID string    `json:"source_device_id"`
-	SourceName     string    `json:"source_name"`
-	TargetDeviceID string    `json:"target_device_id"`
-	GroupSessionID string    `json:"group_session_id"`
-	MenuSerial     string    `json:"menu_serial,omitempty"`
-	SourceUID      string    `json:"source_uid"`
-	TargetUID      string    `json:"target_uid,omitempty"`
-	SourceEvent    string    `json:"source_event"`
-	Action         string    `json:"action"`
-	RecipeName     string    `json:"recipe_name,omitempty"`
-	RecipeID       string    `json:"recipe_id,omitempty"`
-	RecipeRevision int64     `json:"recipe_revision,omitempty"`
-	TargetSlot     string    `json:"target_slot,omitempty"`
-	SlotRevision   uint32    `json:"slot_revision,omitempty"`
-	State          string    `json:"state"`
-	ExpiresAt      time.Time `json:"expires_at"`
-	Message        string    `json:"message,omitempty"`
+	SourceHistoryID uint64    `json:"source_history_id,omitempty"`
+	HubConfirmation bool      `json:"hub_confirmation,omitempty"`
+	ID              string    `json:"id"`
+	GroupID         string    `json:"group_id"`
+	GroupName       string    `json:"group_name"`
+	SourceDeviceID  string    `json:"source_device_id"`
+	SourceName      string    `json:"source_name"`
+	TargetDeviceID  string    `json:"target_device_id"`
+	GroupSessionID  string    `json:"group_session_id"`
+	MenuSerial      string    `json:"menu_serial,omitempty"`
+	SourceUID       string    `json:"source_uid"`
+	TargetUID       string    `json:"target_uid,omitempty"`
+	SourceEvent     string    `json:"source_event"`
+	Action          string    `json:"action"`
+	RecipeName      string    `json:"recipe_name,omitempty"`
+	RecipeID        string    `json:"recipe_id,omitempty"`
+	RecipeRevision  int64     `json:"recipe_revision,omitempty"`
+	TargetSlot      string    `json:"target_slot,omitempty"`
+	SlotRevision    uint32    `json:"slot_revision,omitempty"`
+	State           string    `json:"state"`
+	ExpiresAt       time.Time `json:"expires_at"`
+	Message         string    `json:"message,omitempty"`
 }
 
 const groupKind = "brew-group"

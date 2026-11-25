@@ -102,6 +102,9 @@ func (s *Server) syncBrewGroup(ctx context.Context, d *runtimeDevice, status dom
 		return nil
 	}
 	wire, ok := d.adapter.(device.GroupBrewer)
+	if ok && !view.Capabilities.GroupBrewingV1 && ccGroupCapable(view) {
+		return s.syncCCGroup(ctx, d, view, wire)
+	}
 	if !ok || !view.Capabilities.GroupBrewingV1 {
 		if invite == nil || invite.State != "waiting" {
 			return nil
@@ -160,6 +163,9 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 		return nil
 	}
 	key := groupEventID(g.ID, view.ID, view.Status.DeviceUID, e.ID)
+	if err := s.retryGroupHistory(ctx, d, view, key); err != nil {
+		return err
+	}
 	var processed bool
 	if _, err := s.db.Get("group-brew-event", key, &processed); err == nil {
 		return nil
@@ -185,7 +191,7 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 			}
 		}
 	}
-	source := brewInvite{GroupID: g.ID, GroupName: g.Name, GroupSessionID: key, SourceDeviceID: view.ID, SourceName: view.Name, SourceUID: view.Status.DeviceUID, SourceEvent: e.ID, Action: e.Action, RecipeName: src.Program.Name, RecipeID: src.LibraryID, RecipeRevision: src.Revision, ExpiresAt: started.Add(inviteLifetime)}
+	source := brewInvite{SourceHistoryID: e.HistoryID, GroupID: g.ID, GroupName: g.Name, GroupSessionID: key, SourceDeviceID: view.ID, SourceName: view.Name, SourceUID: view.Status.DeviceUID, SourceEvent: e.ID, Action: e.Action, RecipeName: src.Program.Name, RecipeID: src.LibraryID, RecipeRevision: src.Revision, ExpiresAt: started.Add(inviteLifetime)}
 	for _, id := range g.DeviceIDs {
 		if id == view.ID || (view.Status.StockSerial != "" && id == stockMemberPrefix+view.Status.StockSerial) || started.Before(g.MemberSince[id]) {
 			continue
@@ -223,7 +229,7 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 			return err
 		}
 	}
-	if err := s.bindGroupHistory(ctx, d, view, source, started); err != nil {
+	if err := s.watchGroupHistory(ctx, d, view, source, started); err != nil {
 		s.cfg.Logger.Debug("Group journal link unavailable", "error", err)
 	}
 	_, err := s.db.Put("group-brew-event", key, true, 0)
@@ -241,6 +247,9 @@ func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v d
 		return nil
 	}
 	if !activeInvite(i.State) {
+		if i.State == "accepted" && matched && live.State == "accepted" {
+			return s.retryGroupHistory(ctx, d, v, i.GroupSessionID)
+		}
 		return nil
 	}
 	if matched {
@@ -259,7 +268,7 @@ func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v d
 			return nil
 		}
 		if i.State == "accepted" {
-			if err := s.bindGroupHistory(ctx, d, v, *i, i.ExpiresAt.Add(-inviteLifetime)); err != nil {
+			if err := s.watchGroupHistory(ctx, d, v, *i, i.ExpiresAt.Add(-inviteLifetime)); err != nil {
 				s.cfg.Logger.Debug("Group journal link unavailable", "error", err)
 			}
 		}
@@ -297,6 +306,11 @@ func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v d
 	remaining := time.Until(i.ExpiresAt).Milliseconds()
 	if remaining < 1 || remaining > inviteLifetime.Milliseconds() {
 		i.State = "expired"
+		return s.saveInvite(*i)
+	}
+	if i.HubConfirmation {
+		i.State = "pending"
+		i.Message = "Accept in the Hub to start on this brewer."
 		return s.saveInvite(*i)
 	}
 	i.State = "offering"

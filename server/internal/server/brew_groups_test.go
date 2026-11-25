@@ -90,7 +90,7 @@ func TestGroupConsentAndIsolation(t *testing.T) {
 	s, h, c := newTestServer(t)
 	base := h.URL + "/api/v1"
 	a, source := groupTestBrewer(t, s, "one", "pico-s")
-	b, target := groupTestBrewer(t, s, "two", "pico-s")
+	b, target := groupTestBrewer(t, s, "two", "z-series")
 	_, other := groupTestBrewer(t, s, "other", "pico-c")
 	input := map[string]any{"name": "Double", "device_ids": []string{"one", "two"}}
 	if code, _ := request(t, c, "POST", base+"/brew-groups", "", input, nil); code != 401 {
@@ -134,18 +134,22 @@ func TestGroupConsentAndIsolation(t *testing.T) {
 		t.Fatalf("%+v", target.calls)
 	}
 	post := base + "/devices/two/brew-invite/" + i.ID + "/respond"
-	target.st.Busy = true
+	target.st.Stopped = true
 	if code, _ = request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 409 {
 		t.Fatal(code)
 	}
-	target.st.Busy = false
-	target.hist = domain.History{Sessions: []domain.HistorySession{{Available: true, ID: 21, Command: "rinse", State: "recording"}}}
+	target.st.Stopped = false
+	// Z is busy while showing the group prompt. Native acceptance checks idle
+	// and all interlocks inside the brewer; history can appear a poll later.
+	target.st.Busy = true
 	if code, raw = request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 200 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	if code, _ = request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 409 || len(target.calls) != 2 {
 		t.Fatal(code, target.calls)
 	}
+	target.hist = domain.History{Sessions: []domain.HistorySession{{Available: true, ID: 21, Command: "rinse", State: "recording"}}}
+	sync(b, target)
 	var srcLink, dstLink groupJournal
 	if _, err := s.db.Get("group-journal", "one-12", &srcLink); err != nil {
 		t.Fatal(err)
@@ -268,5 +272,109 @@ func TestGroupRejectsOldAndInvalidEvents(t *testing.T) {
 	i := brewInvite{GroupID: "g", TargetDeviceID: "two", SourceDeviceID: "one", State: "pending", ExpiresAt: now}
 	if err := s.expireInvite(&i, &brewGroup{ID: "g", DeviceIDs: []string{"one", "two"}}, now); err != nil || i.State != "expired" {
 		t.Fatal(err, i)
+	}
+}
+
+func (a *groupTestDevice) StartGroupAction(_ context.Context, action, id string, rev uint32) error {
+	if a.st.Stopped || a.st.Busy || action == "brew" && rev != a.rev {
+		return &device.Error{StatusCode: 409, Code: "changed", Message: "Recipe changed"}
+	}
+	a.calls = append(a.calls, device.GroupOffer{Op: "guarded", RecipeID: id, Revision: rev})
+	a.st.Busy = true
+	return nil
+}
+func TestCCGroupStartsRequireFreshProvenBrewAndGuardedSlot(t *testing.T) {
+	ctx := context.Background()
+	s, h, c := newTestServer(t)
+	csrf := signIn(t, c, h.URL)
+	a, source := groupTestBrewer(t, s, "brewer-a", "pico-s")
+	b, target := groupTestBrewer(t, s, "brewer-b", "pico-s")
+	source.caps.GroupBrewingV1 = false
+	source.caps.GroupRecipeV1 = true
+	target.caps = source.caps
+	p := domain.MachineRecipe{ID: "ale", Name: "House ale", Steps: []domain.MachineStep{{Location: 1, Name: "Boil", Minutes: 45, TargetF: 202}}}
+	source.slots[p.ID] = p
+	target.slots[p.ID] = p
+	g := brewGroup{ID: "g", Name: "Group", DeviceIDs: []string{a.view.ID, b.view.ID}, MemberSince: map[string]time.Time{a.view.ID: time.Now().Add(-time.Hour), b.view.ID: time.Now().Add(-time.Hour)}}
+	_, _ = s.db.Put(groupKind, g.ID, g, 0)
+	source.st.RecipeName = p.Name
+	source.st.Busy = true
+	age := uint32(30)
+	source.st.GroupRecipeID = p.ID
+	source.st.GroupRevision = source.rev
+	rec := domain.HistorySession{Available: true, ID: 47, Command: "brew", RecipeName: p.Name, State: "recording"}
+	source.hist.Sessions = []domain.HistorySession{rec}
+	poll := func(d *runtimeDevice, x *groupTestDevice) {
+		t.Helper()
+		d.mu.Lock()
+		d.view.Status = &x.st
+		d.mu.Unlock()
+		if err := s.syncBrewGroup(ctx, d, x.st); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Original firmware and cancelled setup don't produce start evidence.
+	poll(a, source)
+	if i, _ := s.memberInvite(b.view.ID); i != nil {
+		t.Fatal(i)
+	}
+	source.st.GroupAgeMS = &age
+	source.hist.Sessions[0].RecoveredAfterRestart = true
+	poll(a, source)
+	if i, _ := s.memberInvite(b.view.ID); i != nil {
+		t.Fatal(i)
+	}
+	source.hist.Sessions[0].RecoveredAfterRestart = false
+	poll(a, source)
+	poll(b, target)
+	poll(a, source)
+	i, _ := s.memberInvite(b.view.ID)
+	if i == nil || !i.HubConfirmation || i.State != "pending" || len(target.calls) != 0 {
+		t.Fatal(i, target.calls)
+	}
+	post := h.URL + "/api/v1/devices/" + b.view.ID + "/brew-invite/" + i.ID + "/respond"
+	target.rev++ // An edit on the brewer occurred between preview and acceptance.
+	if code, p := request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 409 {
+		t.Fatalf("%d %s", code, p)
+	}
+	if len(target.calls) != 0 || target.st.Busy {
+		t.Fatal("stale program started")
+	}
+	source.hist.Sessions[0].ID++
+	poll(a, source)
+	poll(b, target)
+	i, _ = s.memberInvite(b.view.ID)
+	post = h.URL + "/api/v1/devices/" + b.view.ID + "/brew-invite/" + i.ID + "/respond"
+	if code, p := request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 200 {
+		t.Fatalf("%d %s", code, p)
+	}
+	if len(target.calls) != 1 || target.calls[0].RecipeID != p.ID || target.calls[0].Revision != target.rev {
+		t.Fatal(target.calls)
+	}
+}
+
+func TestCCPhysicalRinseKeepsOneInvite(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := newTestServer(t)
+	d, a := groupTestBrewer(t, s, "a", "pico-s")
+	_, _ = groupTestBrewer(t, s, "b", "z-series")
+	a.caps.GroupBrewingV1 = false
+	a.caps.GroupRecipeV1 = true
+	a.st.Busy = true
+	a.st.UptimeMS = 67100
+	start := uint32(67000)
+	a.st.GroupRinseStartedMS = &start
+	g := brewGroup{ID: "g", DeviceIDs: []string{"a", "b"}}
+	_, _ = s.db.Put(groupKind, "g", g, 0)
+	for run := 0; run < 2; run++ {
+		if err := s.syncBrewGroup(ctx, d, a.st); err != nil {
+			t.Fatal(err)
+		}
+		a.st.UptimeMS++
+	}
+	events, _ := s.db.List("group-brew-event")
+	i, _ := s.memberInvite("b")
+	if len(events) != 1 || i == nil || i.Action != "rinse" {
+		t.Fatal(events, i)
 	}
 }
