@@ -18,6 +18,7 @@ public:
     picobrew::standalone::Result execute(const picobrew::standalone::Command&);
     picobrew::standalone::Result snapshot(picobrew::standalone::Snapshot&);
     bool idle() const noexcept { return begun_ && !recording_ && !calibrating_ && !acquisition_.busy(); }
+    std::uint32_t next_sample_at() const { return next_sample_; }
     void long_press();
     oem::Animation animation() const noexcept;
     const BoundedAcquisition& acquisition() const noexcept { return acquisition_; }

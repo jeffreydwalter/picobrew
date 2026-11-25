@@ -198,10 +198,17 @@ Result Engine::record_care(CareEvent change) {
     impl_->care_flags = flags; impl_->brews_since_clean = brews; impl_->care_generation = generation;
     return Result();
 }
-void Engine::poll() {
+void Engine::poll(bool network) {
     if (!impl_ || !impl_->initialized) return;
     if (impl_->refresh().ok()) impl_->history_poll();
-    impl_->tx_poll();
+    if (network) impl_->tx_poll();
+}
+bool Engine::forwarding_enabled() const { return impl_ && impl_->telemetry.enabled; }
+bool Engine::forwarding_active() const { return impl_ && impl_->tx_open; }
+void Engine::schedule_forwarding_now() {
+    if (!impl_ || !impl_->telemetry.enabled || impl_->tx_open) return;
+    impl_->tx_scheduled = impl_->now() - SamplePeriod;
+    impl_->tx_state = Impl::TxState::Ready;
 }
 void Engine::event(const char* kind, const char* message) {
     if (!impl_) return;

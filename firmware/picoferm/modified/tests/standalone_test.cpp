@@ -1,5 +1,6 @@
 #include "picoferm/standalone.hpp"
 #include "picoferm/local_controls.hpp"
+#include "picoferm/radio_cycle.hpp"
 #include "picobrew/common_web.h"
 #include <algorithm>
 #include <cstdio>
@@ -222,6 +223,57 @@ void paired_receiver_cases() {
                 "the local website can read the receiver acknowledgment");
     }
 }
+void radio_cycle_cases() {
+    using Radio = ferm::RadioCycle;
+    using Action = Radio::Action;
+    Radio radio;
+    std::uint32_t now=0xffff0000u;
+    require(radio.plan(now,false,false,false,60000)==Action::None,"unpaired sensor stays discoverable");
+    now+=Radio::Management-1;
+    require(radio.plan(now,true,false,false,60000)==Action::None,"initial pairing window survives timer wrap");
+    ++now;
+    require(radio.plan(now,true,false,true,60000)==Action::None,"in-flight transfer finishes before sleep");
+    require(radio.plan(now,true,false,false,60000)==Action::Sleep,"paired radio powers down");
+    require(radio.plan(now+59999,true,false,false,60000)==Action::None,"radio stays off between samples");
+    now+=60000;
+    require(radio.plan(now,true,false,false,60000)==Action::Wake,"scheduled sample opens network");
+    require(radio.plan(now+29999,true,false,false,60000)==Action::None,"association and Hub polling get a bounded window");
+    now+=30000;
+    require(radio.plan(now,true,false,false,86400000)==Action::Sleep,"unavailable Hub does not pin radio awake");
+    now+=300000;
+    require(radio.plan(now,true,false,false,86400000)==Action::Wake,"long sample cadence retains management and retry windows");
+    now+=30000;
+    require(radio.plan(now,true,false,false,60000)==Action::Sleep,"retries return to sleep");
+    radio.hold(now+1);
+    require(radio.plan(now+1,true,false,false,60000)==Action::Wake,"short press wakes radio");
+    now+=Radio::Management+1;
+    require(radio.plan(now,true,true,false,60000)==Action::None,"trial or locked OTA keeps radio on");
+    now+=Radio::Management;
+    require(radio.plan(now,true,false,false,60000)==Action::Sleep,"finished OTA releases radio");
+    radio.sleep_failed(now);
+    require(!radio.sleeping() && radio.plan(now+1,true,false,false,60000)==Action::None,"failed SDK sleep backs off");
+}
+void offline_recording_case() {
+    HubReceiver hub;
+    World world;
+    require(!world.engine->forwarding_enabled(),"local-only device stays discoverable");
+    const auto paired = world.api_call(PICO_HTTP_PUT,"/api/v1/telemetry",
+        "{\"enabled\":true,\"host\":\"brewery.example\",\"port\":8080}");
+    require(paired.first==200 && world.engine->forwarding_enabled(),"saved receiver enables radio cycling");
+    world.engine->set_telemetry_io(hub.binding());
+    require(world.api_call(PICO_HTTP_POST,"/api/v1/commands","{\"command\":\"set-sampling-interval\",\"value\":60}").first==202,"one-minute acquisition interval");
+    require(world.api_call(PICO_HTTP_POST,"/api/v1/commands","{\"command\":\"start\"}").first==202,"begin recording");
+    for(unsigned n=0;n<185000;n+=5) {world.controller->poll();world.engine->poll(false);world.time+=5;}
+    require(hub.frame.empty() && !world.engine->forwarding_active(),"no network activity or queued TCP backpressure during modem sleep");
+    require(world.snapshot().recording,"radio sleep preserves active fermentation");
+    const auto history=world.api_call(PICO_HTTP_GET,"/api/v1/history");
+    require(history.first==200 && field(history.second,"record_count")>=4,"retained sample backlog available to authenticated Hub history import");
+    world.engine->schedule_forwarding_now();world.advance(500);
+    require(!hub.frame.empty() && field(world.api_call(PICO_HTTP_GET,"/api/v1/telemetry").second,"dropped")==0,
+            "waking sends actual readings without treating intentional sleep as network loss");
+    auto discovery=world.api_call(PICO_HTTP_GET,"/api/v1");
+    require(discovery.second.find("\"intermittent_wifi\":true")!=std::string::npos,"Hub can identify intermittent connectivity");
+}
 void controller_cases(){
     World world;auto current=world.snapshot();require(current.ready&&!current.busy&&!current.recording,"standalone ready without cloud or session resume");
     const auto care = world.api_call(PICO_HTTP_POST, "/api/v1/commands", "{\"command\":\"ack-sanitize-seal\"}");
@@ -293,4 +345,4 @@ void session_failure_and_fault_cases(){
     failed.controller->long_press();require(failed.snapshot().recording,"physical long press starts explicit local session");failed.controller->long_press();require(!failed.snapshot().recording,"physical long press stops session");
 }
 }
-int main(){acquisition_cases();control_cases();storage_cases();paired_receiver_cases();controller_cases();calibration_cases();session_failure_and_fault_cases();std::printf("{\"checks\":%u,\"complete\":true}\n",checks);}
+int main(){acquisition_cases();control_cases();radio_cycle_cases();storage_cases();paired_receiver_cases();offline_recording_case();controller_cases();calibration_cases();session_failure_and_fault_cases();std::printf("{\"checks\":%u,\"complete\":true}\n",checks);}

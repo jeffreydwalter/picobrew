@@ -45,6 +45,7 @@ unsigned Engine::Impl::discovery_json(Writer& writer) {
         if (i) writer.text(",");
         writer.quote(names[i]); writer.text(":"); writer.boolean((capabilities.flags & (1u << i)) != 0);
     }
+    if (capabilities.flags & IntermittentWifi) writer.text(",\"intermittent_wifi\":true");
     writer.format("},\"history_sample_interval_ms\":%lu,\"settings_fields\":[", static_cast<unsigned long>(history_interval())); bool comma = false;
     const char* settings_names[] = {"temperature_unit", "language", "detailed_status"};
     for (unsigned i = 0; i < 3; ++i) if (capabilities.settings & (1u << i)) {

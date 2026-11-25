@@ -139,6 +139,12 @@ export default function AccessoryMachine({ device }: { device: Device }) {
     }
   }
   const sensors = status?.sensors || []
+  const intermittentWifi =
+    device.model === 'picoferm' && supports(device.capabilities, 'intermittent_wifi')
+  const lastReading =
+    !device.online && intermittentWifi && device.last_seen
+      ? new Date(device.last_seen).toLocaleString()
+      : null
   return (
     <>
       <PageTitle
@@ -173,6 +179,12 @@ export default function AccessoryMachine({ device }: { device: Device }) {
         }
       />
       <ErrorBanner message={error || device.error || device.model_error || ''} />
+      {intermittentWifi && !device.online && (
+        <p className="help-text">
+          PicoFerm switches Wi-Fi off between reports. Briefly press its button for two minutes of
+          access to its controls and firmware updates.
+        </p>
+      )}
       <CareNotice maintenance={device.online ? device.status?.maintenance : undefined} />
       {device.key_reused && <DeviceKeyNotice />}
       <div className="machine-metrics accessory-metrics">
@@ -180,13 +192,18 @@ export default function AccessoryMachine({ device }: { device: Device }) {
           <Metric
             key={sensor.id}
             label={sensor.label}
-            value={sensorValue({ ...sensor, value: device.online ? sensor.value : null }, hub.unit)}
+            value={sensorValue(
+              { ...sensor, value: device.online || lastReading ? sensor.value : null },
+              hub.unit
+            )}
             note={
-              sensor.unit === 'raw'
-                ? 'Native raw reading'
-                : sensor.value === null
-                  ? 'No current reading'
-                  : 'Current reading'
+              lastReading
+                ? `Last seen ${lastReading}`
+                : sensor.unit === 'raw'
+                  ? 'Native raw reading'
+                  : sensor.value === null
+                    ? 'No current reading'
+                    : 'Current reading'
             }
             accent={sensor.kind === 'temperature'}
           />
