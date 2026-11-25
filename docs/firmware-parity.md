@@ -45,10 +45,8 @@ See the [firmware architecture and verification](../firmware/zymatic/modified/ap
 | Outputs | Recovered brewer controls | Recovered heater and MSP pump/valve controls | Pump and two fan channels; no heater | No heater, pump or fan controls |
 | Readings | Recovered brewer sensors | Recovered brewer and auxiliary sensors | Named temperatures and pressure | Temperature, raw pressure and battery voltage |
 
-Z canonical API recipes use direct native valves **1–6**. Archived native Z
-programs use locations **0–5** for valves and **6** for pause. The Hub preserves
-those archived programs as reference/export material until an explicit
-conversion is supplied; it does not deploy their numbers as canonical recipes.
+Standalone Z accepts Hub ingredient recipes, Program Maker files and original Z cloud schedules. Each uses its own compiler and routing rules. A Z with the PicoPak adapter can also run compatible original PicoPak programs with a physical pack. The native kit compiler preserves the author’s strength and bitterness timing ranges. Stock Z 0.0.119 loads one compatible Program Maker export through its own website. [Z recipe formats and transfer options](../server/docs/family-devices.md#z-recipes-and-front-panel)
+
 A paired PicoFerm turns off its radio between reporting windows while fermentation recording continues locally. A short press opens a two-minute window for Hub management. The Hub shows the time of the last reading while the radio is asleep. Battery life in hours or days still requires a physical measurement.
 
 PicoFerm's pressure reading retains its evidenced raw units; battery readings

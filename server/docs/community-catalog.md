@@ -86,13 +86,11 @@ recognize a program already present on the brewer.
 The ten chiefwigms Pico base recipes use named locations and a separate `Prime`
 step whose translation is not verified here. Their notes, illustrations and
 original JSON are browsable, but automatic copying/deployment is disabled.
-Z and Zymatic programs retain their original routing and must pass the target format checks before transfer. A stock Zymatic can retrieve a compatible program from its sync menu. Stock Z 0.0.119 owners can export a compatible recipe and import it through the brewer’s Program Maker website. A standalone Z accepts direct transfer when its firmware advertises support. [Stock Zymatic setup](stock-zymatic.md) · [Supported workflows](coverage.md)
+The 39 archived Z schedules run on standalone Z modules that report original Z schedule support. The Hub also transfers compatible original PicoPak programs to a Z with kit support, for use with the pack and adapter. A stock Zymatic can retrieve a compatible published program from its sync menu. A stock Z on 0.0.119 can import a compatible Program Maker export through its own website. [Z recipe formats](family-devices.md#z-recipes-and-front-panel) · [Stock Zymatic setup](stock-zymatic.md)
 
 Every entry carries its repository, pinned commit, source path, SHA-256,
 attribution/license notice and conversion warnings. Grouped PicoPak entries expose
-each original record independently. Public recipe statistics come from the source;
-unverified native `Abv`, `Ibu`, `MinTime` and `MaxTime` fields remain source
-parameters rather than being misrepresented as measured statistics or controls.
+each original record independently. Public recipe statistics come from the source. On compatible original PicoPak records, `Abv` and `Ibu` are kit strength indices. Where the author supplied adjustment ranges, the Z uses `MinTime` and `MaxTime` to change contact times. Measured alcohol percentage and bitterness are separate recipe data.
 
 The recipe pages round quantities and temperatures for readable display without
 changing the archived measurements. Sources and credits are available in an

@@ -21,11 +21,10 @@ A provisioned module advertises `esp32-factory-v1`. From the machine’s Firmwar
 
 ## Implemented local operation
 
-See the [OEM feature comparison](oem-parity.md) for Program Maker, native state capture, the two sous vide programs and original kit limits.
+See the [OEM feature comparison](oem-parity.md) for Program Maker, native state capture, the two sous vide programs and original kit support.
 
 Choose **Brew Recipe** on the front panel to select a saved recipe. The panel also
-provides sous vide, coffee, maintenance, Wi-Fi and persisted language, temperature
-and display preferences.
+opens **Sous vide** with or without a keg. **Coffee** offers Cold Brew, Hot Coffee, Hybrid Coffee and Custom Coffee. Choose a profile and review its settings before starting. **Utilities** offers Rinse, Clean, Drain, Rack, Circulate and Chill. Use **Settings** for network, language, temperature units and display preferences.
 The common browser and Hub expose the same advertised capabilities, the actual
 grayscale display and ordered encoder movement/clicks. Local operation and
 startup do not require cloud DNS, registration or an Internet connection.
@@ -41,7 +40,7 @@ recovered Z builder still applies its valve and local boiling-temperature
 limits. An unheated step explicitly stops the preceding PID before valve
 movement. Original setup, filter and completion prompts remain interactive.
 
-The local recipe format carries no starting-water quantity. For these programs,
+The canonical recipe format carries no starting-water quantity. For these programs,
 the loading screen prompts the operator to add water according to the recipe.
 The native duration estimator still uses its nominal heating volume.
 
@@ -53,13 +52,13 @@ it for a separate start action. See the [recipe wire format](../../common/docs/a
 
 Archived native Z programs use a different grammar: locations 0–5 map to
 valves 1–6, and location 6 means pause. The Hub sends the original starting water and schedule to standalone Z firmware with `z_cloud_program_v1`. The Z compiles it through the dedicated native cloud recipe path.
-The shared API does not advertise starter programs without an attributed,
-model-specific conversion. S/Pro PicoPak data is not installed under a Z label.
 
-Advertised commands include `brew`, `sous-vide` (with keg), `sous-vide-no-keg`, `cold-brew`, `rinse`,
+A Z advertising `z_picopak_v1` can also save a compatible original PicoPak program for use with a physical pack and the Z PicoPak Adapter. The native setup requests the adapter and 6.81 L of process water. The brewer uses the kit’s own flow steps, pauses and timed strength/bitterness adjustments. A fresh Z has no preinstalled starter catalog. [Original PicoPak format](../../common/docs/api-schema.md#original-picopak-programs-on-z)
+
+Advertised commands include `brew`, `sous-vide` (with keg), `sous-vide-no-keg`, `coffee`, `cold-brew`, `rinse`,
 `clean`, `circulate`, `drain`, `rack-beer`, `chill`, `utilities`, `settings`,
 `stop`, `clear-stop`, `pause`, `resume`, `encoder`, `resume-interrupted` and
-`discard-interrupted`. Recipe and command fields are discoverable through
+`discard-interrupted`. During a run, use the reported `can_pause` and `can_resume` fields to see which action is available. A step-filter fault or PicoStill error needs attention at the machine. Recipe and command fields are discoverable through
 `/api/v1`. The generic API and display/history formats are documented in
 [`../../common/docs/api-schema.md`](../../common/docs/api-schema.md).
 
