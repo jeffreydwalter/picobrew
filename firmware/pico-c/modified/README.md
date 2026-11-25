@@ -17,8 +17,8 @@ neither establishes physical timing, wiring compatibility or power-loss safety.
 
 | Selection | Logical display | Rotation | Buffer / transferred bytes | Raw image | Unallocated RAM |
 | --- | --- | --- | --- | --- | --- |
-| `ssd1325` | 128 × 64 | 180° | 1,024 / 1,024 | 167,400 bytes | 2,320 bytes |
-| `ssd1309` | 128 × 32 | 0° | 1,024 / 1,024 | 167,296 bytes | 2,320 bytes |
+| `ssd1325` | 128 × 64 | 180° | 1,024 / 1,024 | 167,848 bytes | 2,320 bytes |
+| `ssd1309` | 128 × 32 | 0° | 1,024 / 1,024 | 167,768 bytes | 2,320 bytes |
 
 The alternate OEM implementation transfers all 1,024 bytes despite exposing a
 32-row logical viewport. This behavior is preserved. The API returns the full

@@ -292,12 +292,12 @@ $('recipeName').addEventListener('input',()=>{if($('recipeId').dataset.auto==='t
 $('recipeId').addEventListener('input',()=>{$('recipeId').dataset.auto='false';});
 $('recipeForm').addEventListener('submit',async event=>{
   event.preventDefault();const recipe=recipeFromForm();if(!recipe)return;
-  try{await api('/recipes/'+encodeURIComponent(recipe.id),'PUT',{name:recipe.name,steps:recipe.steps,...(!state.editorId && {create_only:true})});editRecipe(recipe,true);await refreshRecipes();notify('Recipe saved on the Pico.');}
+  try{const saved=await api('/recipes/'+encodeURIComponent(recipe.id),'PUT',{name:recipe.name,steps:recipe.steps,...(state.editorId ? {if_revision:state.editorRevision} : {create_only:true})});editRecipe(saved,true);await refreshRecipes();notify('Recipe saved on the Pico.');}
   catch(error){notify(error.message,true);}
 });
 $('deleteRecipe').addEventListener('click',async()=>{
   if(!state.editorId || !confirm('Delete this recipe from the Pico?'))return;
-  try{await api('/recipes/'+encodeURIComponent(state.editorId),'DELETE');editRecipe({});await refreshRecipes();notify('Recipe deleted.');}
+  try{await api('/recipes/'+encodeURIComponent(state.editorId),'DELETE',state.editorRevision ? {if_revision:state.editorRevision} : undefined);editRecipe({});await refreshRecipes();notify('Recipe deleted.');}
   catch(error){notify(error.message,true);}
 });
 $('importRecipe').addEventListener('click',()=>$('importFile').click());

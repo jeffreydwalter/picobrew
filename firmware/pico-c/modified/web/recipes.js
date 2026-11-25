@@ -58,7 +58,9 @@ function addStep(step={name:'New step',location:1,target_f:152,minutes:20,drain_
 }
 
 function editRecipe(recipe, existing=false) {
-  state.editorId=existing ? recipe.id : null;state.dirty=false;
+  state.editorId=existing ? recipe.id : null;
+  state.editorRevision=existing ? recipe.revision : undefined;
+  state.dirty=false;
   $('recipeName').value=recipe.name || '';$('recipeId').value=recipe.id || '';$('recipeId').readOnly=existing;
   $('recipeId').dataset.auto=existing ? 'false' : 'true';
   $('editorHeading').textContent=existing ? 'Edit recipe' : 'New recipe';$('steps').replaceChildren();

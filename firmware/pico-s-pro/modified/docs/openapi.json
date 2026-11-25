@@ -341,7 +341,7 @@
           "Recipes"
         ],
         "summary": "Remove a recipe while idle",
-        "description": "No request body. Commits catalog removal; freed slots are reused without formatting or deleting unrelated flash files.",
+        "description": "Optionally send if_revision to delete the version you read. A changed recipe catalog returns HTTP 409 recipe_changed.",
         "responses": {
           "204": {
             "description": "Deleted; empty response body"
@@ -366,6 +366,25 @@
           },
           "default": {
             "$ref": "#/components/responses/ProtocolError"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "if_revision"
+                ],
+                "properties": {
+                  "if_revision": {
+                    "$ref": "#/components/schemas/RecipeRevision"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1104,13 +1123,19 @@
           "create_only": {
             "type": "boolean",
             "description": "Reject an existing recipe ID with HTTP 409. Omit to create or replace."
+          },
+          "revision": {
+            "$ref": "#/components/schemas/RecipeRevision"
+          },
+          "if_revision": {
+            "$ref": "#/components/schemas/RecipeRevision"
           }
         },
         "required": [
           "name",
           "steps"
         ],
-        "description": "Complete recipe replacement. Optional id must match the URL. All labels are printable ASCII, matching the appliance font. Unknown/duplicate JSON fields, fractional numbers, and escaped control characters are rejected."
+        "description": "Complete recipe replacement. Optional id must match the URL. All labels are printable ASCII, matching the appliance font. Unknown/duplicate JSON fields, fractional numbers, and escaped control characters are rejected. Supply if_revision to compare and save, or round-trip revision. Combining these fields or using create_only: true with a revision is invalid."
       },
       "Recipe": {
         "type": "object",
@@ -1132,12 +1157,16 @@
             },
             "maxItems": 15,
             "minItems": 1
+          },
+          "revision": {
+            "$ref": "#/components/schemas/RecipeRevision"
           }
         },
         "required": [
           "id",
           "name",
-          "steps"
+          "steps",
+          "revision"
         ]
       },
       "RecipeSummary": {
@@ -1479,6 +1508,10 @@
           "hub_ota_v1": {
             "type": "boolean",
             "description": "Available after the brewer verifies its installed recovery and boot selection."
+          },
+          "recipe_conditional_write": {
+            "type": "boolean",
+            "description": "Supports comparing a saved recipe revision during PUT and DELETE."
           }
         },
         "required": [
@@ -2425,6 +2458,12 @@
             "description": "Generate 32 random bytes with a cryptographic random-number generator for every request."
           }
         }
+      },
+      "RecipeRevision": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4294967295,
+        "description": "Committed recipe catalog revision. A change to any saved recipe advances it."
       }
     },
     "responses": {

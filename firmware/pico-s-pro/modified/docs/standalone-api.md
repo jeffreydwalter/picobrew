@@ -114,7 +114,7 @@ or prove timing on the appliance.
 The checked-in [Pico S](../firmware/standalone/pico-s/firmware-report.json)
 and [Pico Pro](../firmware/standalone/pico-pro/firmware-report.json) reports
 give the exact sizes and hashes of the 1.0.0 images. Both reserve
-32 KiB each for stack and heap. Their shared website totals 28,247 compressed
+32 KiB each for stack and heap. Their shared website totals 28,303 compressed
 bytes in eight serial-flash blocks.
 
 The checked-in `analysis/standalone-validation.json` is an earlier development
@@ -249,6 +249,8 @@ unavailable initialization/storage/authentication, and 507 for exhausted recipe
 capacity. The OpenAPI document describes the route-specific contracts.
 
 ## Recipes: sixteen records, fifteen steps each
+
+When discovery advertises `recipe_conditional_write`, GET or PUT of a single recipe returns a positive `revision`. Send that value as `if_revision` in a PUT or DELETE JSON body to modify the version you read. A change to the saved recipe catalog, including deletion and recreation, returns HTTP 409 `recipe_changed`. Reopen the recipe to review changes. A PUT can also round-trip the returned `revision` field. Supply only one revision field and omit `create_only: true` when updating.
 
 Create a local recipe:
 

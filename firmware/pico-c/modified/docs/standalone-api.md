@@ -116,6 +116,8 @@ a zero-minute step heats to its target without an added hold. Drain minutes are
 0–120. Routes remain explicit C compartment numbers; the server does not infer
 plumbing from labels.
 
+When discovery advertises `recipe_conditional_write`, GET or PUT of a single recipe returns a positive `revision`. Send that value as `if_revision` in a PUT or DELETE JSON body to modify the version you read. A change to the saved recipe catalog, including deletion and recreation, returns HTTP 409 `recipe_changed`. Reopen the recipe to review changes. A PUT can also round-trip the returned `revision` field. Supply only one revision field and omit `create_only: true` when updating.
+
 Eight starter programs retain the existing catalogue provenance in
 [data/starter-recipes.json](../data/starter-recipes.json). A pristine store seeds
 them once. Restore adds only missing recipes, preflights capacity and preserves
