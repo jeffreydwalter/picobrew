@@ -549,6 +549,11 @@ func (s *Server) deleteDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	d.commandMu.Lock()
 	defer d.commandMu.Unlock()
+	if err := s.withdrawBeforeUnregister(r.Context(), d); err != nil {
+		// Network/identity failure never justifies further commands to this address.
+		// Offline removal remains available, and the brewer expires its pending offer.
+		s.cfg.Logger.Debug("Could not withdraw group invitation before removal", "error", err)
+	}
 	d.mu.RLock()
 	busy := d.view.Status != nil && d.view.Status.Busy && !d.identityMismatch
 	id := d.view.ID

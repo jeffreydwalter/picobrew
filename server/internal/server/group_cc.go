@@ -26,6 +26,10 @@ func (s *Server) syncCCGroup(ctx context.Context, d *runtimeDevice, v domain.Dev
 		return err
 	}
 	st := v.Status
+	var observed time.Time
+	if v.LastSeen != nil {
+		observed = *v.LastSeen
+	}
 	if g != nil && st.Busy && !st.Stopped && st.GroupAgeMS != nil && *st.GroupAgeMS < 120000 && st.GroupRevision != 0 && st.GroupRecipeID != "" {
 		h, err := d.adapter.History(ctx)
 		if err != nil {
@@ -46,8 +50,8 @@ func (s *Server) syncCCGroup(ctx context.Context, d *runtimeDevice, v domain.Dev
 			}
 			id = r.ID
 		}
-		if id != 0 {
-			e := device.GroupSource{HistoryID: id, ID: groupEventID(st.DeviceUID, strconv.FormatUint(id, 10)), Action: "brew", AgeMS: st.GroupAgeMS, Revision: st.GroupRevision, RecipeID: st.GroupRecipeID}
+		if age, fresh := sourceAge(*st.GroupAgeMS, observed); id != 0 && fresh {
+			e := device.GroupSource{HistoryID: id, ID: groupEventID(st.DeviceUID, strconv.FormatUint(id, 10)), Action: "brew", AgeMS: &age, Revision: st.GroupRevision, RecipeID: st.GroupRecipeID}
 			if err = s.recordGroupStart(ctx, d, v, *g, wire, e); err != nil {
 				return err
 			}
@@ -56,7 +60,8 @@ func (s *Server) syncCCGroup(ctx context.Context, d *runtimeDevice, v domain.Dev
 	if g != nil && st.Busy && !st.Stopped && st.GroupRinseStartedMS != nil {
 		start := *st.GroupRinseStartedMS
 		age := uint32(st.UptimeMS) - start
-		if start != 0 && age < 120000 {
+		if adjusted, fresh := sourceAge(age, observed); start != 0 && fresh {
+			age = adjusted
 			// A rinse has no saved history slot. Persist this observation across polls
 			// and Hub restarts; an identical uptime marker on another boot may recur.
 			var r struct {
