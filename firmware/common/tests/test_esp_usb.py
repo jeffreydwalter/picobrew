@@ -176,6 +176,29 @@ class USBTest(unittest.TestCase):
             self.assertEqual(chip.writes, [])
             self.assertFalse(list(self.data.rglob("*.zip")))
 
+    def test_z_oem_eeprom_boiler_and_wired_selection_survive_conversion(self):
+        chip = device("z-series")
+        original = chip.contents
+        rows = [(1,2,0x9000,0x5000,b"nvs"),(1,0,0xe000,0x2000,b"otadata"),
+                (0,0,0x10000,0x280000,b"factory"),(1,0x99,0x290000,0x1000,b"eeprom"),
+                (1,0x82,0x291000,0x16f000,b"spiffs")]
+        records = b"".join(struct.pack("<HBBII16sI",0x50aa,*r,0) for r in rows)
+        table = records + b"\xeb\xeb"+b"\xff"*14+hashlib.md5(records).digest()
+        original[0x8000:0x8c00] = table.ljust(0xc00,b"\xff")
+        board = bytearray(120)
+        board[4]=1
+        board[116]=1
+        original[0x290000:0x290000+120]=board
+        key="12"*32
+        _,target=usb.install_target(bytes(original),"z-series",api_key=key)
+        files=usb.esp_provisioning._read_migration_image(target[0x291000:])["files"]
+        self.assertEqual(files["/pb/zboard.seed"],board)
+        self.assertEqual(files["/pb/api.key"],key.encode())
+        # Unknown board revisions must stop before a write.
+        original[0x290000]=2
+        with self.assertRaisesRegex(ValueError,"Unrecognized Z board settings"):
+            usb.install_target(bytes(original),"z-series",api_key=key)
+
     def test_z_stack_label_is_eligible_to_capture_but_not_qualified_for_install(self):
         chip = device("z-series")
         for model in usb.Z_STACKS:

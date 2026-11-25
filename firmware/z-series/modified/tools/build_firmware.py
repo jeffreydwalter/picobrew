@@ -18,7 +18,7 @@ COMMON=ROOT.parents[1]/'common'
 def digest(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 def build_recovery(args,output,objects,esptool,version):
-    """Link only the immutable receiver, Wi-Fi, storage, and pump/heat cutoff."""
+    """Link only the immutable receiver, network transports, storage, and pump/heat cutoff."""
     from package_reference import verify_esp32_descriptor
     sdk=args.arduino/'tools/sdk'
     binary=args.toolchain/'bin'
@@ -26,7 +26,7 @@ def build_recovery(args,output,objects,esptool,version):
     selected=['firmware/common/platform/esp32/'+name for name in (
         'ota/factory_flash.cpp','ota/service.cpp','network_ports.cpp','startup.cpp','station.cpp','storage_ports.cpp')]
     selected+=['firmware/common/src/'+name for name in ('provisioning.cpp','verified_storage.cpp','http_server.c','values.cpp','records.cpp')]
-    selected+=['firmware/z-series/modified/platform/esp32/'+name for name in ('msp_bus.cpp','output_cutoff.cpp','factory_application.cpp')]
+    selected+=['firmware/z-series/modified/platform/esp32/'+name for name in ('msp_bus.cpp','output_cutoff.cpp','factory_application.cpp','wired_network.cpp')]
     elf=output/'recovery.elf'
     props=dict(line.split('=',1) for line in (args.arduino/'platform.txt').read_text().splitlines()
                if line and not line.startswith('#') and '=' in line)
@@ -37,7 +37,7 @@ def build_recovery(args,output,objects,esptool,version):
         command+=['-u',symbol]
     command+=['-Wl,--defsym,app_main=picobrew_z_recovery_main','-Wl,--gc-sections','-Wl,-static','-Wl,--start-group']
     command += [str(directory/('owned_'+name.replace('/','_')+'.o')) for name in selected]
-    command += [str(objects/'libzseries_recovered_esp32.a'),str(directory/'libarduino_required.a')]
+    command += [str(objects/'libzseries_recovered_esp32.a'),str(objects/'libethernet2_adapted.a'),str(directory/'libarduino_required.a')]
     subprocess.run([*command,*props['compiler.c.elf.libs'].split(),'-Wl,--end-group','-Wl,-EL','-o',str(elf)],check=True)
     nm=subprocess.check_output([str(binary/'xtensa-esp32-elf-nm'),'-C',str(elf)],text=True)
     for name in ('FirmwareApplication::setup(', 'CoreApplication::tick(', 'HeadApplication::setup(', 'Adapter::execute(', 'Engine::begin('):
@@ -47,7 +47,10 @@ def build_recovery(args,output,objects,esptool,version):
     image=output/'recovery.bin'
     subprocess.run([sys.executable,str(esptool),'--chip','esp32','elf2image','--flash_mode','dio','--flash_freq','40m','--flash_size','4MB',
                     '-o',str(image),str(elf)],check=True)
-    verify_esp32_descriptor(image.read_bytes(),version,'z-series',recovery=True)
+    receiver=image.read_bytes()
+    verify_esp32_descriptor(receiver,version,'z-series',recovery=True)
+    if not receiver[0x160:].startswith(b'PicoBrew W5500/1\0'):
+        raise ValueError('Missing Z wired transport marker in recovery descriptor')
     return {'path':image.name,'sha256':digest(image),'bytes':image.stat().st_size,'elf_sha256':digest(elf),'source_files':selected}
 
 

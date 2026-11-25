@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#define PB_Z_WIRED_RECOVERY "PicoBrew W5500/1"
 #define PB_FIELD_IDENTITY "PicoBrew OTA1|z-series|1.0.0"
 #define PB_RECOVERY_IDENTITY "PicoBrew REC1|z-series|1.0.0"
 namespace picobrew { namespace esp32_ota {

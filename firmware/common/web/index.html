@@ -132,6 +132,18 @@
               <div class="settings-actions"><button id="saveSettings" class="button primary" disabled>Save preferences</button></div>
             </form>
           </section>
+          <section id="stillLinkSection" class="settings-section" aria-labelledby="stillLinkHeading" hidden>
+            <div class="settings-section-heading"><h2 id="stillLinkHeading">PicoStill</h2><p class="muted">Choose a registered accessory in the Hub’s brewer preferences, or enter its connection here.</p></div>
+            <p id="stillLinkStatus" role="status" aria-live="polite"></p>
+            <form id="stillLinkForm">
+              <div class="settings-row"><label for="stillHost">PicoStill host</label><input id="stillHost" maxlength="63" required placeholder="IP address or local hostname"></div>
+              <div class="settings-row"><label for="stillPort">HTTP port</label><input id="stillPort" type="number" min="1" max="65535" value="80" required></div>
+              <div class="settings-row"><label for="stillUID">PicoStill device UID</label><input id="stillUID" maxlength="12" pattern="[a-fA-F0-9]{12}" required></div>
+              <div class="settings-row"><label for="stillKey">PicoStill device key</label><input id="stillKey" type="password" maxlength="64" pattern="[a-fA-F0-9]{64}" autocomplete="off" required></div>
+              <div class="settings-actions"><button id="stillPair" class="button primary" disabled>Pair PicoStill</button><button id="stillUnpair" class="button" type="button" hidden>Unpair</button></div>
+            </form>
+            <label id="stillLogRow" class="checkbox" hidden><input type="checkbox" id="stillLogging"> Record PicoStill sessions</label>
+          </section>
           <section class="settings-section" aria-labelledby="forwardingHeading" data-feature="telemetry_forwarding" hidden>
             <div class="settings-section-heading"><h2 id="forwardingHeading">Hub connection</h2><p class="muted">Add this device in PicoBrew Hub to connect automatically. The Hub manages where live readings are sent; session history stays on the device.</p></div>
             <p id="hubDestination" class="hint">No Hub connection loaded.</p>

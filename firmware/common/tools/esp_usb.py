@@ -201,12 +201,15 @@ def install_target(flash, model, *, api_key=None):
     protected_z = model == "z-series" and "recovery.bin" in parts
     if protected_z:
         slots = esp_stock_partitions.partitions(flash)
-        if any(p.kind != 0 and (p.kind,p.subtype) not in ((1,2),(1,0),(1,0x82)) for p in slots):
+        eeprom = esp_stock_partitions.Partition("eeprom", 1, 0x99, 0x290000, SECTOR)
+        if any(p != eeprom and p.kind != 0 and (p.kind,p.subtype) not in ((1,2),(1,0),(1,0x82)) for p in slots):
             raise ValueError("The Z partition table contains additional data partitions")
         filesystems = [p for p in slots if (p.kind,p.subtype) == (1,0x82)]
         if len(filesystems)>1: raise ValueError("Multiple Z filesystems require independent recovery")
         source = flash[filesystems[0].offset:filesystems[0].end] if filesystems else b""
-        parts["spiffs.bin"] = esp_provisioning.migrate_z_files(source, parts["spiffs.bin"], api_key, paired=False)
+        # Only the pinned SDK's named 4 KiB sector is recognized. Full stock bytes stay in the private board backup.
+        seed = flash[eeprom.offset:eeprom.offset+120] if eeprom in slots else None
+        parts["spiffs.bin"] = esp_provisioning.migrate_z_files(source, parts["spiffs.bin"], api_key, paired=False, board_seed=seed)
     elif api_key is not None:
         profile = "esp8266-2m" if model == "picoferm" else "esp32-4m"
         parts["spiffs.bin"] = esp_provisioning.stage(parts["spiffs.bin"], profile, api_key)

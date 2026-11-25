@@ -1,3 +1,4 @@
+#include "zseries/board_settings.hpp"
 #include "zseries/standalone.hpp"
 #include "zseries/program_recipe_json.hpp"
 #include "zseries/program_runtime_heater.hpp"
@@ -247,6 +248,20 @@ void offline_and_reservation(){World w;w.core.core.state.id=CoreStateId::Booting
     assert(w.core.post(duplicate));assert(w.dispatch());assert(w.writes==before&&w.core.core.state.id==CoreStateId::Running);
 }
 void settings_and_display(){World w;
+    // Exercise the production board settings backend on the protected layout (no EEPROM partition).
+    zseries::standalone::BoardSettings board(w.storage());
+    assert(board.load()&&!board.wired());
+    EepromData original;original.use_ethernet=1;original.boiler=BoilerType::Small;
+    auto bytes=encode_eeprom(original);
+    w.files["zboard.seed"]={bytes.begin(),bytes.end()};
+    assert(board.load()&&board.wired());
+    auto board_io=board.backend();
+    original.use_ethernet=0;auto wireless=encode_eeprom(original);
+    board_io.write_data(board_io.context,wireless);assert(board_io.commit(board_io.context));
+    zseries::standalone::BoardSettings reread(w.storage());assert(reread.load()&&!reread.wired());
+    auto io=reread.backend();EepromBytes actual;io.read_data(io.context,actual);assert(decode_eeprom(actual).boiler==BoilerType::Small);
+    w.fail_write=1;io.write_data(io.context,bytes);assert(!io.commit(io.context));assert(!reread.wired());w.fail_write=0;
+    World broken;broken.files["zboard.seed"]={0xff,0xff};zseries::standalone::BoardSettings bad(broken.storage());assert(!bad.load());
     auto output=w.request(PICO_HTTP_PATCH,"/api/v1/settings","{\"temperature_unit\":\"C\",\"language\":\"fr\",\"detailed_status\":true,\"auto_cycle\":false}",200);
     assert(!w.core.eeprom.data.use_imperial&&w.core.eeprom.data.language==LanguageType::French&&w.core.eeprom.data.show_detail);
     assert(w.core.eeprom.data.slideshow_cycle_static&&output.find("\"auto_cycle\":false")!=std::string::npos);

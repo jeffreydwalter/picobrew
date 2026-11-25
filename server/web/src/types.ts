@@ -75,6 +75,7 @@ export interface Capabilities {
   events_persistent?: boolean
   history_sample_interval_ms?: number
   pairing_v1?: boolean
+  picostill_brewer_link_v1?: boolean
   capabilities?: Record<string, boolean>
   settings_fields?: string[] | null
   command_fields?: Record<string, { allowed: string[]; required: string[] }>

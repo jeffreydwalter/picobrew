@@ -9,6 +9,7 @@
 #include "storage_ports.hpp"
 #include "msp_bus.hpp"
 #include "wired_network.hpp"
+#include "zseries/board_settings.hpp"
 #include "factory_flash.hpp"
 #include "output_cutoff.hpp"
 #include <esp_system.h>
@@ -44,6 +45,7 @@ struct Application {
     std::uint32_t restart_ms = 0;
     platform::HttpSocket listener;
     platform::TelemetrySocket telemetry;
+    BoardSettings board_settings{storage.binding()};
     WiredNetwork ethernet{firmware.system.spi};
     PicoHttpIo http_io{};
     PicoHttpServer http{};
@@ -113,7 +115,8 @@ struct Application {
             if(!result.ok())return false;
             a.provisioning.take_network_changed();a.sync_network();a.update_capability();return true;};
         ports.reconnect_network=[](void* p){auto& a=*static_cast<Application*>(p);a.apply_network();return true;};
-        ports.save_configuration=[](void* p){return static_cast<Application*>(p)->firmware.save_configuration();};
+        ports.save_configuration=[](void* p){auto& board=static_cast<Application*>(p)->firmware;
+            return board.save_configuration()&&board.core.eeprom.last_commit_succeeded;};
         ports.pair_prompt=[](void*,std::uint32_t now,char code[9]){return pico_http_pairing_prompt(now,code);};
         ports.pair_decide=[](void*,std::uint32_t now,std::uint32_t serial,bool allow){return pico_http_pairing_decide(now,serial,allow);};
         if(!adapter.bind(ports,engine))return false;
@@ -167,7 +170,7 @@ struct Application {
     }
     void update_capability(){
         update_ready=controller_ready && !fault_reported && update_store_ready && provisioning.key_configured() &&
-            !firmware.core.eeprom.data.use_ethernet && provisioning.network_configured() && flash.role()==picobrew::esp32_ota::Role::Application;
+            (firmware.core.eeprom.data.use_ethernet ? flash.wired_recovery() : provisioning.network_configured()) && flash.role()==picobrew::esp32_ota::Role::Application;
         adapter.wireless_capable(update_ready);
     }
     void serial_poll(){
@@ -191,8 +194,11 @@ struct Application {
         flash.inspect();
         const auto* running=esp_ota_get_running_partition();
         if(!running || !std::strcmp(running->label,"pb_recovery"))return false;
-        controller_ready=firmware.setup();
-        files.mount(); // Failure remains visible; no automatic erase/format.
+        // Read verified preferences before the native Core selects its boiler or network.
+        // A rejected record leaves the outputs locked and the local service available for recovery.
+        const bool board_ready=files.mount()&&board_settings.load();
+        firmware.core.eeprom.backend=board_settings.backend();
+        controller_ready=board_ready&&firmware.setup();
         const auto provisioned=provisioning.load();
         if(!provisioned.ok())Serial.println(provisioned.message);
         if(!provisioning.network_configured()&&firmware.core.eeprom.data.wifi_ssid[0]){

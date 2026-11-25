@@ -102,6 +102,7 @@ type FieldMetadata struct {
 	Kind  string `json:"kind"`
 }
 type Capabilities struct {
+	PicoStillBrewerLinkV1   bool                     `json:"picostill_brewer_link_v1,omitempty"`
 	GroupBrewingV1          bool                     `json:"group_brewing_v1,omitempty"`
 	ReleaseChannel          string                   `json:"release_channel,omitempty"`
 	EventsPersistent        *bool                    `json:"events_persistent,omitempty"`
