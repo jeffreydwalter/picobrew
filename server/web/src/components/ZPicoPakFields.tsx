@@ -14,6 +14,11 @@ export function ZPicoPakFields({
   library: boolean
 }) {
   const pak = program.z_pak!
+  const canEditAsPico =
+    !pak.step_options.some((step) => step.action !== 0) &&
+    !program.steps.some((step) => step.target_f > 0 && step.target_f < 60) &&
+    (pak.selected_abv == null || pak.selected_abv === pak.abv) &&
+    (pak.selected_ibu == null || pak.selected_ibu === pak.ibu)
   return (
     <>
       <h3>Z PicoPak adapter</h3>
@@ -45,7 +50,7 @@ export function ZPicoPakFields({
               hint="The Z adjusts the kit’s programmed times."
             >
               <select
-                value={pak[field] ?? ''}
+                value={pak[field] === baseline ? '' : (pak[field] ?? '')}
                 onChange={(event) => {
                   const next = { ...pak }
                   if (event.target.value === '') delete next[field]
@@ -67,7 +72,7 @@ export function ZPicoPakFields({
         })}
       </div>
       {children}
-      {library && (
+      {library && canEditAsPico && (
         <Button
           type="button"
           variant="secondary"

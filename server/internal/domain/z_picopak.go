@@ -49,6 +49,9 @@ func (p ZPicoPak) Validate(steps []MachineStep) error {
 			s.Location < 1 || s.Location > 6 || s.TargetF != 0 && (s.TargetF < 32 || s.TargetF > 212) || s.Minutes < 0 || s.Minutes > 599 || s.DrainMinutes < 0 || s.DrainMinutes > 120 {
 			return fmt.Errorf("invalid PicoPak routing, action, temperature or timing on step %d", i+1)
 		}
+		if o.Action == 0 && s.TargetF > 0 && s.TargetF < 60 && (i == 0 || p.StepOptions[i-1].Action != 1) {
+			return fmt.Errorf("add an operator pause to connect the chiller before step %d", i+1)
+		}
 		if o.Action == 0 && o.MinTime != nil && o.MaxTime != nil {
 			abv = abv || s.Location == 2
 			ibu = ibu || s.Location >= 3
@@ -59,9 +62,52 @@ func (p ZPicoPak) Validate(steps []MachineStep) error {
 		original   int
 		adjustable bool
 	}{{p.SelectedABV, p.ABV, abv}, {p.SelectedIBU, p.IBU, ibu}} {
-		if v.selected != nil && (*v.selected < 0 || *v.selected > 10 || v.original < 1 || v.original > 9 || !v.adjustable) {
+		if v.selected != nil && (*v.selected < 0 || *v.selected > 10 || *v.selected != v.original && (v.original < 1 || v.original > 9 || !v.adjustable)) {
 			return errors.New("an adjusted strength requires a kit target from 1 through 9 and matching authored step times")
 		}
 	}
 	return nil
+}
+
+// ValidatePicoTransfer checks for kit instructions that an ordinary Pico slot
+// would discard. A selection equal to the kit target keeps the original time.
+func (p ZPicoPak) ValidatePicoTransfer() error {
+	if p.SelectedABV != nil && *p.SelectedABV != p.ABV || p.SelectedIBU != nil && *p.SelectedIBU != p.IBU {
+		return errors.New("selected kit strength or bitterness requires the Z PicoPak adapter")
+	}
+	for _, option := range p.StepOptions {
+		if option.Action != 0 {
+			return errors.New("this kit has an operator pause that requires the Z PicoPak adapter")
+		}
+	}
+	return nil
+}
+
+// OriginalPicoPak and its steps use the vendor's case-sensitive JSON fields.
+type OriginalPicoPak struct {
+	PicoRecipeID, PicoBeerID uint32
+	Name                     string
+	Abv, Ibu                 int
+	Steps                    []OriginalPicoPakStep
+}
+type OriginalPicoPakStep struct {
+	Name                                string
+	Action, Location, Temp, Time, Drain int
+	MinTime, MaxTime                    *int
+}
+
+func (p *OriginalPicoPak) UnmarshalJSON(data []byte) error {
+	if err := recipeFields(data, "original PicoPak", "PicoRecipeID PicoBeerID Name Abv Ibu Steps", "", ""); err != nil {
+		return err
+	}
+	type wire OriginalPicoPak
+	return json.Unmarshal(data, (*wire)(p))
+}
+
+func (s *OriginalPicoPakStep) UnmarshalJSON(data []byte) error {
+	if err := recipeFields(data, "original PicoPak step", "Name Action Location Temp Time Drain", "MinTime MaxTime", "MinTime MaxTime"); err != nil {
+		return err
+	}
+	type wire OriginalPicoPakStep
+	return json.Unmarshal(data, (*wire)(s))
 }

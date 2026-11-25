@@ -32,7 +32,7 @@ func recipeFields(b []byte, object, required, optional, nullable string) error {
 		if err := d.Decode(&raw); err != nil {
 			return err
 		}
-		if bytes.Equal(raw, []byte("null")) && key != nullable {
+		if bytes.Equal(raw, []byte("null")) && !slices.Contains(strings.Fields(nullable), key) {
 			return fmt.Errorf("%s cannot be null", key)
 		}
 	}

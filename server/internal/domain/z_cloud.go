@@ -31,7 +31,7 @@ func (r MachineRecipe) ZCloudDeviceName() string {
 }
 
 func (r MachineRecipe) ValidateZCloud() error {
-	if r.ZCloud == nil || r.ZProgram != nil || r.ZCloud.StartWaterML < 1 || r.ZCloud.StartWaterML > 16163 {
+	if r.ZCloud == nil || r.ZPak != nil || r.ZProgram != nil || r.ZCloud.StartWaterML < 1 || r.ZCloud.StartWaterML > 16163 {
 		return fmt.Errorf("Z cloud schedules require explicit starting water up to 16.163 L and one native schedule")
 	}
 	label := func(s string, n int) bool {

@@ -667,30 +667,39 @@ func TestReviewedRecipeChecksTheRevisionReadWithItsContents(t *testing.T) {
 	}
 }
 
-func TestZCloudWriteRequiresConfirmedFormatAndMatchingWater(t *testing.T) {
-	r := domain.MachineRecipe{ID: "archived", Name: "Archive", ZCloud: &domain.ZCloudProgram{StartWaterML: 13170, IsBeer: true},
+func TestZNativeWriteRequiresConfirmedFormatAndMatchingReadback(t *testing.T) {
+	cloud := domain.MachineRecipe{ID: "archived", Name: "Archive", ZCloud: &domain.ZCloudProgram{StartWaterML: 13170, IsBeer: true},
 		Steps: []domain.MachineStep{{Name: "Pass through", TargetF: 152, Location: 0, Minutes: 4}, {Name: "Connect chiller", Location: 6, TargetF: 68}, {Name: "Chill", Location: 0, TargetF: 50, Minutes: 5}}}
-	for _, capable := range []bool{false, true} {
-		writes := 0
-		p := testPico(t, func(w http.ResponseWriter, req *http.Request) {
-			if req.URL.Path == "/api/v1" {
-				replyJSON(w, 200, map[string]any{"mode": "standalone", "api_version": 1, "model": "z-series", "model_family": "z-series", "recipe_capacity": 16, "step_capacity": 15, "recipe_create_only": true, "zero_minute_steps": true, "z_cloud_program_v1": capable})
-				return
-			}
-			if req.Method == "PUT" {
-				writes++
-				var got domain.MachineRecipe
-				if err := json.NewDecoder(req.Body).Decode(&got); err != nil || !reflect.DeepEqual(got, r) {
-					t.Errorf("program changed: %+v %v", got, err)
+	minTime, maxTime, selected := 25, 15, 8
+	kit := domain.MachineRecipe{ID: "original", Name: "Original kit", Steps: []domain.MachineStep{{Name: "Mash", Location: 2, TargetF: 152, Minutes: 20}}, ZPak: &domain.ZPicoPak{RecipeID: 1, BeerID: 47, ABV: 5, IBU: 6, SelectedABV: &selected, StepOptions: []domain.ZPakStep{{MinTime: &minTime, MaxTime: &maxTime}}}}
+	mixed := kit
+	mixed.ZCloud = cloud.ZCloud
+	if validateRecipe(mixed) == nil {
+		t.Fatal("multiple program formats accepted")
+	}
+	for capability, r := range map[string]domain.MachineRecipe{"z_cloud_program_v1": cloud, "z_picopak_v1": kit} {
+		for _, capable := range []bool{false, true} {
+			writes := 0
+			p := testPico(t, func(w http.ResponseWriter, req *http.Request) {
+				if req.URL.Path == "/api/v1" {
+					replyJSON(w, 200, map[string]any{"mode": "standalone", "api_version": 1, "model": "z-series", "model_family": "z-series", "recipe_capacity": 16, "step_capacity": 15, "recipe_create_only": true, "zero_minute_steps": true, capability: capable})
+					return
 				}
-				replyJSON(w, 201, map[string]any{})
-				return
+				if req.Method == "PUT" {
+					writes++
+					var got domain.MachineRecipe
+					if err := json.NewDecoder(req.Body).Decode(&got); err != nil || !reflect.DeepEqual(got, r) {
+						t.Errorf("program changed: %+v %v", got, err)
+					}
+					replyJSON(w, 201, map[string]any{})
+					return
+				}
+				replyJSON(w, 200, r)
+			})
+			err := p.CreateRecipe(context.Background(), r)
+			if capable && (err != nil || writes != 1) || !capable && (err == nil || writes != 0) {
+				t.Errorf("capability %t, writes %d, %v", capable, writes, err)
 			}
-			replyJSON(w, 200, r)
-		})
-		err := p.CreateRecipe(context.Background(), r)
-		if capable && (err != nil || writes != 1) || !capable && (err == nil || writes != 0) {
-			t.Errorf("capability %t, writes %d, %v", capable, writes, err)
 		}
 	}
 }

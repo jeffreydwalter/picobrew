@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import type { MachineRecipe, MachineStep, RecipeProvenance } from '../types'
-import { archivePause, externalURL, programTiming, routeLabel } from '../lib/programs'
+import { archivePause, externalURL, plannedHold, programTiming, routeLabel } from '../lib/programs'
 import { ZPicoPakFields } from './ZPicoPakFields'
 import { zDuration } from '../lib/zProgram'
 import { Button, Field, IconButton, SectionHeading } from './ui'
@@ -59,6 +59,7 @@ export function ProgramTable({
           ))}
           {!program.z_program &&
             program.steps.map((step, index) => {
+              const hold = plannedHold(program, index)
               const kitPause = program.z_pak?.step_options[index]?.action === 1
               const path = kitPause
                 ? 'Pause until operator continues'
@@ -77,17 +78,17 @@ export function ProgramTable({
                       <td>{path}</td>
                       <td>
                         {step.target_f === 0
-                          ? program.z_cloud
+                          ? program.z_cloud || program.z_pak
                             ? 'No new target'
                             : 'Unheated'
                           : `${step.target_f} °F`}
                       </td>
                       <td>
-                        {step.minutes === 0
+                        {hold === 0
                           ? step.target_f === 0
                             ? 'Advance immediately'
                             : 'Reach target'
-                          : `${step.minutes} min`}
+                          : `${hold} min`}
                       </td>
                       <td>{step.drain_minutes} min</td>
                     </>
@@ -100,6 +101,8 @@ export function ProgramTable({
       <p className="help-text">
         {program.z_program?.Steps.length ?? program.steps.length} steps ·{' '}
         {programTiming(program, archived ? model : undefined)}. Heating time depends on the brewer.
+        {(program.z_pak || program.z_cloud) &&
+          ' The Z adjusts boiling steps for its measured boiling point.'}
       </p>
     </div>
   )

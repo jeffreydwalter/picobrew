@@ -55,6 +55,31 @@ export function routeLabel(location: number, model?: string, archived = false) {
     return picoPakStepUses[location - 1]
   return `Valve position ${location}`
 }
+// Match the float32 ratio and truncation in the Z's original kit compiler.
+// Local boiling point can add more time on the actual machine.
+export function plannedHold(program: MachineRecipe, index: number) {
+  const step = program.steps[index]
+  const kit = program.z_pak
+  const option = kit?.step_options[index]
+  if (
+    !kit ||
+    !option ||
+    option.action ||
+    option.min_time == null ||
+    option.max_time == null ||
+    step.location < 2
+  )
+    return step.minutes
+  const baseline = step.location === 2 ? kit.abv : kit.ibu
+  const selected = step.location === 2 ? kit.selected_abv : kit.selected_ibu
+  if (baseline < 1 || baseline > 9 || selected == null || selected === baseline) return step.minutes
+  const lower = selected < baseline
+  const ratio = Math.fround(lower ? selected / baseline : (selected - baseline) / (10 - baseline))
+  const start = lower ? option.min_time : step.minutes
+  const end = lower ? step.minutes : option.max_time
+  return start + Math.trunc(Math.fround(ratio * (end - start)))
+}
+
 export function programTiming(program: MachineRecipe, archivedModel?: string) {
   if (program.z_program) {
     const steps = program.z_program.Steps
@@ -68,11 +93,13 @@ export function programTiming(program: MachineRecipe, archivedModel?: string) {
       (steps.some((s) => s.StepType === 2) ? ' + pauses' : '')
     )
   }
-  const active = program.steps.filter((step, i) =>
-    program.z_pak
-      ? program.z_pak.step_options[i]?.action !== 1
-      : !archivePause(step.location, program.z_cloud ? 'z' : archivedModel)
-  )
+  const active = program.steps
+    .map((step, i) => ({ ...step, minutes: plannedHold(program, i) }))
+    .filter((step, i) =>
+      program.z_pak
+        ? program.z_pak.step_options[i]?.action !== 1
+        : !archivePause(step.location, program.z_cloud ? 'z' : archivedModel)
+    )
   const minutes = active.reduce((sum, step) => sum + step.minutes + step.drain_minutes, 0)
   return `${minutes} min${active.some((step) => step.target_f > 0) ? ' + heating' : ''}${active.length < program.steps.length ? ' + pauses' : ''}`
 }

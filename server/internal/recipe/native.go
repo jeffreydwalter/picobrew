@@ -141,20 +141,19 @@ func adaptNative(r domain.Recipe, profile, builtIn domain.Profile, batchLiters f
 			if !profile.ControlSupported || !builtIn.ControlSupported || len(program.Steps) > profile.MaxSteps {
 				return plan, errors.New("this target cannot run the original PicoPak schedule")
 			}
+			for i, s := range program.Steps {
+				if pak.StepOptions[i].Action == 0 && s.TargetF > 0 && float64(s.TargetF-32)/1.8 > profile.MaxTargetC {
+					return plan, fmt.Errorf("step %q exceeds the Z profile temperature limit", s.Name)
+				}
+			}
 			plan.Warnings = append(plan.Warnings, "Load the physical PicoPak and Z PicoPak adapter. The original Z setup calls for 6.81 L of process water.")
 			plan.CanDeploy = true
 			plan.MachineRecipe = &program
 			return plan, nil
 		}
-		if pak.SelectedABV != nil || pak.SelectedIBU != nil {
-			plan.DeploymentBlockers = append(plan.DeploymentBlockers, "Selected PicoPak strength adjustments require the Z PicoPak controller.")
+		if err := pak.ValidatePicoTransfer(); err != nil {
+			plan.DeploymentBlockers = append(plan.DeploymentBlockers, err.Error())
 			return plan, nil
-		}
-		for _, s := range pak.StepOptions {
-			if s.Action != 0 {
-				plan.DeploymentBlockers = append(plan.DeploymentBlockers, "This PicoPak contains an operator pause that requires the Z PicoPak controller.")
-				return plan, nil
-			}
 		}
 		program.ZPak = nil
 		copy.NativeProgram = &program

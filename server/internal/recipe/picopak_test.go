@@ -24,13 +24,25 @@ func TestOriginalKitSelectsTargetGrammar(t *testing.T) {
 			t.Fatalf("wrong program format for %s", model)
 		}
 	}
+	picoJSON, err := Export(r, "native")
+	if err != nil || strings.Contains(string(picoJSON), "z_pak") {
+		t.Fatalf("Pico slot export: %s %v", picoJSON, err)
+	}
+	unchanged := r.NativeProgram.ZPak.IBU
+	r.NativeProgram.ZPak.SelectedIBU = &unchanged
+	if _, err := Export(r, "native"); err != nil {
+		t.Fatal(err)
+	}
 	target := 8
 	r.NativeProgram.ZPak.SelectedABV = &target
 	profile, _ := supportedProfile("z")
 	if _, err := ExportZProgram(r, profile); err == nil {
 		t.Fatal("unsafe stock export")
 	}
-	encoded, err := Export(r, "native")
+	if _, err := Export(r, "native"); err == nil {
+		t.Fatal("Pico export silently dropped a strength change")
+	}
+	encoded, err := Export(r, "z-picopak")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +58,7 @@ func TestOriginalKitSelectsTargetGrammar(t *testing.T) {
 	if _, err := NativeJSON(*r.NativeProgram); err == nil {
 		t.Fatal("accepted a bitterness adjustment without a range")
 	}
-	for _, bad := range []string{strings.Replace(string(data), `"Action":0,`, "", 1), strings.Replace(string(data), `"Location":2`, `"Location":7`, 1)} {
+	for _, bad := range []string{strings.Replace(string(data), `"Action":0,`, "", 1), strings.Replace(string(data), `"Location":2`, `"Location":7`, 1), strings.Replace(string(data), `"Action":0`, `"Action":0,"action":1`, 1), strings.Replace(string(data), `"Temp":152`, `"Temp":55`, 1)} {
 		if _, err := Import([]byte(bad), "json"); err == nil {
 			t.Fatal("invalid kit accepted")
 		}

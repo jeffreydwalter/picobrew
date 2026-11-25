@@ -55,6 +55,28 @@ export default function NativeRecipeEditor({
       ? recipe.source_model
       : undefined
   const program = recipe.native_program!
+  const archived = original.data?.native_program
+  const recoverKit =
+    !program.z_pak &&
+    !program.z_program &&
+    !program.z_cloud &&
+    recipe.source_model === 'pico' &&
+    recipe.kind === 'native-program' &&
+    archived?.z_pak &&
+    original.data?.provenance.sha256 === recipe.provenance?.sha256 &&
+    program.steps.length === archived.steps.length &&
+    program.steps.every((s, i) => {
+      const a = archived.steps[i]
+      return (
+        s.name === a.name &&
+        s.location === a.location &&
+        s.target_f === a.target_f &&
+        s.minutes === a.minutes &&
+        s.drain_minutes === a.drain_minutes
+      )
+    })
+      ? archived.z_pak
+      : undefined
   useEffect(() => {
     const listener = (event: BeforeUnloadEvent) => {
       if (dirty) {
@@ -180,6 +202,7 @@ export default function NativeRecipeEditor({
             <div className="form-grid">
               <Field label="Program type">
                 <select
+                  disabled={!!program.z_pak || !!program.z_cloud}
                   value={recipe.kind}
                   onChange={(event) => update({ kind: event.target.value })}
                 >
@@ -210,6 +233,16 @@ export default function NativeRecipeEditor({
             )}
           </section>
           <section className="panel">
+            {recoverKit && (
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  update({ native_program: { ...program, z_pak: structuredClone(recoverKit) } })
+                }
+              >
+                Restore original Z adapter settings
+              </Button>
+            )}
             <ProgramFields
               title={kindLabel(recipe.kind, recipe.source_model)}
               model={recipe.source_model}
@@ -251,6 +284,24 @@ export default function NativeRecipeEditor({
                 <Download size={15} />
                 Export program JSON
               </Button>
+              {program.z_pak && (
+                <Button
+                  variant="ghost"
+                  disabled={dirty || busy}
+                  onClick={async () => {
+                    try {
+                      await download(
+                        `/recipes/${recipe.id}/export?format=z-picopak`,
+                        `${slug(recipe.name)}-z-picopak.json`
+                      )
+                    } catch (error) {
+                      setError(errorMessage(error))
+                    }
+                  }}
+                >
+                  <Download size={15} /> Export for Z PicoPak adapter
+                </Button>
+              )}
               <p className="help-text">
                 Machine-only programs use JSON. BeerXML export requires an ingredient recipe.
               </p>

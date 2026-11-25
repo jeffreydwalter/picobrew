@@ -104,6 +104,11 @@ func Export(r domain.Recipe, format string) ([]byte, error) {
 	case "z-program":
 		profile, _ := supportedProfile("z")
 		return ExportZProgram(r, profile)
+	case "z-picopak":
+		if !IsNative(r) || r.NativeProgram == nil || r.NativeProgram.ZPak == nil {
+			return nil, errors.New("Z PicoPak export requires the original kit settings")
+		}
+		return NativeJSON(*r.NativeProgram)
 	case "native", "native-json":
 		if !IsNative(r) || r.NativeProgram == nil {
 			return nil, errors.New("native JSON export requires an explicit native program; adapt a canonical recipe for a specific machine first")
@@ -111,7 +116,14 @@ func Export(r domain.Recipe, format string) ([]byte, error) {
 		if !strings.HasPrefix(r.SourceModel, "pico") {
 			return nil, errors.New("standalone native JSON export supports Pico C/S/Pro routing only; use canonical JSON to retain this source model's program")
 		}
-		data, err = NativeJSON(*r.NativeProgram)
+		program := *r.NativeProgram
+		if program.ZPak != nil {
+			if err := program.ZPak.ValidatePicoTransfer(); err != nil {
+				return nil, err
+			}
+			program.ZPak = nil
+		}
+		data, err = NativeJSON(program)
 	case "xml", "beerxml", "application/xml", "text/xml":
 		data, err = exportXML(r)
 	default:
