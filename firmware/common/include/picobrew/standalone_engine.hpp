@@ -42,6 +42,7 @@ public:
     bool handle(const PicoHttpRequest& request,PicoHttpResponse& response,char* arena,std::size_t capacity);
     static bool http_handler(const PicoHttpRequest*,PicoHttpResponse*,char*,std::size_t,void*);
     std::size_t recipe_count() const noexcept;
+    std::uint32_t recipe_revision() const noexcept;
     Result recipe_at(std::size_t ordinal,Recipe& output) const;
     Result recipe_get(const char* id,Recipe& output) const;
     Result recipe_store(const Recipe& recipe,bool* created=nullptr);

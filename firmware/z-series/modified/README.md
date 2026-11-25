@@ -62,6 +62,26 @@ Advertised commands are `brew`, `sous-vide`, `cold-brew`, `rinse`,
 `/api/v1`. The generic API and display/history formats are documented in
 [`../../common/docs/api-schema.md`](../../common/docs/api-schema.md).
 
+## Group Brewing
+
+The Hub can group individual Z modules with compatible brewers. Starting a saved
+recipe, Rinse or Clean on a member creates an invitation that the Hub can deliver
+to other members. Each receiving Z shows the sender and the staged recipe or
+routine on its OLED. Turn the dial to **Accept and start** or press **Decline**.
+The authenticated web interface can also answer the invitation.
+
+A saved recipe runs through the normal Z compiler, including native Program Maker
+steps. The invitation is tied to the staged catalog revision. An active operation,
+a latched stop, a controller fault, or a pending recovery checkpoint prevents a
+group start. The step filter must be present at acceptance. An accepted start
+opens the usual native setup steps and does not generate another invitation.
+
+The Hub brokers group membership and withdraws invitations from removed members
+as soon as it can reach them. If a member disconnects after delivery, its OLED
+offer can still be accepted for up to two minutes from the original receipt.
+Repeating the same pending offer leaves that deadline in place. A reboot clears
+the offer. Each brewer tracks its own session independently.
+
 ## Restart recovery and output inhibition
 
 A local brew reserves its history identity and saves an owned recipe/program

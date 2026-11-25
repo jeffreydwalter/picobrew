@@ -45,6 +45,7 @@ struct Capabilities {
     bool zero_minute_steps = false;
     bool dedicated_pause_resume = false;
     bool z_program_maker = false;
+    bool group_brewing_v1 = false;
     const char* ota_protocol = nullptr;
     // Advertise only when the adapter supplies attributed, validated defaults.
     const struct Recipe* starter_recipes = nullptr;

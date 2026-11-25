@@ -87,7 +87,7 @@ api::DeviceServices Adapter::services() noexcept {
     out.capabilities=[](void* p){api::Capabilities caps;
         if (static_cast<Adapter*>(p)->wireless_) caps.ota_protocol = "esp32-factory-v1";
         caps.flags=api::Recipes|api::Brewing|api::Heating|api::Pump|api::Temperature|api::Pressure|api::FrontPanel;
-        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus|api::AutoCycle;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.zero_minute_steps=true;caps.z_program_maker=true;caps.dedicated_pause_resume=true;return caps;};
+        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus|api::AutoCycle;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.group_brewing_v1=true;caps.zero_minute_steps=true;caps.z_program_maker=true;caps.dedicated_pause_resume=true;return caps;};
     out.snapshot=[](void* p,api::Snapshot& value){return static_cast<Adapter*>(p)->snapshot(value);};
     out.execute=[](void* p,const api::Command& value){return static_cast<Adapter*>(p)->execute(value);};
     out.idle=[](void* p){return static_cast<Adapter*>(p)->idle();};
@@ -190,6 +190,9 @@ bool Adapter::stop(const char* reason){
         core_.heater.pid.automatic=false;
         original_gpio_.write_pin(original_gpio_.context,OriginalHeaterEnablePin,false);
         original_gpio_.write_pin(original_gpio_.context,core_.heater.output_pin,false);}
+    if(joined_program_||invite_state_==InviteState::Pending)finish_invite(InviteState::Unavailable);
+    joined_program_=0;
+    group_source_id_[0]=0;
     queued_=false;encoder_click_=false;core_.core.commands.pending=false;core_.runtime_commands.pending=false;
     core_.core.state.runtime_start_pending=false;core_.core.state.rinse_pending=false;
     if(begun_){RuntimeCommand stop;stop.id=RuntimeCommandId::Stop;core_.post_runtime(stop);}
@@ -263,6 +266,7 @@ api::Result Adapter::execute(const api::Command& input){
     if(!std::strcmp(input.name,"resume-interrupted"))return resume_interrupted(input.confirm);
     if(!std::strcmp(input.name,"encoder")){
         if(input.delta<-100||input.delta>100||(!input.delta&&!input.click))return {400,"invalid_command","Provide encoder movement or a click"};
+        if(page_==Page::Group)return {409,"group_prompt","Use the group invitation or the physical dial"};
         if(page_==Page::Pairing)return {409,"physical_confirmation","Use the physical dial to confirm pairing"};
         if(encoder_click_||head_.encoder_events.pending||head_.button_events.pending)return busy();
         if(core_.core.state.id==CoreStateId::StandBy){
@@ -293,7 +297,7 @@ api::Result Adapter::execute(const api::Command& input){
     queued_=true;return {202};
 }
 void Adapter::poll(){
-    if(begun_)poll_recovery();
+    if(begun_){poll_recovery();poll_group();}
     if(page_==Page::Pairing){
         auto& menu=head_.screens.menu_data;
         if(!menu.count||static_cast<std::uint32_t>(menu.items[0].event.command)!=LocalPairCancel||
@@ -468,6 +472,15 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
     // A queued resume is consumed by this attempt, including storage rejection.
     // Keep the retained checkpoint reviewable if no native session starts.
     const bool requested_resume=resuming_;resuming_=false;
+    const bool joined=joined_program_!=0;
+    const bool matches_joined=joined_program_==id;
+    joined_program_=0;
+    // Acceptance only queues the native start. A new fault, removed filter or
+    // failed storage reservation must leave the Hub an accurate final result.
+    if(joined){
+        finish_invite(InviteState::Unavailable);
+        if(!matches_joined||!group_ready()||core_.safeties.filter_missing)return show_home();
+    }
     if(stopped()||id==static_cast<std::uint32_t>(ZProgramId::ManualBrew))return show_home();
     const auto* program=core_.programs.find(id);
     if(!program)return false;
@@ -492,7 +505,12 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
     // unspecified so the native loading screen gives its generic water prompt.
     if(local_brew)core_.program.parameters.water={0,Unit::Liter};
     const bool ok=original_core_.perform(original_core_.context,action,result);
-    if(ok&&core_.core.state.id==CoreStateId::Starting&&core_.core.state.program_id==id)care_recorded_=requested_resume;
+    if(ok&&core_.core.state.id==CoreStateId::Starting&&core_.core.state.program_id==id){
+        care_recorded_=requested_resume;
+        group_source_id_[0]=0;
+        if(joined)finish_invite(InviteState::Accepted);
+        else if(!requested_resume)group_started(id,local_brew);
+    }
     if(recordable(id)&&(!ok||core_.core.state.id!=CoreStateId::Starting||core_.core.state.program_id!=id)){engine_->cancel_prepared_session();native_prepared_=false;}
     if(local_brew&&ok&&core_.core.state.id==CoreStateId::Starting){recovery_active_=true;recovery_date_=ports_.millis(ports_.context);recovery_instruction_=0;}
     return ok;
@@ -724,6 +742,12 @@ bool Adapter::handle_head(HeadEventKind kind){
         CoreWifiEvent event;head_.wifi_events.take(event);return true;
     }
     if(kind==HeadEventKind::UiCommand&&head_.ui_events.pending){const auto event=head_.ui_events.value;const auto id=static_cast<std::uint32_t>(event.command);
+        if(id==GroupDecline||id==GroupAccept){
+            HeadUiEvent consumed;head_.ui_events.take(consumed);
+            if(event.index==invite_ticket_&&group_screen())
+                respond_invite(group_invite_.id,id==GroupAccept?"accept":"decline");
+            return true;
+        }
         if(id>=LocalRecipes&&id<=LocalPairApprove){HeadUiEvent consumed;head_.ui_events.take(consumed);
             // Match HeadUiCommands::handle's shared menu-command prologue.
             if(!head_.services.alarm||!head_.services.alarm(head_.services.context,false))return false;

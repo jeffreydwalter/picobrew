@@ -85,6 +85,7 @@ struct Application {
         firmware.core.msp.diagnostics=&diagnostics;
         Ports ports;ports.context=this;
         ports.storage=storage.binding();
+        ports.group_boot_nonce=esp_random();
         ports.millis=[](void*)->std::uint32_t{return ::millis();};
         ports.http_poll=[](void* p,std::uint32_t now){static_cast<Application*>(p)->http_poll(now);};
         ports.serial_poll=[](void* p){static_cast<Application*>(p)->serial_poll();};
@@ -120,6 +121,7 @@ struct Application {
             }
             return true;
         }
+        if(self.adapter.group_http(*req,*res,arena,capacity))return true;
         return self.engine.handle(*req,*res,arena,capacity);
     }
     void configure_http(){
