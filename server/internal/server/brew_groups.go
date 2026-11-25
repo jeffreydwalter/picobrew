@@ -22,6 +22,8 @@ type brewGroup struct {
 	MemberSince map[string]time.Time `json:"member_since"`
 }
 type brewInvite struct {
+	device.GroupZProgram
+	ProgramName string `json:"program_name,omitempty"`
 	device.GroupKitSelection
 	SourceHistoryID uint64    `json:"source_history_id,omitempty"`
 	HubConfirmation bool      `json:"hub_confirmation,omitempty"`

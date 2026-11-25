@@ -113,6 +113,7 @@ type Capabilities struct {
 	ZPicoPakV1            bool `json:"z_picopak_v1,omitempty"`
 	PicoStillBrewerLinkV1 bool `json:"picostill_brewer_link_v1,omitempty"`
 	GroupRecipeV1         bool `json:"group_recipe_v1,omitempty"`
+	GroupZProgramsV1      bool `json:"group_z_programs_v1,omitempty"`
 
 	GroupBrewingV1          bool                     `json:"group_brewing_v1,omitempty"`
 	ReleaseChannel          string                   `json:"release_channel,omitempty"`

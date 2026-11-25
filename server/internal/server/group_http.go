@@ -111,6 +111,10 @@ func (s *Server) respondBrewInvite(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		v := groupView(d)
+		if *input.Accept && i.Action == "z_program" && (!groupZProgramCapable(v) || i.HubConfirmation || i.MenuSerial != "") {
+			s.fail(w, 409, "unsupported", zGroupRequirement)
+			return
+		}
 		if *input.Accept && i.GroupKitSelection.Present() && (!groupKitCapable(v) || i.HubConfirmation || i.MenuSerial != "") {
 			s.fail(w, 409, "unsupported", kitGroupRequirement)
 			return
