@@ -71,7 +71,7 @@ const char* kind_name(SensorKind kind);
 const char* actuator_name(ActuatorKind kind);
 bool valid_id(const char* value, std::size_t capacity = 21);
 bool valid_text(const char* value, std::size_t capacity);
-bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker, bool z_cloud);
+bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker, bool z_cloud, bool z_pak);
 bool settings_valid(const Settings& settings);
 bool telemetry_valid(const TelemetryConfig& config);
 bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only, std::uint32_t& revision);

@@ -615,9 +615,8 @@ std::string test_file(const char* path){
     std::ifstream in(path,std::ios::binary);assert(in);
     return {std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};
 }
-void original_z_program(const char* source,const char* wire){
-    const auto json=test_file(wire);
-    for(double boiling:{100.,93.}){
+void compare_archived_program(const std::string& source,const std::string& json,bool pak,double boiling){
+    {
         World w;const char* path="/api/v1/recipes/archived";
         assert(w.request(PICO_HTTP_GET,"/api/v1",nullptr,200).find("\"z_cloud_program_v1\":true")!=std::string::npos);
         const auto stored=w.request(PICO_HTTP_PUT,path,json.c_str(),201);
@@ -625,9 +624,11 @@ void original_z_program(const char* source,const char* wire){
         reopened.core.temperatures.estimated_boil_celsius=boiling;
         reopened.request(PICO_HTTP_POST,"/api/v1/commands",R"({"command":"brew","recipe_id":"archived"})",202);
         reopened.adapter.poll();
-        ProgramBuffer original;auto bytes=test_file(source);
-        assert(parse_http_recipe(original,&bytes[0],bytes.size(),HttpRecipeFormat::Zymatic,SessionType::LocalBrew,0,
-            ProgramParameters{},RecipeEnvironment(101325,boiling)).ready);
+        api::Recipe saved;assert(reopened.engine.recipe_get("archived",saved).ok());
+        ProgramBuffer original;auto bytes=source;
+        ProgramParameters tweaks;tweaks.abv=saved.pak.selected_abv;tweaks.ibu=saved.pak.selected_ibu;
+        assert(parse_http_recipe(original,&bytes[0],bytes.size(),pak?HttpRecipeFormat::PicoPak:HttpRecipeFormat::Zymatic,SessionType::LocalBrew,saved.pak.recipe_id,
+            tweaks,RecipeEnvironment(101325,boiling)).ready);
         auto& program=reopened.core.program;
         const auto& expected=original.record().view;const auto& got=program.record().view;
         assert(got.code_size==expected.code_size&&got.string_count==expected.string_count);
@@ -639,8 +640,38 @@ void original_z_program(const char* source,const char* wire){
         assert(reopened.dispatch()&&reopened.core.commands.session.parameters.water.value==original.parameters.water.value);
         zseries::standalone::BrewRecovery recovery;
         assert(recovery.load(reopened.storage()).ok()&&recovery.present());
-        assert(recovery.recipe().z_cloud_water_ml==std::lround(1000.0*original.parameters.water.value));
+        if(pak){
+            assert(recovery.recipe().pak.recipe_id==saved.pak.recipe_id&&recovery.recipe().pak.beer_id==saved.pak.beer_id);
+            assert(recovery.recipe().pak.selected_abv==tweaks.abv&&recovery.recipe().pak.selected_ibu==tweaks.ibu);
+            assert(program.record().unique_id==saved.pak.recipe_id&&got.code[0].opcode==OpCode::Setup&&(got.code[0].argument&0x111)==0x111);
+            assert(original.parameters.water.value==6.81);
+        }else assert(recovery.recipe().z_cloud_water_ml==std::lround(1000.0*original.parameters.water.value));
     }
+}
+void reject_pak_changes(){
+    World w;const char* path="/api/v1/recipes/kit";
+    const std::string body=R"({"name":"Kit","steps":[{"name":"Mash","location":2,"target_f":152,"minutes":10}],"z_pak":{"recipe_id":8,"beer_id":4,"abv":5,"ibu":5,"step_options":[{"action":0,"min_time":1,"max_time":50}]}})";
+    const auto original=w.request(PICO_HTTP_PUT,path,body.c_str(),201);
+    auto invalid=[&](const char* from,const char* to){
+        auto edited=body;auto pos=edited.find(from);assert(pos!=std::string::npos);
+        edited.replace(pos,std::strlen(from),to);w.request(PICO_HTTP_PUT,path,edited.c_str(),400);
+        assert(w.request(PICO_HTTP_GET,path,nullptr,200)==original);
+    };
+    invalid("\"recipe_id\":8","\"recipe_id\":0");invalid("\"beer_id\":4","\"beer_id\":0");
+    invalid("\"action\":0","\"action\":4");invalid("\"min_time\":1","\"min_time\":620");
+    invalid("\"abv\":5","\"abv\":128");invalid("\"ibu\":5","\"ibu\":5,\"selected_ibu\":8");
+    invalid("\"abv\":5","\"abv\":-1,\"selected_abv\":10");
+    invalid("\"location\":2","\"location\":0");invalid("\"target_f\":152","\"target_f\":55");
+    invalid("\"action\":0,\"min_time\":1,\"max_time\":50","\"action\":0},{\"action\":0");
+    invalid("\"name\":\"Kit\"","\"name\":\"Kit\",\"z_cloud\":{\"start_water_ml\":12110,\"is_beer\":true}");
+}
+void compare_pak_corpus(const char* input){
+    std::ifstream stream(input);std::string row;
+    while(std::getline(stream,row)){
+        auto tab=row.find('\t');assert(tab!=std::string::npos);
+        compare_archived_program(row.substr(0,tab),row.substr(tab+1),true,93.);
+    }
+    assert(stream.eof());
 }
 void original_native_state(){
     World w;PicoHttpRequest req{};PicoHttpResponse res{};char arena[1200]{};
@@ -801,8 +832,9 @@ void group_interlocks() {
     assert(fault.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"unavailable\"")!=std::string::npos);
 }
 }
-int main(int argc,char** argv){if(argc==4&&!std::strcmp(argv[1],"original-z")){original_z_program(argv[2],argv[3]);return 0;}assert(argc==2);const std::string test=argv[1];
-    if(test=="group-brew")group_brew();else if(test=="group-routines")group_routines();else if(test=="group-interlocks")group_interlocks();
+int main(int argc,char** argv){if(argc==4&&!std::strcmp(argv[1],"original-z")){for(double boil:{100.,93.})compare_archived_program(test_file(argv[2]),test_file(argv[3]),false,boil);return 0;}
+    if(argc==3&&!std::strcmp(argv[1],"pak-corpus")){compare_pak_corpus(argv[2]);return 0;}assert(argc==2);const std::string test=argv[1];
+    if(test=="pak-input")reject_pak_changes();else if(test=="group-brew")group_brew();else if(test=="group-routines")group_routines();else if(test=="group-interlocks")group_interlocks();
     else if(test=="maker")maker_program();else if(test=="recipe")owned_recipe();else if(test=="storage")storage_preflight();else if(test=="unheated")no_target();
     else if(test=="stop")stop_guard();else if(test=="input")input_order();else if(test=="offline")offline_and_reservation();
     else if(test=="settings")settings_and_display();else if(test=="status")status_fields();

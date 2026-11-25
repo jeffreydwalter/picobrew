@@ -35,6 +35,7 @@ unsigned Engine::Impl::discovery_json(Writer& writer) {
     if (capabilities.flags & Recipes) writer.text(",\"recipe_conditional_write\":true");
     if (capabilities.group_brewing_v1) writer.text(",\"group_brewing_v1\":true");
     if (capabilities.z_state_v1) writer.text(",\"z_state_v1\":true");
+    if (capabilities.z_picopak_v1) writer.text(",\"z_picopak_v1\":true");
     if (capabilities.z_cloud_program_v1) writer.text(",\"z_cloud_program_v1\":true");
     if (capabilities.z_program_maker) writer.text(",\"z_program_maker\":true");
     writer.text(",\"api_version\":1,\"release_channel\":\"stable\",\"firmware_version\":"); writer.quote(identity.firmware_version);

@@ -5,12 +5,15 @@
 #include "json.hpp"
 
 namespace picobrew { namespace standalone { namespace detail {
-bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker, bool z_cloud);
+bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker, bool z_cloud, bool z_pak);
 constexpr std::size_t LegacyRecipeBytes = 54 + RecipeStepCapacity * 28;
 // The cloud extension retains the complete legacy step layout and adds the
 // starting keg charge (milliliters, little endian) and native beer setup flag.
 constexpr std::size_t CloudRecipeBytes = LegacyRecipeBytes + 3;
+constexpr std::size_t PakRecipeBytes = LegacyRecipeBytes + 12 + RecipeStepCapacity * 5;
 constexpr std::size_t ZRecipeBytes = 55 + RecipeStepCapacity * 38;
+static_assert(PakRecipeBytes < ZRecipeBytes && CloudRecipeBytes < ZRecipeBytes,
+              "largest record buffer must also fit original cloud and PicoPak programs");
 
 inline std::size_t write_recipe_record(std::uint8_t* bytes, const Recipe& recipe) {
     std::memcpy(bytes, recipe.id, 21);
@@ -43,6 +46,18 @@ inline std::size_t write_recipe_record(std::uint8_t* bytes, const Recipe& recipe
             p[27] = step.drain_minutes >> 8;
         }
     }
+    if (recipe.pak.recipe_id) {
+        auto* p = bytes + LegacyRecipeBytes;
+        const auto& pak = recipe.pak;
+        put32(p,pak.recipe_id); put32(p+4,pak.beer_id);
+        p[8]=pak.abv+1; p[9]=pak.ibu+1; p[10]=pak.selected_abv+1; p[11]=pak.selected_ibu+1;
+        for (unsigned i=0;i<recipe.step_count;++i) {
+            auto* opt=p+12+i*5; const auto& step=recipe.steps[i].pak;
+            opt[0]=step.action; const unsigned lo=step.minimum+1, hi=step.maximum+1;
+            opt[1]=lo;opt[2]=lo>>8;opt[3]=hi;opt[4]=hi>>8;
+        }
+        return PakRecipeBytes;
+    }
     if (recipe.z_cloud_water_ml) {
         bytes[LegacyRecipeBytes] = recipe.z_cloud_water_ml;
         bytes[LegacyRecipeBytes + 1] = recipe.z_cloud_water_ml >> 8;
@@ -52,7 +67,7 @@ inline std::size_t write_recipe_record(std::uint8_t* bytes, const Recipe& recipe
     return recipe.z_program ? ZRecipeBytes : LegacyRecipeBytes;
 }
 inline bool read_recipe_record(Recipe& recipe, const std::uint8_t* bytes, std::size_t size) {
-    if (size != ZRecipeBytes && size != LegacyRecipeBytes && size != CloudRecipeBytes) return false;
+    if (size != ZRecipeBytes && size != LegacyRecipeBytes && size != CloudRecipeBytes && size != PakRecipeBytes) return false;
     recipe.z_program = size == ZRecipeBytes;
     std::memcpy(recipe.id, bytes, 21);
     std::memcpy(recipe.name, bytes + 21, 32);
@@ -62,6 +77,13 @@ inline bool read_recipe_record(Recipe& recipe, const std::uint8_t* bytes, std::s
     if (flags & ~15u) return false;
     recipe.is_beer = flags & 1;
     recipe.z_cloud_water_ml = 0;
+    recipe.pak = PicoPakOptions{};
+    if(size==PakRecipeBytes){
+        const auto* p=bytes+LegacyRecipeBytes;auto& pak=recipe.pak;
+        pak.recipe_id=get32(p);pak.beer_id=get32(p+4);
+        if(!pak.recipe_id||!pak.beer_id||p[8]>128||p[9]>128||p[10]>11||p[11]>11)return false;
+        pak.abv=int(p[8])-1;pak.ibu=int(p[9])-1;pak.selected_abv=int(p[10])-1;pak.selected_ibu=int(p[11])-1;
+    }
     if (size == CloudRecipeBytes) {
         const auto* fields = bytes + LegacyRecipeBytes;
         recipe.z_cloud_water_ml = fields[0] | (unsigned(fields[1]) << 8);
@@ -74,6 +96,12 @@ inline bool read_recipe_record(Recipe& recipe, const std::uint8_t* bytes, std::s
     for (unsigned i = 0; i < recipe.step_count; ++i) {
         auto& step = recipe.steps[i];
         step = RecipeStep{};
+        if(size==PakRecipeBytes){
+            const auto* opt=bytes+LegacyRecipeBytes+12+i*5;
+            const unsigned lo=opt[1]|(unsigned(opt[2])<<8), hi=opt[3]|(unsigned(opt[4])<<8);
+            if(opt[0]>1||lo>600||hi>600)return false;
+            step.pak.action=opt[0];step.pak.minimum=int(lo)-1;step.pak.maximum=int(hi)-1;
+        }
         const auto* p = recipe.z_program ? bytes + 55 + i * 38 : bytes + 54 + i * 28;
         std::memcpy(step.name, p, 22);
         step.location = p[22];
