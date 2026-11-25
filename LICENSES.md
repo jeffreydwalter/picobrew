@@ -16,7 +16,7 @@ to every component.
 | PDF manual renderer and its bundled resources | PDF.js is pinned in the [frontend dependencies](server/web/package.json). Its upstream license and the font/decoder notices are copied unchanged into the built website under `vendor/pdfjs-<version>/`, alongside the locally served resources. |
 | `server/internal/catalog/data/catalog.zip` and `firmware/pico-s-pro/modified/data/starter-recipes.json` | Pinned recipes, machine programs, illustrations and original notices. Attribution and license metadata remain in the catalogue manifest and recipe provenance. The server's MIT license does not relicense these records or assets. |
 | `server/web/src/data/beer-crafter.json` | Factual ingredient measurements and historical style ranges from [PicoBrew’s original Beer Crafter](https://picobrew.com/z_crafter/z_recipe). Style codes and ranges are credited to the guides identified in the data, including BJCP. See the [source and calculation notes](server/docs/beer-crafter.md). |
-| New project-level documentation and integration tools | MIT terms in [the server license](server/LICENSE), without overriding the component boundaries above. |
+| Original project contributions to standalone firmware, device websites, tests, documentation and integration tools under `firmware/common/`, `firmware/*/modified/`, `docs/` and `tools/` | The [project MIT license](LICENSE) covers these contributions. Upstream code, reconstructed vendor material, SDKs, dependencies, recipes, manuals and artwork retain their respective terms and notices, including in mixed-source files and compiled images. |
 
 The earlier C decompiler exports under the S/Pro source trees' `legacy/`
 directories retain their own notices. As recorded in the
