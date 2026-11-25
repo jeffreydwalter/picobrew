@@ -27,7 +27,11 @@ public:
     // A failed persistent store keeps health/status/stop available, while
     // mutation/session creation fails explicitly and preserves existing files.
     Result begin();
-    void poll();
+    // The recorder continues to run when a battery device switches off its radio.
+    void poll(bool network = true);
+    bool forwarding_enabled() const;
+    bool forwarding_active() const;
+    void schedule_forwarding_now();
     Result record_care(CareEvent event);
     // The platform owns the stable string and sets it after qualifying its live boot layout.
     void set_ota_protocol(const char* protocol) noexcept;

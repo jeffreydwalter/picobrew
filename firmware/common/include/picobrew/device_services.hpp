@@ -15,7 +15,7 @@ enum Capability : std::uint32_t {
     Recipes = 1u << 0, Brewing = 1u << 1, Heating = 1u << 2,
     Pump = 1u << 3, Fans = 1u << 4, Temperature = 1u << 5,
     Pressure = 1u << 6, Battery = 1u << 7, Calibration = 1u << 8,
-    Fermentation = 1u << 9, FrontPanel = 1u << 10
+    Fermentation = 1u << 9, FrontPanel = 1u << 10, IntermittentWifi = 1u << 11
 };
 enum SettingField : std::uint32_t {
     TemperatureUnit = 1u << 0, Language = 1u << 1, DetailedStatus = 1u << 2
