@@ -256,6 +256,9 @@ Result Engine::Impl::recipe_read(unsigned slot, Recipe& recipe) const {
         std::strcmp(recipe.name, recipes[slot].name) || recipe.step_count != recipes[slot].steps) return storage_error();
     return owner.device_.validate_recipe ? owner.device_.validate_recipe(owner.device_.context, recipe) : Result();
 }
+std::uint32_t Engine::recipe_revision() const noexcept {
+    return impl_ && impl_->persistent ? impl_->catalogue_generation : 0;
+}
 std::size_t Engine::recipe_count() const noexcept {
     std::size_t count = 0;
     if (impl_ && impl_->recipes && (impl_->capabilities.flags & Recipes))

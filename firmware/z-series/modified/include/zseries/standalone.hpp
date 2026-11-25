@@ -17,6 +17,7 @@ struct Ports {
     bool (*save_configuration)(void*) = nullptr;
     std::uint32_t (*pair_prompt)(void*, std::uint32_t, char code[9]) = nullptr;
     bool (*pair_decide)(void*, std::uint32_t, std::uint32_t, bool) = nullptr;
+    std::uint32_t group_boot_nonce = 0;
     api::Storage storage;
 };
 
@@ -39,12 +40,13 @@ public:
     bool stop(const char* reason);
     bool show_home();
     bool show_recipes();
+    bool group_http(const PicoHttpRequest&, PicoHttpResponse&, char* arena, std::size_t capacity);
     bool tick_wifi(std::uint32_t now);
     bool service_stage(oem::CoreTickStage, std::uint32_t);
     bool service_effect(const oem::CoreAction&, std::uint32_t&);
 private:
     bool wireless_ = false;
-    enum class Page { Home, Recipes, Original, Scanning, Networks, Pairing };
+    enum class Page { Home, Recipes, Original, Scanning, Networks, Pairing, Group };
     oem::CoreApplication& core_;
     oem::HeadApplication& head_;
     Ports ports_;
@@ -101,6 +103,36 @@ private:
     api::Result resume_interrupted(bool confirmed);
     api::Result discard_interrupted();
     void poll_recovery();
+    enum GroupMenu : std::uint32_t { GroupDecline = 0x1000c, GroupAccept = 0x1000d };
+    enum class InviteState { Empty, Pending, Accepted, Declined, Withdrawn, Expired, Unavailable };
+    struct GroupProgram {
+        char action[16] = {};
+        char recipe_id[21] = {};
+        std::uint32_t revision = 0;
+    };
+    struct GroupInvitation {
+        char id[17] = {}, from[21] = {};
+        GroupProgram program;
+        std::uint32_t ttl_ms = 120000;
+    } group_invite_;
+    GroupProgram group_source_;
+    char group_source_id_[17] = {};
+    std::uint32_t group_source_time_ = 0, group_sequence_ = 0;
+    std::uint32_t invite_time_ = 0, invite_ticket_ = 0;
+    InviteState invite_state_ = InviteState::Empty;
+    struct SeenInvitation { char id[17] = {}; std::uint32_t time = 0; };
+    std::array<SeenInvitation,8> seen_invitations_{};
+    std::uint32_t joined_program_ = 0;
+    bool invite_filter_missing_ = false;
+    char invite_name_[32] = {};
+    bool group_screen() const;
+    bool group_ready() const;
+    bool show_invite();
+    void poll_group();
+    void finish_invite(InviteState);
+    api::Result receive_invite(const GroupInvitation&);
+    api::Result respond_invite(const char* id, const char* op);
+    void group_started(std::uint32_t native_id, bool local_brew);
     void sensor_failure();
     const char* text(const char*, const char*, const char*) const noexcept;
     static void ZSERIES_HEATER_IRAM guarded_write(void*, std::uint8_t, bool);

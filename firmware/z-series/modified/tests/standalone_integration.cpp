@@ -94,7 +94,7 @@ struct World {
         h.display_io.spi_bytes=[](void* p,const std::uint8_t*,std::size_t size){assert(size==4096);++self(p).displays;};
         h.display_setup.context=this;h.display_setup.report_information=[](void*){};h.display_setup.register_commands=[](void*){};
         h.display_delay.context=this;h.display_delay.milliseconds=[](void* p,std::uint32_t value){self(p).now+=value;};
-        zseries::standalone::Ports ports;ports.context=this;ports.millis=core.ports.millis;ports.storage=storage();
+        zseries::standalone::Ports ports;ports.context=this;ports.millis=core.ports.millis;ports.storage=storage();ports.group_boot_nonce=0x89ab1257u;
         ports.http_poll=[](void* p,std::uint32_t){++self(p).http_polls;};
         ports.serial_poll=[](void*){};ports.save_network=[](void* p,const char*,const char*){return !self(p).reject_network;};ports.reconnect_network=[](void*){return true;};
         ports.lan_ready=[](void* p,std::uint32_t){return self(p).lan;};ports.save_configuration=[](void*){return true;};
@@ -128,7 +128,8 @@ struct World {
         PicoHttpRequest request{};PicoHttpResponse response{};char arena[4096]{};
         request.method=method;request.auth_configured=request.authenticated=true;std::strcpy(request.path,path);
         if(body){request.body_length=std::strlen(body);assert(request.body_length<sizeof arena);std::memcpy(arena,body,request.body_length);}
-        request.body=arena;assert(engine.handle(request,response,arena,sizeof arena));
+        request.body=arena;
+        assert(adapter.group_http(request,response,arena,sizeof arena)||engine.handle(request,response,arena,sizeof arena));
         if(response.status!=expected){std::fprintf(stderr,"HTTP %s got%u expected%u: %.*s\n",path,response.status,expected,int(response.body_length),response.body);std::abort();}
         return std::string(reinterpret_cast<const char*>(response.body),response.body_length);
     }
@@ -544,9 +545,131 @@ void recovery_preflight_has_no_diagnostics(){World w;running_hold(w);
     runtime.stack.clear();runtime.state.instruction={static_cast<OpCode>(0xffffffffu),0};
     assert(!checkpoint.capture(runtime,66.5,w.now,0).ok());assert(w.assertions==assertions&&w.now==now);
 }
+constexpr const char* group_path = "/api/v1/group-brew";
+const char* rinse_invite = R"({"op":"offer","id":"1000000000000001","from":"Pico Z","action":"rinse"})";
+const char* accept_rinse = R"({"op":"accept","id":"1000000000000001"})";
+std::string group_recipe_offer(std::uint32_t revision, const char* id = "1000000000000002") {
+    return std::string(R"({"op":"offer","id":")") + id + R"(","from":"Kitchen","action":"brew","recipe_id":"native","revision":)" + std::to_string(revision) + "}";
+}
+void physical_group_button(World& w, unsigned row) {
+    if (row) { assert(w.head.receive_encoder(-1)); w.head_tick(); }
+    CoreButtonEvent click;click.id=1;click.argument=1;
+    assert(w.head.receive_button(click)); w.head_tick(); w.head_tick();
+}
+void group_brew() {
+    World origin, target;
+    auto r = recipe();
+    assert(origin.engine.recipe_store(r).ok() && target.engine.recipe_store(r).ok());
+    assert(origin.request(PICO_HTTP_GET,"/api/v1",nullptr,200).find("\"group_brewing_v1\":true")!=std::string::npos);
+    assert(origin.adapter.load_recipe(r,true).ok());
+    assert(origin.request(PICO_HTTP_GET,group_path,nullptr,200)=="{\"source\":null,\"invite\":null}");
+    assert(origin.dispatch());
+    const auto offered = origin.request(PICO_HTTP_GET,group_path,nullptr,200);
+    assert(offered.find("\"id\":\"89ab125700000001\"")!=std::string::npos &&
+           offered.find("\"recipe_id\":\"native\"")!=std::string::npos &&
+           offered.find("\"action\":\"brew\"")!=std::string::npos);
+    const auto post = group_recipe_offer(target.engine.recipe_revision());
+    const auto frames = target.frames.size();
+    const auto first=target.request(PICO_HTTP_POST,group_path,post.c_str(),200);
+    assert(first.find("\"state\":\"pending\"")!=std::string::npos);
+    assert(!target.core.core.commands.pending && !target.core.core.state.runtime_start_pending && target.frames.size()==frames);
+    assert(target.head.encoder.state.menu.selected==0 && !std::strcmp(target.head.screens.menu_data.items[0].text.data(),"Decline"));
+    const auto stale_click=target.head.screens.menu_data.items[1].event;
+    assert(target.request(PICO_HTTP_POST,group_path,post.c_str(),200)==first);
+    physical_group_button(target,0);
+    assert(target.request(PICO_HTTP_POST,group_path,post.c_str(),200).find("\"declined\"")!=std::string::npos);
+    assert(!target.core.core.commands.pending);
+    const auto another=group_recipe_offer(target.engine.recipe_revision(),"1000000000000003");
+    target.request(PICO_HTTP_POST,group_path,another.c_str(),200);
+    assert(target.head.receive_ui(stale_click));target.head_tick();
+    assert(!target.core.core.commands.pending);
+    physical_group_button(target,1);
+    assert(target.core.core.commands.pending && target.dispatch() && target.core.core.state.id==CoreStateId::Starting);
+    auto accepted=target.request(PICO_HTTP_GET,group_path,nullptr,200);
+    assert(accepted.find("\"source\":null")!=std::string::npos && accepted.find("\"state\":\"accepted\"")!=std::string::npos);
+    target.request(PICO_HTTP_POST,group_path,R"({"op":"accept","id":"1000000000000003"})",200);
+    assert(!target.core.core.commands.pending);
+    origin.now+=120000;
+    assert(origin.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"source\":null")!=std::string::npos);
+}
+void group_routines() {
+    for (const auto id : {ZProgramId::Rinse,ZProgramId::Clean}) {
+        World source,target;
+        CoreCommand command;command.id=CoreCommandId::StartProgram;command.program_id=static_cast<unsigned>(id);
+        assert(source.core.post(command) && source.dispatch());
+        const char* name=id==ZProgramId::Rinse?"rinse":"clean";
+        assert(source.request(PICO_HTTP_GET,group_path,nullptr,200).find(std::string("\"action\":\"")+name+"\"")!=std::string::npos);
+        std::string offer=rinse_invite;offer.replace(offer.find("rinse"),5,name);
+        target.request(PICO_HTTP_POST,group_path,offer.c_str(),200);
+        target.request(PICO_HTTP_POST,group_path,accept_rinse,200);
+        assert(target.dispatch() && target.core.core.state.program_id==static_cast<unsigned>(id));
+        assert(target.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"source\":null")!=std::string::npos);
+    }
+    World z;
+    auto r=recipe();r.z_program=true;r.steps[0].z.has_time=true;r.steps[0].z.target_c=65.5;r.steps[0].z.seconds=73;
+    r.steps[1].z.pause=true;r.steps[1].location=0;
+    assert(z.engine.recipe_store(r).ok());
+    auto offer=group_recipe_offer(z.engine.recipe_revision());
+    z.request(PICO_HTTP_POST,group_path,offer.c_str(),200);
+    z.request(PICO_HTTP_POST,group_path,R"({"op":"accept","id":"1000000000000002"})",200);
+    assert(z.dispatch() && z.core.core.state.program_id==24);
+    zseries::standalone::BrewRecovery checkpoint;assert(checkpoint.load(z.storage()).ok() && checkpoint.present());
+    assert(checkpoint.recipe().z_program && checkpoint.recipe().steps[0].z.seconds==73 && checkpoint.recipe().steps[1].z.pause);
+}
+void group_interlocks() {
+    World w;
+    assert(w.engine.recipe_store(recipe()).ok());
+    // Source labels and commands cannot be supplied as executable programs.
+    w.request(PICO_HTTP_POST,group_path,R"({"op":"offer","id":"1000000000000000","from":"Other","action":"stop"})",400);
+    w.request(PICO_HTTP_POST,group_path,R"({"op":"offer","id":"1000000000000000","from":"Other","action":"rinse","action":"clean"})",400);
+    const auto old=group_recipe_offer(w.engine.recipe_revision()+1);
+    w.request(PICO_HTTP_POST,group_path,old.c_str(),409);
+    w.adapter.stop("requested");w.request(PICO_HTTP_POST,group_path,rinse_invite,409);w.core.runtime_commands.pending=false;
+    assert(w.command("clear-stop").ok());
+    w.core.msp_state.errors=1;w.request(PICO_HTTP_POST,group_path,rinse_invite,409);w.core.msp_state.errors=0;
+    auto staged=group_recipe_offer(w.engine.recipe_revision());
+    w.request(PICO_HTTP_POST,group_path,staged.c_str(),200);
+    auto replacement=recipe();std::strcpy(replacement.name,"Different");assert(w.engine.recipe_store(replacement).status==409);
+    w.request(PICO_HTTP_POST,group_path,R"({"op":"withdraw","id":"1000000000000002"})",200);
+    assert(w.engine.recipe_store(replacement).ok());
+    w.request(PICO_HTTP_POST,group_path,group_recipe_offer(w.engine.recipe_revision()-1,"1000000000000004").c_str(),409);
+    assert(!w.core.core.commands.pending);
+    w.request(PICO_HTTP_POST,group_path,rinse_invite,200);
+    w.core.safeties.filter_missing=true;w.request(PICO_HTTP_POST,group_path,accept_rinse,409);
+    w.core.safeties.filter_missing=false;
+    api::Command click;std::strcpy(click.name,"encoder");click.click=true;assert(w.adapter.execute(click).status==409);
+    const auto first=w.now;w.now+=119000;w.request(PICO_HTTP_POST,group_path,rinse_invite,200);
+    w.now=first+120000;w.adapter.poll();w.request(PICO_HTTP_POST,group_path,accept_rinse,409);
+    assert(w.request(PICO_HTTP_POST,group_path,rinse_invite,200).find("\"expired\"")!=std::string::npos);
+    assert(!w.core.core.commands.pending);
+    World short_offer;
+    short_offer.now=UINT32_MAX-20;
+    short_offer.request(PICO_HTTP_POST,group_path,R"({"op":"offer","id":"1000000000000001","from":"Kitchen","action":"rinse","ttl_ms":30})",200);
+    short_offer.now+=25;
+    short_offer.request(PICO_HTTP_POST,group_path,R"({"op":"offer","id":"1000000000000001","from":"Kitchen","action":"rinse","ttl_ms":120000})",200);
+    short_offer.now+=5;
+    short_offer.request(PICO_HTTP_POST,group_path,accept_rinse,409);
+    assert(short_offer.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"expired\"")!=std::string::npos && !short_offer.core.core.commands.pending);
+    World withdraw;
+    withdraw.request(PICO_HTTP_POST,group_path,rinse_invite,200);
+    withdraw.request(PICO_HTTP_POST,group_path,R"({"op":"withdraw","id":"1000000000000001"})",200);
+    withdraw.request(PICO_HTTP_POST,group_path,accept_rinse,409);
+    assert(!withdraw.core.core.commands.pending);
+    World auth;
+    PicoHttpRequest req{};req.method=PICO_HTTP_POST;std::strcpy(req.path,group_path);
+    req.body=rinse_invite;req.body_length=std::strlen(rinse_invite);PicoHttpResponse res{};char out[512];
+    assert(auth.adapter.group_http(req,res,out,sizeof out) && res.status==503);
+    req.auth_configured=true;
+    assert(auth.adapter.group_http(req,res,out,sizeof out) && res.status==401);
+    assert(auth.request(PICO_HTTP_GET,group_path,nullptr,200)=="{\"source\":null,\"invite\":null}");
+    World fault;fault.request(PICO_HTTP_POST,group_path,rinse_invite,200);fault.request(PICO_HTTP_POST,group_path,accept_rinse,200);
+    fault.core.safeties.filter_missing=true;assert(fault.dispatch() && fault.core.core.state.id==CoreStateId::Idle);
+    assert(fault.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"unavailable\"")!=std::string::npos);
+}
 }
 int main(int argc,char** argv){assert(argc==2);const std::string test=argv[1];
-    if(test=="maker")maker_program();else if(test=="recipe")owned_recipe();else if(test=="storage")storage_preflight();else if(test=="unheated")no_target();
+    if(test=="group-brew")group_brew();else if(test=="group-routines")group_routines();else if(test=="group-interlocks")group_interlocks();
+    else if(test=="maker")maker_program();else if(test=="recipe")owned_recipe();else if(test=="storage")storage_preflight();else if(test=="unheated")no_target();
     else if(test=="stop")stop_guard();else if(test=="input")input_order();else if(test=="offline")offline_and_reservation();
     else if(test=="settings")settings_and_display();else if(test=="status")status_fields();
     else if(test=="recovery")recovery_restart();else if(test=="recovery-pause")recovery_unheated_and_pause();
