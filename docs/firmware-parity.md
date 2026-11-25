@@ -11,9 +11,9 @@ On Pico S, Pro, C and Z, **Brew Recipe** runs a saved machine recipe. On S, Pro 
 | Behavior | S/Pro | Pico C | Generic Z | Zymatic | PicoStill | PicoFerm |
 | --- | --- | --- | --- | --- | --- | --- |
 | Local operation without a vendor cloud or Hub | Implemented | Implemented | Implemented | One USB-provisioned offline recipe | Implemented | Implemented |
-| Authenticated API v1 and device identity | Implemented | Includes display variant | Z family identity | Wired Ethernet | Implemented | Implemented |
+| Authenticated API v1 and device identity | Implemented | Includes display variant | Z family identity | Ethernet and Wi-Fi during the foreground service window | Implemented | Implemented |
 | Device website | Implemented | Implemented | Shared browser | Compact supports monitoring. Extended adds paired dial control. | Shared browser | Shared browser |
-| Optional Hub connection and live readings | Implemented | Implemented | Implemented | Wired monitoring, outbound recipe sync over Ethernet or Wi-Fi | Implemented | Implemented |
+| Optional Hub connection and live readings | Implemented | Implemented | Implemented | Continuous Ethernet monitoring, Wi-Fi access at Home and programmed pauses, and outbound recipe sync over either interface | Implemented | Implemented |
 | Firmware updates after initial USB setup | Wi-Fi with verified recovery | Wi-Fi with display-matched recovery | Wi-Fi on a provisioned module | Rear USB | Wi-Fi with protected recovery | Wi-Fi with dual-bank layout |
 | Persistent history | Eight sessions sharing 4,224 samples | Eight sessions sharing 4,224 samples | Eight sessions sharing 4,224 samples | Extended retains eight sessions sharing 222 samples. Compact relies on Hub polling. | Eight sessions sharing 4,224 samples | Eight sessions sharing 4,224 samples |
 | Default periodic history interval | 15 seconds | 15 seconds | 15 seconds | Extended samples about once a minute during a program | 15 seconds | 300 seconds, configurable from 60 to 86,400 seconds |
@@ -27,9 +27,9 @@ Each session preserves its sampling interval and channel metadata on S/Pro, Pico
 | Function | Availability |
 | --- | --- |
 | Programs | Both profiles retain the OEM brew controller, outbound Hub recipe sync and a provisioned offline recipe. |
-| Wired device website and Hub | Compact supports read-only monitoring. Extended adds dial pairing, authenticated input against the current OLED frame, and on-device history that you can browse on the local site. |
+| Device website and Hub | Compact supports read-only monitoring. Extended adds dial pairing, authenticated input against the current OLED frame, and on-device history that you can browse on the local site. |
 | Firmware service | Rear USB backup, application installation and return to stock 1.1.14. First conversion uses the compact profile. Installing the extended profile requires independently measured boot space. Both profiles report release 1.0.0. |
-| Remaining limits | The inbound API uses Ethernet. Firmware updates require USB. Raw actuator control and dedicated network recovery are unavailable. Physical installation, recovery, sensor and brewing trials remain outstanding. |
+| Remaining limits | Wi-Fi serves the local API at Home and read-only requests during a programmed pause. Continuous local access during heating, circulation and draining uses Ethernet. Firmware updates require USB. Raw actuator control and dedicated network recovery are unavailable. Physical installation, recovery, sensor and brewing trials remain outstanding. |
 
 See the [firmware architecture and verification](../firmware/zymatic/modified/application.md).
 
