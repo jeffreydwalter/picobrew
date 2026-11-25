@@ -102,6 +102,7 @@ private:
     oem::RuntimeCommandId session_input_ = oem::RuntimeCommandId::None;
     bool show_settings();
     bool show_about();
+    bool show_machine_details();
     bool show_pairing();
     std::uint32_t pairing_ticket_ = 0;
     bool show_network();

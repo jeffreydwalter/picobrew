@@ -1,4 +1,5 @@
 #include "zseries/board_settings.hpp"
+#include "esp32_ota_target.hpp"
 #include "zseries/standalone.hpp"
 #include "zseries/program_recipe_json.hpp"
 #include "zseries/program_runtime_heater.hpp"
@@ -577,7 +578,25 @@ void physical_pairing(){
     assert(w.head.receive_ui(stale));w.head_tick();
     assert(menu.count==2&&w.approved_pair==1&&w.pending_pair==20);
     w.pending_pair=0;w.adapter.poll();assert(menu.count==1);press();
-    select("Machine details");  // Original About presentation still reachable.
+    w.core.eeprom.data.boiler=BoilerType::Small;
+    w.core.msp_state.version_major=1;w.core.msp_state.version_minor=7;
+    w.head.observed.flash_bytes=4*1024*1024;
+    select("Machine details");
+    const auto& details=w.head.screens.scroll_data;
+    const std::string expected[]={"Pico Z / ESP32",std::string("Firmware: ")+picobrew::esp32_ota::Version,
+        "UID: 112233445566","Boiler: Small","MSP: 1.7","Flash: 4 MiB","Hub reporting off"};
+    assert(w.head.encoder.state.paragraph.enabled&&details.count==sizeof expected/sizeof expected[0]);
+    for(unsigned i=0;i<details.count;++i)assert(expected[i]==details.lines[i].data());
+    assert(w.head.receive_encoder(-1));w.head_tick();
+    assert(w.head.encoder.state.paragraph.offset>0);press();select("Back");select("Exit");
+    w.request(PICO_HTTP_PUT,"/api/v1/telemetry",R"({"enabled":true,"host":"brew-hub","port":8080})",200);
+    w.core.msp_state.id=Z_MSP_UNKNOWN;w.head.observed.flash_bytes=0;
+    select("Settings");select("About");select("Machine details");
+    assert(!std::strcmp(details.lines[4].data(),"MSP: Unknown"));
+    assert(!std::strcmp(details.lines[5].data(),"Flash: Unknown"));
+    assert(!std::strcmp(details.lines[6].data(),"Hub reporting on"));
+    press();select("Back");
+    select("About");  // The details scroll's Back returns through About and Settings.
 }
 void native_network_menus(){World w;
     const auto check=[&](){assert(w.head.screens.menu_data.count==4);
