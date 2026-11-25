@@ -439,7 +439,7 @@ bool pico_local_recipe_load(PicoNetwork *n, const char *id, PicoRecipe *r, char 
     if (!r || !name) return false;
     uint32_t revision;
     if (pico_local_recipe_get(n, id, &stored, &revision) != PICO_LOCAL_STORE_OK) return false;
-    if (r == &n->app->recipe) n->loaded_recipe_revision = revision;
+    if (n->app && r == &n->app->recipe) n->loaded_recipe_revision = revision;
     PicoProgramContext *program = r->program;
     memset(r, 0, sizeof *r); r->program = program;
     memcpy(r->identifier, stored.id, sizeof r->identifier);

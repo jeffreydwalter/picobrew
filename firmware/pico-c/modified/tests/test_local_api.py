@@ -78,6 +78,8 @@ class LocalApi(unittest.TestCase):
         self.assertTrue(LIB.test_group_joined())
         for extra in ({"command": "rinse", "if_revision": current}, {"command": "stop", "group_join": True}, {"command": "encoder", "delta": 1, "if_revision": current}):
             self.assertEqual(request("POST", url, extra)[0], 400)
+        self.assertEqual(request("POST", url, {"command": "rinse", "group_join": True})[0], 409)
+        LIB.test_busy(0)
         self.assertEqual(request("POST", url, {"command": "rinse", "group_join": True})[0], 202)
 
     def test_ota_identity_busy_and_trial_gates(self):
