@@ -90,3 +90,29 @@ func TestStockZExportPreservesUnheatedMeaning(t *testing.T) {
 		t.Fatal("standalone Z lost unheated circulation", err)
 	}
 }
+
+func TestStockZExportChecksNativeHeatAcrossPauseAndDrain(t *testing.T) {
+	const input = `{"Name":"Stock test","IsBeer":true,"UsePicoPakMode":false,"Steps":[{"Name":"Mash","StepType":1,"Location":2,"Temp":65,"Time":90,"Drain":0},{"Name":"Check","StepType":2},{"Name":"Cold","StepType":1,"Location":1,"Temp":null,"Time":15,"Drain":0}]}`
+	for _, target := range []string{"null", "0", "-4"} {
+		raw := strings.Replace(input, `"Temp":null`, `"Temp":`+target, 1)
+		r, err := Import([]byte(raw), "json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = Export(r[0], "z-program"); err == nil || !strings.Contains(err.Error(), "turn off") {
+			t.Fatal("stock target carryover", err)
+		}
+		profile, _ := supportedProfile("z")
+		if plan, err := Translate(r[0], profile, 0); err != nil || !plan.CanDeploy {
+			t.Fatal("standalone NoTarget unavailable", err)
+		}
+		withDrain := strings.Replace(raw, `"Drain":0`, `"Drain":15`, 1)
+		r, err = Import([]byte(withDrain), "json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = Export(r[0], "z-program"); err != nil {
+			t.Fatal("positive native drain already cleared PID", err)
+		}
+	}
+}

@@ -21,6 +21,8 @@ A provisioned module advertises `esp32-factory-v1`. From the machine’s Firmwar
 
 ## Implemented local operation
 
+See the [OEM feature comparison](oem-parity.md) for Program Maker, native state capture, the two sous vide programs and original kit limits.
+
 Choose **Brew Recipe** on the front panel to select a saved recipe. The panel also
 provides sous vide, coffee, maintenance, Wi-Fi and persisted language, temperature
 and display preferences.
@@ -55,7 +57,7 @@ data in the Hub; they are not silently interpreted as canonical API recipes.
 The shared API does not advertise starter programs without an attributed,
 model-specific conversion. S/Pro PicoPak data is not installed under a Z label.
 
-Advertised commands are `brew`, `sous-vide`, `cold-brew`, `rinse`,
+Advertised commands include `brew`, `sous-vide` (with keg), `sous-vide-no-keg`, `cold-brew`, `rinse`,
 `clean`, `circulate`, `drain`, `rack-beer`, `chill`, `utilities`, `settings`,
 `stop`, `clear-stop`, `pause`, `resume`, `encoder`, `resume-interrupted` and
 `discard-interrupted`. Recipe and command fields are discoverable through

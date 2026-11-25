@@ -8,10 +8,11 @@ const state = {key:'', connected:false, generation:0, status:null, recipes:[],
 let requestQueue = Promise.resolve();
 let pollTimer;
 let apiExplorer;
+let statusCapture;
 let brewHistory;
 const hasFeature = name => PicoDevice.feature(state.info,name);
 const allowedCommand = name => state.capabilities.includes(name);
-const programLabels = {'sous-vide':'Sous vide', 'cold-brew':'Cold brew', coffee:'Coffee menu', 'picostill-manual':'PicoStill manual', 'picostill-boil-point':'PicoStill boiling point', manual:'Manual brewing',
+const programLabels = {'sous-vide':'Sous vide', 'sous-vide-no-keg':'Sous vide without keg', 'cold-brew':'Cold brew', coffee:'Coffee menu', 'picostill-manual':'PicoStill manual', 'picostill-boil-point':'PicoStill boiling point', manual:'Manual brewing',
   rinse:'Rinse', 'first-rinse':'First rinse', descale:'Descale', circulate:'Circulate',
   'drain-reservoir':'Drain reservoir', 'drain-filter':'Drain step filter', 'rack-beer':'Rack beer',
   clean:'Clean',drain:'Drain',chill:'Chill',utilities:'Utilities menu', settings:'Settings menu'};
@@ -82,6 +83,7 @@ function api(path, method='GET', body) {
 
 function connected(value) {
   state.connected = value;
+  if(!value)statusCapture?.stop('Connection lost');else statusCapture?.render();
   const appearance = $('appearanceRow');
   if (value) $('settingsForm').before(appearance);
   else $('publicOverview').append(appearance);
@@ -364,7 +366,7 @@ function renderDisplay(frame) {
 function renderPrograms() {
   $('program').replaceChildren();
   for (const command of state.capabilities) if (programLabels[command]) {
-    $('program').add(new Option(programLabels[command],command));
+    $('program').add(new Option(command==='sous-vide'&&state.capabilities.includes('sous-vide-no-keg')?'Sous vide with keg':programLabels[command],command));
   }
   updateControls();
 }
@@ -462,17 +464,23 @@ function addZStep(step={Name:'Mash',StepType:1,Location:2,Temp:65,Time:3600,Drai
       input.seconds()>limit ? 'Maximum '+duration(limit)+' (minutes:seconds).' : ''));
     return input;
   }
-  const hold=time('Duration in minutes and seconds',step.Time,86400);
+  const originalPauseTime=step.StepType===2 ? step.Time : undefined;
+  const hold=time('Duration in minutes and seconds',step.StepType===2 ? 0 : step.Time,86400);
   const drain=time('Drain in minutes and seconds',step.Drain ?? 0,7200);
   function updateType() {
     const pause=type.value==='2';
-    route.disabled=target.disabled=drain.disabled=pause;
+    route.disabled=target.disabled=drain.disabled=hold.disabled=pause;
+    hold.hidden=pause;
+    pauseNote.hidden=!pause;
     hold.required=!pause;drain.required=!pause;
   }
+  const pauseNote=document.createElement('span');
+  pauseNote.textContent='Until confirmed';hold.after(pauseNote);
   type.addEventListener('change',updateType);updateType();
   row.readStep=()=>{
     const value={Name:name.value,StepType:Number(type.value)};
-    if(hold.value!=='')value.Time=hold.seconds();
+    if(value.StepType===2 && originalPauseTime!==undefined)value.Time=originalPauseTime;
+    if(value.StepType===1 && hold.value!=='')value.Time=hold.seconds();
     if(value.StepType===1)Object.assign(value,{Location:Number(route.value),Temp:celsius,Drain:drain.seconds()});
     return value;
   };
@@ -607,8 +615,17 @@ async function poll() {
   if(!state.key || state.polling)return;
   state.polling=true;const generation=state.generation;
   try {
-    if(!document.hidden) {
-      renderStatus(await api('/status'));connected(true);
+    if(!document.hidden || statusCapture?.active()) {
+      const status=await api('/status');
+      if(generation!==state.generation)return;
+      const capture=statusCapture?.due();
+      if(capture) {
+        try{statusCapture.sample(capture,status,await api('/z/state'));}
+        catch(error){if(capture===statusCapture.due())statusCapture.stop('Capture interrupted: '+error.message);}
+      }
+      if(generation!==state.generation)return;
+      renderStatus(status);connected(true);
+      if(document.hidden)return;
       if(state.tab==='overview' && hasFeature('front_panel')) {try{renderDisplay(await PicoDevice.readDisplay(api));}catch(error){$('displayHint').textContent=error.message;}}
       if(state.tab==='overview' && state.info.group_brewing_v1 && !groupResponding && Date.now()-groupChecked>=4000){
         groupChecked=Date.now();
@@ -633,6 +650,7 @@ function selectTab(tab) {
 }
 
 async function connect(key) {
+  statusCapture?.stop('Connection changed');
   state.key=key;state.generation++;clearTimeout(pollTimer);
   state.telemetry=null;state.telemetryAt=0;
   const info=await api('');state.capabilities=PicoDevice.commands(info);applyCapabilities(info);renderPrograms();
@@ -787,6 +805,7 @@ $('settingsForm').addEventListener('submit',async event=>{
   event.preventDefault();try{const available={temperature_unit:$('temperatureUnit').value,language:$('language').value,detailed_status:$('detailedStatus').checked,auto_cycle:$('autoCycle').checked};const keys=state.info.settings_fields || ['temperature_unit','language','detailed_status'];const patch=Object.fromEntries(keys.filter(key=>key in available).map(key=>[key,available[key]]));const settings=await api('/settings','PATCH',patch);renderSettings(settings);if(state.status)renderStatus(state.status);notify('Preferences saved on the Pico.');}catch(error){notify(error.message,true);}
 });
 document.addEventListener('visibilitychange',()=>{if(!document.hidden && state.key)poll();});
+statusCapture=setupStatusCapture({session:()=>({supported:state.info.z_state_v1===true,uid:state.status?.device_uid,connected:state.connected}),download,refresh:poll});
 apiExplorer=setupApiExplorer({session:()=>({key:state.key,connected:state.connected,generation:state.generation}),enqueue:task=>{
   const result=requestQueue.catch(()=>{}).then(task);requestQueue=result;return result;
 }});

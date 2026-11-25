@@ -139,6 +139,7 @@ struct Application {
             }
             return true;
         }
+        if(self.adapter.native_state_http(*req,*res,arena,capacity))return true;
         if(self.adapter.group_http(*req,*res,arena,capacity))return true;
         return self.engine.handle(*req,*res,arena,capacity);
     }

@@ -42,6 +42,7 @@ public:
     bool stop(const char* reason);
     bool show_home();
     bool show_recipes();
+    bool native_state_http(const PicoHttpRequest&, PicoHttpResponse&, char*, std::size_t);
     bool group_http(const PicoHttpRequest&, PicoHttpResponse&, char* arena, std::size_t capacity);
     bool tick_wifi(std::uint32_t now);
     bool service_stage(oem::CoreTickStage, std::uint32_t);

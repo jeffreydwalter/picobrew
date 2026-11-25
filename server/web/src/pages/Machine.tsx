@@ -47,6 +47,7 @@ import { SensorHistory } from '../components/SensorHistory'
 import { LinkedPicoFerms } from '../components/PicoFermAssociation'
 const programNames: Record<string, string> = {
   'sous-vide': 'Sous vide',
+  'sous-vide-no-keg': 'Sous vide without keg',
   'cold-brew': 'Cold brew',
   coffee: 'Coffee menu',
   'picostill-manual': 'PicoStill manual',
@@ -291,6 +292,8 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
   const status = device.status
   const commands = device.capabilities?.commands || []
   const programs = Object.keys(programNames).filter((name) => commands.includes(name))
+  const programLabel = (name: string) =>
+    name === 'sous-vide' && commands.includes('sous-vide-no-keg') ? 'Sous vide with keg' : programNames[name] || name
   const program = programs.includes(chosenProgram) ? chosenProgram : programs[0] || ''
   const hasRecipes = supports(device.capabilities, 'recipes')
   const hasPrograms = hasRecipes || programs.length > 0
@@ -527,7 +530,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
                       .filter(Boolean)
                       .join(' ')
                   : live?.busy
-                    ? live.recipe_name || programNames[live.command] || live.command
+                    ? live.recipe_name || programLabel(live.command)
                     : undefined
             }
           />
@@ -734,7 +737,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
                     <select value={program} onChange={(event) => setProgram(event.target.value)}>
                       {programs.map((command) => (
                         <option key={command} value={command}>
-                          {programNames[command]}
+                          {programLabel(command)}
                         </option>
                       ))}
                     </select>
@@ -746,7 +749,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
                       !allowed(program) || !live.ready || !!pending || !!status?.busy || interrupted
                     }
                     onClick={() =>
-                      requestStart({ command: program, label: programNames[program] || program })
+                      requestStart({ command: program, label: programLabel(program) })
                     }
                   >
                     Open program
