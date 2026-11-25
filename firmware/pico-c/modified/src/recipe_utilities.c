@@ -560,10 +560,10 @@ void pico_recipe_rinse(PicoRecipeRuntime *r)
     show(r, PICO_RECIPE_INSTRUCTION_HEADER, 23, title);
     r->ops->report_state(r->context);
 #if PICO_STANDALONE
-    uint32_t started = clock_ms(r);
+    uint32_t rinse_start = clock_ms(r);
     if (group) {
         r->state->group_rinse = true;
-        r->state->group_started_ms = started;
+        r->state->group_started_ms = rinse_start;
     }
 #else
     clock_ms(r);
