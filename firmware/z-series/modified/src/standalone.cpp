@@ -1,6 +1,8 @@
 #include "esp32_ota_target.hpp"
 #include "zseries/standalone.hpp"
 #include "recipe_record.hpp"
+#include "engine_internal.hpp"
+#include "zseries/local_http_state.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -23,7 +25,7 @@ constexpr std::uint32_t LocalRecipes = 0x10000, SelectLocalRecipe = 0x10001,
                         LocalAbout = 0x10008, LocalPairing = 0x10009,
                         LocalPairCancel = 0x1000a, LocalPairApprove = 0x1000b;
 const api::CommandDescriptor commands[] = {
-    {"brew",api::RecipeId,api::RecipeId},{"sous-vide",0,0},
+    {"brew",api::RecipeId,api::RecipeId},{"sous-vide",0,0},{"sous-vide-no-keg",0,0},
     {"cold-brew",0,0},{"rinse",0,0},{"clean",0,0},{"circulate",0,0},
     {"drain",0,0},{"rack-beer",0,0},{"chill",0,0},{"utilities",0,0},
     {"settings",0,0},{"stop",0,0},{"clear-stop",0,0},
@@ -87,7 +89,7 @@ api::DeviceServices Adapter::services() noexcept {
     out.capabilities=[](void* p){api::Capabilities caps;
         if (static_cast<Adapter*>(p)->wireless_) caps.ota_protocol = "esp32-factory-v1";
         caps.flags=api::Recipes|api::Brewing|api::Heating|api::Pump|api::Temperature|api::Pressure|api::FrontPanel;
-        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus|api::AutoCycle;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.group_brewing_v1=true;caps.zero_minute_steps=true;caps.z_program_maker=true;caps.dedicated_pause_resume=true;return caps;};
+        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus|api::AutoCycle;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.group_brewing_v1=true;caps.zero_minute_steps=true;caps.z_program_maker=true;caps.z_state_v1=true;caps.dedicated_pause_resume=true;return caps;};
     out.snapshot=[](void* p,api::Snapshot& value){return static_cast<Adapter*>(p)->snapshot(value);};
     out.execute=[](void* p,const api::Command& value){return static_cast<Adapter*>(p)->execute(value);};
     out.idle=[](void* p){return static_cast<Adapter*>(p)->idle();};
@@ -326,6 +328,7 @@ void Adapter::poll(){
     else {
         UiCommand command=UiCommand::None;
         if(!std::strcmp(name,"sous-vide"))command=UiCommand::StartSousVideWithKeg;
+        else if(!std::strcmp(name,"sous-vide-no-keg"))command=UiCommand::StartSousVideWithoutKeg;
         else if(!std::strcmp(name,"cold-brew"))command=UiCommand::CoffeeColdBrewTweak;
         else if(!std::strcmp(name,"rinse"))command=UiCommand::StartRinse;
         else if(!std::strcmp(name,"clean"))command=UiCommand::StartClean;
@@ -543,7 +546,7 @@ bool Adapter::show_home(){
         screen.menu_data.append(resume,text("Resume interrupted","Reanudar interrumpido","Reprendre brassage"));}
     if((recovery_.present()&&!recovery_active_)||!recovery_.ready()){HeadUiEvent discard;discard.command=static_cast<UiCommand>(LocalDiscard);
         screen.menu_data.append(discard,text("Discard interrupted","Descartar pendiente","Abandonner reprise"));}
-    for(auto command:{UiCommand::StartSousVideWithKeg,UiCommand::CoffeeMenu,UiCommand::Utilities,UiCommand::Settings})screen.menu_data.append(command);
+    for(auto command:{UiCommand::SousVideMenu,UiCommand::CoffeeMenu,UiCommand::Utilities,UiCommand::Settings})screen.menu_data.append(command);
     if(stopped()){HeadUiEvent clear;clear.command=static_cast<UiCommand>(LocalClearStop);screen.menu_data.append(clear,text("Clear stop","Quitar parada","Effacer arret"));}
     const unsigned due=engine_?engine_->care_due():0;
     if(!stopped()&&(due&api::CleanDue))screen.menu_data.append(UiCommand::StartClean);
@@ -781,6 +784,34 @@ bool Adapter::handle_head(HeadEventKind kind){
             head_.ui.transient.active=false;head_.ui.transient.deadline=0;return show_settings();}
     }
     return original_head_.handle_event(original_head_.context,kind);
+}
+bool Adapter::native_state_http(const PicoHttpRequest& request,PicoHttpResponse& response,char* arena,std::size_t cap){
+    if(std::strcmp(request.path,"/api/v1/z/state"))return false;
+    api::Result result;
+    std::size_t written=0;
+    if(!request.auth_configured)result={503,"api_key_not_provisioned","Provision the device key first"};
+    else if(!request.authenticated)result={401,"unauthorized","A valid device bearer key is required"};
+    else if(request.method!=PICO_HTTP_GET)result={405,"method_not_allowed","Use GET"};
+    else if(!begun_)result={503,"controller_unavailable","The brewer has not completed startup"};
+    else{
+        oem::LocalHttpState value;
+        char name[128];
+        {ControlGuard guard(core_.ports.control);
+            value=oem::local_http_state(core_.temperatures,core_.heater,core_.msp_state,core_.runtime,
+                core_.network==1?core_.wifi.state.rssi:0);
+            if(value.step_name){
+                const auto size=strnlen(value.step_name,sizeof name);
+                if(size==sizeof name)result={503,"native_state_unavailable","Native step name exceeds snapshot capacity"};
+                else{std::memcpy(name,value.step_name,size+1);value.step_name=name;}
+            }}
+        // The original serializer permits a truncated prefix; a JSON endpoint
+        // must only serve a complete document.
+        if(result.ok()&&(!oem::serialize_local_http_state(value,arena,cap,written)||written+1>=cap))
+            result={503,"native_state_unavailable","Native readings could not be serialized"};
+    }
+    if(!result.ok()){api::detail::Writer writer(arena,cap);api::detail::error(writer,result);written=writer.ok?writer.length:0;}
+    response.status=result.status;response.content_type="application/json";response.content_encoding=nullptr;
+    response.body=reinterpret_cast<const std::uint8_t*>(arena);response.body_length=written;return true;
 }
 api::Result Adapter::snapshot(api::Snapshot& out){
     out={};out.uptime_ms=ports_.millis?ports_.millis(ports_.context):0;

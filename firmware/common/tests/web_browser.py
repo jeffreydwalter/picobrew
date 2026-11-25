@@ -40,7 +40,7 @@ def main():
                     for name,fields in {'brew':['recipe_id'],'encoder':['delta','click'],'calibrate':['confirm'],'resume-interrupted':['confirm'],'set-sampling-interval':['value'],'set-pump':['enabled'],'set-fan':['channel','level','enabled']}.items():
                         if name in descriptors: descriptors[name]={'allowed':fields,'required':[] if name=='encoder' else fields[:2] if name=='set-fan' else fields}
                     info = {'api_version':1,'mode':'standalone','model':model,'model_name':{'z-series':'Pico Z','picoferm':'PicoFerm','picostill':'PicoStill'}[model],'model_family':model,'firmware_version':'1.2.0-fixture','commands':allowed,'command_fields':descriptors,'settings_fields':['temperature_unit','language','detailed_status'] if brewing else ['temperature_unit'],'recipe_capacity':16 if brewing else 0,'step_capacity':15 if brewing else 0,'front_panel':brewing,'telemetry_forwarding':True,'capabilities':{'recipes':brewing,'brewing':brewing,'heating':brewing,'front_panel':brewing,'temperature':True,'pressure':not brewing,'battery':model=='picoferm','fermentation':model=='picoferm','pump':model!='picoferm','fans':model=='picostill'}}
-                    info['z_program_maker']=brewing
+                    info['z_program_maker']=brewing;info['z_state_v1']=brewing
                     info['zero_minute_steps']=brewing
                     info['history_sample_interval_ms']=720000 if model=='picoferm' else 15000
                     saved_recipes={}
@@ -89,6 +89,7 @@ def main():
                                 assert payload.get('if_revision') == (1 if key in saved_recipes else None)
                                 saved_recipes[key]=payload['z_program']
                             result={'id':key,'revision':1,'z_program':saved_recipes[key]}
+                        elif path=='/z/state' and brewing:result={'WortTemp':20.0,'Location':1,'PauseReason':0}
                         elif path=='/telemetry':result={'enabled':False,'host':'','port':8080,'status':{'state':'disabled'}}
                         elif path=='/commands':
                             body=request.post_data_json;commands.append(body);result={'accepted':True,'command':body['command']};code=202
@@ -337,6 +338,21 @@ def main():
                     options=page.locator('#apiEndpoint option').all_text_contents()
                     assert any('/display/{offset}' in option for option in options)==brewing
                     if not brewing:assert not any('/recipes' in option or '/display' in option for option in options)
+                    page.locator('[data-tab="history"]').click()
+                    if brewing:
+                        page.locator('#captureToggle').click()
+                        expect(page.locator('#captureSummary')).to_contain_text(re.compile(r'[1-9] sample'))
+                        page.locator('#captureToggle').click()
+                        with page.expect_download() as capture:
+                            page.locator('#captureDownload').click()
+                        capture_file=json.loads(Path(capture.value.path()).read_text())
+                        assert capture_file['device_uid']=='fixture-device' and capture_file['interval_seconds']==5
+                        assert capture_file['samples'][0]['status']['device_uid']=='fixture-device'
+                        assert capture_file['samples'][0]['captured_at'].endswith('Z')
+                        assert capture_file['samples'][0]['native']['Location']==1
+                        assert 'GET /api/v1/z/state' in options
+                    else:
+                        expect(page.locator('#statusCapture')).to_be_hidden()
                     assert not errors, errors
                     checks.append({'model':model,'viewport':width,'requests':len(requests),'commands':commands,'errors':errors})
                     context.close()

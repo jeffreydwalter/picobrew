@@ -239,3 +239,49 @@ function duration(seconds) {
   const minutes = Math.floor(value/60);
   return minutes+':'+String(value%60).padStart(2,'0');
 }
+
+// Serialized with existing authenticated requests. No persistent flash writes.
+// A browser may throttle this tab in the background.
+function setupStatusCapture({session, download, refresh}) {
+  const byId=id=>document.getElementById(id);
+  const panel=byId('statusCapture'),interval=byId('captureInterval'),toggle=byId('captureToggle'),
+    save=byId('captureDownload'),summary=byId('captureSummary');
+  let running=false, samples=[],bytes=0,last=-Infinity,period=5000,reason='',identity=null,generation=0;
+  function render(){
+    panel.hidden=!session().supported;
+    interval.disabled=running;
+    toggle.textContent=running?'Stop capture':samples.length?'New capture':'Start capture';
+    toggle.disabled=!running&&!session().connected;
+    save.disabled=!samples.length;
+    summary.textContent=(samples.length?samples.length+' '+(samples.length===1?'sample':'samples'):'No samples recorded')+
+      (running?' · Recording':reason?' · '+reason:'.');
+  }
+  function stop(message){
+    if(running){running=false;reason=message;}
+    render();
+  }
+  const due=()=>running&&performance.now()-last>=period?generation:0;
+  function sample(capture,status,native){
+    if(!running||capture!==generation)return;
+    const now=performance.now();
+    if(now-last<period)return;
+    const record={captured_at:new Date().toISOString(),status,native};
+    const size=new TextEncoder().encode(JSON.stringify(record)).length;
+    if(bytes+size>4*1024*1024){stop('Capture is full');return;}
+    samples.push(record);bytes+=size;last=now;
+    if(samples.length>=4096)stop('Capture is full');else render();
+  }
+  toggle.addEventListener('click',()=>{
+    if(running){stop('Stopped');return;}
+    if(!session().connected||!session().supported||!interval.reportValidity())return;
+    if(samples.length&&!confirm('Replace the previous capture? Download it first to keep it.'))return;
+    period=Number(interval.value)*1000;
+    if(!Number.isInteger(period)||period<2000||period>3600000)return;
+    identity=session().uid;++generation;running=true;samples=[];bytes=0;last=-Infinity;reason='';render();refresh();
+  });
+  save.addEventListener('click',()=>{
+    if(samples.length)download('pico-z-status-'+samples[0].captured_at.replace(/[:.]/g,'-')+'.json',
+      {device_uid:identity,interval_seconds:period/1000,samples});
+  });
+  return {due, sample, render, stop, active:()=>running};
+}

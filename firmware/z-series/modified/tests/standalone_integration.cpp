@@ -226,11 +226,28 @@ void input_order(){World w;assert(w.head.encoder.state.menu.count==5&&w.head.enc
     assert(w.head.encoder_events.pending&&!w.head.button_events.pending);assert(w.adapter.execute(input).status==409);
     w.adapter.poll();assert(!w.head.button_events.pending);w.head_tick();assert(w.head.encoder.state.menu.selected==1);
     w.adapter.poll();assert(w.head.button_events.pending);w.head_tick();assert(w.head.ui_events.pending);
-    assert(w.head.ui_events.value.command==UiCommand::StartSousVideWithKeg);
-    w.head.ui_events.pending=false;assert(w.adapter.show_home());w.head.ui.transient.active=true;w.head.ui.transient.deadline=w.now+1000;
+    assert(w.head.ui_events.value.command==UiCommand::SousVideMenu);w.head_tick();
+    const auto& options=w.head.screens.menu_data;
+    assert(options.count==3&&options.items[0].event.command==UiCommand::StartSousVideWithKeg);
+    assert(options.items[1].event.command==UiCommand::StartSousVideWithoutKeg&&options.items[2].event.command==UiCommand::Back);
+    assert(!w.core.core.commands.pending);
+    assert(w.adapter.show_home());w.head.ui.transient.active=true;w.head.ui.transient.deadline=w.now+1000;
     input.delta=0;input.click=true;assert(w.adapter.execute(input).status==202);w.head_tick();w.head_tick();
     assert(!w.head.ui.transient.active&&!w.head.ui.transient.deadline&&w.alarms>0);
     assert(w.head.screens.menu_data.count==1); // Empty catalogue retains Back.
+}
+void sous_vide_programs(){
+    for(bool keg:{false,true}){
+        World w;
+        const auto name=keg?"sous-vide":"sous-vide-no-keg";
+        assert(w.request(PICO_HTTP_GET,"/api/v1",nullptr,200).find(name)!=std::string::npos);
+        assert(w.command(name).status==202);w.adapter.poll();
+        assert(w.head.ui_events.pending&&w.head.ui_events.value.command==(keg?UiCommand::StartSousVideWithKeg:UiCommand::StartSousVideWithoutKeg));
+        w.head_tick();assert(w.core.core.commands.pending);
+        assert(w.core.core.commands.value.program_id==(keg?6:5));
+        assert(w.dispatch());assert(w.core.core.state.id==CoreStateId::Starting);
+        assert(w.core.core.state.program_id==(keg?6:5));
+    }
 }
 void offline_and_reservation(){World w;w.core.core.state.id=CoreStateId::Booting;w.core.core.state.state_date=1;w.core.core.state.azure_enabled=true;
     assert(w.adapter.service_stage(CoreTickStage::Azure,w.now));assert(w.core.core.state.id==CoreStateId::Idle&&w.core.core.state.offline&&!w.core.core.state.azure_enabled);
@@ -537,6 +554,28 @@ void stable_wifi_picker_and_local_lease(){
     assert(!std::strcmp(wifi.state.requested.ssid.data(),"saved")&&!w.core.system_error);
     assert(menu.count==1&&menu.items[0].event.command==UiCommand::ConfigureNetworkAsBack);
 }
+void original_native_state(){
+    World w;PicoHttpRequest req{};PicoHttpResponse res{};char arena[1200]{};
+    std::strcpy(req.path,"/api/v1/status");
+    assert(!w.adapter.native_state_http(req,res,arena,sizeof arena));
+    std::strcpy(req.path,"/api/v1/z/state");req.method=PICO_HTTP_GET;
+    auto request=[&](unsigned cap=1200){assert(w.adapter.native_state_http(req,res,arena,cap));return res.status;};
+    assert(request()==503);req.auth_configured=true;assert(request()==401);req.authenticated=true;
+    req.method=PICO_HTTP_POST;assert(request()==405);req.method=PICO_HTTP_GET;
+    w.core.network=1;w.core.wifi.state.rssi=-61;w.core.msp_state.valve_position=6;w.core.msp_state.pumps=0x30;
+    w.core.runtime.state.flags=1;w.core.runtime.state.pause_reason=2;w.core.runtime.state.elapsed_seconds=67;
+    w.core.runtime.state.step_name="Hop one";assert(request()==200&&res.body_length==std::strlen(arena));
+    std::string out(arena);
+    for(const char* field:{"\"UsePicoPakMode\":1","\"Location\":3","\"ValvePosition\":6","\"KegPumpOn\":1","\"DrainPumpOn\":1",
+                           "\"PauseReason\":2","\"rssi\":-61","\"SecondsEllapsed\":67","\"StepName\":\"Hop one\""})assert(out.find(field)!=std::string::npos);
+    assert(request(30)==503);
+    std::string oversized(128,'x');w.core.runtime.state.step_name=oversized.c_str();
+    assert(request()==503);w.core.runtime.state.step_name=nullptr;
+    assert(request()==200&&std::string(arena).find("\"StepName\":null")!=std::string::npos);
+    w.core.runtime.state.pause_reason=18;assert(request()==503);
+    w.core.runtime.state.pause_reason=0;w.core.network=2;assert(request()==200);
+    assert(std::strstr(arena,"\"rssi\":0"));
+}
 void rejected_resume_retains_checkpoint(){World before;running_hold(before);World after(&before.files);
     api::Command resume;std::strcpy(resume.name,"resume-interrupted");resume.confirm=true;
     assert(after.adapter.execute(resume).status==202);after.fail_write=1;assert(after.dispatch());
@@ -683,7 +722,7 @@ int main(int argc,char** argv){assert(argc==2);const std::string test=argv[1];
     else if(test=="recovery-corrupt")recovery_corruption_and_discard();else if(test=="recovery-end")recovery_failure_and_terminal_state();
     else if(test=="sensor-fault")sensor_fault_cutoff();else if(test=="coffee-buffer")buffered_coffee();
     else if(test=="recipe-menu")recipe_menu_and_retired_manual_command();else if(test=="standby-start")standby_remote_start();else if(test=="step-indices")recipe_step_indices();
-    else if(test=="wifi-picker")stable_wifi_picker_and_local_lease();
+    else if(test=="sous-vide")sous_vide_programs();else if(test=="native-state")original_native_state();else if(test=="wifi-picker")stable_wifi_picker_and_local_lease();
     else if(test=="pairing")physical_pairing();
     else if(test=="network-menus")native_network_menus();else if(test=="recovery-rejected")rejected_resume_retains_checkpoint();
     else if(test=="recovery-preflight")recovery_preflight_has_no_diagnostics();else return 2;

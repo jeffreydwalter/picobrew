@@ -59,6 +59,24 @@ Malformed metadata produces an explicit invalid-snapshot error, not a resumable
 button. An invalid stored checkpoint uses `valid:false`, even when
 `available:false`, and remains visible for explicit discard.
 
+### Native Z state
+
+A device advertising `z_state_v1:true` serves authenticated `GET /api/v1/z/state`.
+It returns the stock Z state fields, including the original spelling of
+`SecondsEllapsed`. `WortTemp`, `ThermoBlockTemp`, `DrainTemp`, `AmbientTemp` and
+`TargetTemp` are Celsius. `TargetTemp` is the last controller setpoint and may
+remain set after heating stops. Use the common status to show active heating.
+`ValvePosition` is the physical position, while `Location` accounts for
+`UsePicoPakMode`. The remaining fields are `KegPumpOn`, `DrainPumpOn`,
+`PauseReason`, `rssi`, `StepName` and `SecondsRemaining`. RSSI is zero when
+the Wi-Fi link is inactive.
+
+In the device website's Brew journal, **Record live status** records common status and
+native Z state in consecutive requests. It defaults to five seconds and accepts
+intervals from two seconds to one hour. Recording ends at disconnect or at
+4,096 samples or 4 MiB of sample data. Download before closing or refreshing the
+tab. Recorded brew sessions have independent, persistent storage.
+
 ## Commands, recipes and preferences
 
 `POST /api/v1/commands` accepts `command` plus only the arguments advertised for

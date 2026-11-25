@@ -117,6 +117,14 @@
           <div class="history-actions"><button id="historyExportJson" class="button" disabled>Export JSON</button><button id="historyExportCsv" class="button" disabled>Export CSV</button></div>
           <p class="hint">History shares a fixed storage budget. The oldest completed sessions are removed as space is needed. Times are elapsed from the start of each session.</p>
         </article>
+        <article class="card history-card" id="statusCapture" hidden>
+          <h2>Record live status</h2>
+          <p>Capture readings from this Z in this browser tab, including while the machine is idle. Download the capture before closing this page.</p>
+          <label for="captureInterval">Sample interval in seconds</label>
+          <input type="number" id="captureInterval" min="2" max="3600" step="1" value="5">
+          <div class="history-actions"><button type="button" class="button" id="captureToggle">Start capture</button><button type="button" class="button" id="captureDownload" disabled>Download capture</button></div>
+          <p id="captureSummary" class="hint" role="status">No samples recorded.</p>
+        </article>
         <article class="card history-phases"><h2>State changes</h2><div class="table-scroll"><table class="history-table"><thead><tr><th>Elapsed time</th><th>State</th><th>Details</th></tr></thead><tbody id="historyPhases"></tbody></table></div></article>
       </section>
       <section id="settings" class="tab-panel" hidden>
