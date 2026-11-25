@@ -47,7 +47,7 @@ func (s *Server) syncCCGroup(ctx context.Context, d *runtimeDevice, v domain.Dev
 			id = r.ID
 		}
 		if id != 0 {
-			e := device.GroupSource{ID: groupEventID(st.DeviceUID, strconv.FormatUint(id, 10)), Action: "brew", AgeMS: st.GroupAgeMS, Revision: st.GroupRevision, RecipeID: st.GroupRecipeID}
+			e := device.GroupSource{HistoryID: id, ID: groupEventID(st.DeviceUID, strconv.FormatUint(id, 10)), Action: "brew", AgeMS: st.GroupAgeMS, Revision: st.GroupRevision, RecipeID: st.GroupRecipeID}
 			if err = s.recordGroupStart(ctx, d, v, *g, wire, e); err != nil {
 				return err
 			}

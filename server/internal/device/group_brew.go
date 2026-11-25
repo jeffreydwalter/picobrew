@@ -7,11 +7,12 @@ import (
 )
 
 type GroupSource struct {
-	ID       string  `json:"id"`
-	AgeMS    *uint32 `json:"age_ms"`
-	Action   string  `json:"action"`
-	RecipeID string  `json:"recipe_id,omitempty"`
-	Revision uint32  `json:"revision,omitempty"`
+	HistoryID uint64  `json:"history_id,omitempty"`
+	ID        string  `json:"id"`
+	AgeMS     *uint32 `json:"age_ms"`
+	Action    string  `json:"action"`
+	RecipeID  string  `json:"recipe_id,omitempty"`
+	Revision  uint32  `json:"revision,omitempty"`
 }
 type GroupOffer struct {
 	TTLMS    uint32 `json:"ttl_ms,omitempty"`

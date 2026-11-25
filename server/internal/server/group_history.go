@@ -52,6 +52,9 @@ func (s *Server) retryGroupHistory(ctx context.Context, d *runtimeDevice, v doma
 	}
 	i, earliest := candidate.Invite, candidate.Earliest
 
+	if i.HubConfirmation && i.TargetDeviceID == v.ID && !v.Status.GroupJoined {
+		return nil
+	}
 	if !v.Capabilities.HistoryPersistent || !v.Status.Busy {
 		return nil
 	}
@@ -67,9 +70,17 @@ func (s *Server) retryGroupHistory(ctx context.Context, d *runtimeDevice, v doma
 	}
 	var hit uint64
 	for _, r := range rows {
-		if !r.Available || r.ID == 0 || r.State != "recording" || r.Command != i.Action || r.DurationMS < 0 || r.DurationMS > (time.Since(earliest)+5*time.Second).Milliseconds() {
+		if !r.Available || r.ID == 0 || r.State != "recording" || r.Command != i.Action || r.DurationMS < 0 {
 			continue
 		}
+		if i.SourceDeviceID == v.ID && i.SourceHistoryID != 0 {
+			if r.ID != i.SourceHistoryID {
+				continue
+			}
+		} else if r.DurationMS > (time.Since(earliest) + 5*time.Second).Milliseconds() {
+			continue
+		}
+
 		if i.Action == "brew" && (i.RecipeName == "" || i.RecipeName != r.RecipeName) {
 			continue
 		}

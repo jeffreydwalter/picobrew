@@ -24,6 +24,7 @@ type Maintenance struct {
 	Due       []string `json:"due"`
 }
 type Status struct {
+	GroupJoined         bool    `json:"group_joined,omitempty"`
 	GroupRinseStartedMS *uint32 `json:"group_rinse_started_ms,omitempty"`
 	GroupAgeMS          *uint32 `json:"group_age_ms,omitempty"`
 	GroupRevision       uint32  `json:"group_revision,omitempty"`

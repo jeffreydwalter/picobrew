@@ -191,7 +191,7 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 			}
 		}
 	}
-	source := brewInvite{GroupID: g.ID, GroupName: g.Name, GroupSessionID: key, SourceDeviceID: view.ID, SourceName: view.Name, SourceUID: view.Status.DeviceUID, SourceEvent: e.ID, Action: e.Action, RecipeName: src.Program.Name, RecipeID: src.LibraryID, RecipeRevision: src.Revision, ExpiresAt: started.Add(inviteLifetime)}
+	source := brewInvite{SourceHistoryID: e.HistoryID, GroupID: g.ID, GroupName: g.Name, GroupSessionID: key, SourceDeviceID: view.ID, SourceName: view.Name, SourceUID: view.Status.DeviceUID, SourceEvent: e.ID, Action: e.Action, RecipeName: src.Program.Name, RecipeID: src.LibraryID, RecipeRevision: src.Revision, ExpiresAt: started.Add(inviteLifetime)}
 	for _, id := range g.DeviceIDs {
 		if id == view.ID || (view.Status.StockSerial != "" && id == stockMemberPrefix+view.Status.StockSerial) || started.Before(g.MemberSince[id]) {
 			continue
