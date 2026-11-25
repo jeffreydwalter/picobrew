@@ -467,7 +467,9 @@ test('brew-ready catalog carries the author’s dry hop and original program to 
   await page.getByRole('button', { name: 'UB08 Summer IPA' }).click()
   await expect(page.getByText('Dry hop with 25 g Citra for 7 days.', { exact: true })).toBeVisible()
   const ingredients = page.getByRole('table', { name: 'Scaled ingredient bill' })
-  await expect(ingredients.getByRole('row').filter({ hasText: 'Dry hop · 7 days' })).toContainText('Citra')
+  await expect(ingredients.getByRole('row').filter({ hasText: 'Dry hop · 7 days' })).toContainText(
+    'Citra'
+  )
   await page.getByRole('button', { name: 'Save Zymatic program' }).click()
   await expect(page.getByLabel('Program notes')).toContainText('Dry hop with 25 g Citra')
   await page.getByRole('button', { name: 'Send' }).click()
@@ -629,7 +631,7 @@ test('model-specific authoring preserves Z Program Maker routes, operator pauses
   expect(program.IsMetric).toBe(true)
   expect(program.UsePicoPakMode).toBe(true)
   expect(program.Steps[6]).toMatchObject({ Location: 6, Time: 257, Drain: 300 })
-  expect(program.Steps[7]).toEqual({ Name: 'Inspect filter', StepType: 2, Time: 0 })
+  expect(program.Steps[7]).toEqual({ Name: 'Inspect filter', StepType: 2 })
   await page.reload()
   await expect(page.getByLabel('Hold (min:sec)').last()).toHaveValue('4:17')
   await page.getByRole('button', { name: 'Send', exact: true }).click()
@@ -662,6 +664,33 @@ test('model-specific authoring preserves Z Program Maker routes, operator pauses
     '/api/v1/recipes/' + page.url().split('/').pop() + '/export?format=z-program'
   )
   expect(await restored.json()).toEqual(withoutUnit)
+})
+
+test('Z Program Maker can author and reopen a 20-step program', async ({ page, request }) => {
+  const imported = await request.post('/api/v1/recipes/import', {
+    headers: { 'X-CSRF-Token': 'demo' },
+    data: {
+      format: 'json',
+      data: JSON.stringify({
+        Name: 'Extended schedule',
+        IsBeer: true,
+        UsePicoPakMode: false,
+        Steps: Array.from({ length: 19 }, (_, i) => ({ Name: 'Check ' + (i + 1), StepType: 2 })),
+      }),
+    },
+  })
+  expect(imported.ok()).toBe(true)
+  const [recipe] = await imported.json()
+  await page.goto('/#/recipes/' + recipe.id)
+  const add = page.getByRole('button', { name: 'Add step', exact: true })
+  await add.click()
+  await expect(add).toBeDisabled()
+  await page.getByLabel('Step name', { exact: true }).last().fill('Finish')
+  await page.getByRole('button', { name: 'Save program', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled()
+  await page.reload()
+  await expect(page.getByLabel('Step name', { exact: true })).toHaveCount(20)
+  await expect(page.getByLabel('Step name', { exact: true }).last()).toHaveValue('Finish')
 })
 
 test('stock Zymatic authoring enforces the brewer temperature limit and creates an operator pause', async ({

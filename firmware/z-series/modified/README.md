@@ -33,7 +33,8 @@ lists each visible SSID once and keeps its name and security with the selected
 row. Back returns to the network menu during scanning and from the results.
 A local IPv4 lease establishes connectivity even when cloud DNS is unavailable.
 
-The recipe catalogue retains sixteen recipes with up to fifteen named steps.
+The recipe catalog retains sixteen recipes. Standard recipes support up to
+fifteen named steps and Z Program Maker files support up to twenty.
 Z recipes use direct native valve locations **1–6**; targets are unheated (`0`)
 or 60–212 °F, durations are 0–599 minutes, and drains are 0–120 minutes. The
 recovered Z builder still applies its valve and local boiling-temperature
@@ -87,7 +88,7 @@ the offer. Each brewer tracks its own session independently.
 
 ## Using a PicoStill with the Z
 
-Pair an idle Z with a PicoStill running compatible standalone firmware. The
+Pair an idle Z with a PicoStill running compatible standalone firmware or original firmware 0.0.35. For a standalone PicoStill, the
 Hub can supply its saved accessory address and device key. The Z verifies the
 accessory UID with an authenticated request before replacing its saved pairing.
 The devices must be able to reach one another on the local network during use.
@@ -96,17 +97,34 @@ programs. Both retain the native setup screens, filter check, operator prompts,
 temperature and pressure logic. A cleaning reminder must be acknowledged on
 the brewer after physically cleaning the condenser.
 
+For a **stock PicoStill 0.0.35**, use the accessory’s original Wi-Fi setup page to
+connect it to the same LAN as the Z. Note the LAN IPv4 address shown on that
+page and the twelve characters after `PicoStill_` in its Wi-Fi name. Choose
+**PicoStill with original firmware** in the Z’s Hub preferences, or **Original
+0.0.35** in the Z’s device website, and enter both values. The Z checks the
+direct neighbor’s factory MAC before every HTTP request, then checks the stock
+version, idle program and error report. A router reservation keeps the address
+stable. Each session asks the operator to confirm condenser cleaning. The Z
+waits for an active stock sensor report before releasing its own outputs.
+The stock PicoStill has no accessory-side network timeout. If the link is
+lost during operation, the Z cuts its heater and pumps and attempts a stop.
+Check the accessory and press its physical button if it is still running. A
+stock Still has one controller and should be operated by one brewer at a time.
+After the program ends, the stock PicoStill normally restarts after about
+20 seconds. Wait for it to reconnect before starting another run. While its
+completion light is steady green, a button press also restarts it.
+
 The Z holds its heater and pump outputs off through setup and waits for the
 accessory to acknowledge starting its native controller. It receives the
-four temperatures in Celsius, pressure in psi, pump state, cooling fan state
+four temperatures in Celsius, pressure in psi, pump state, cooling fan (fan 2) state
 and controller activity. These readings feed the recovered controller’s
 native sample windows and statistics. The Z’s **PicoStill** setting in
 **Settings** controls recording the brewer session in local history. The
 accessory independently records its own sensor and actuator history.
 
 Authenticated `GET /api/v1/picostill` reports the pairing, logging preference
-and latest sample during a session. `PUT` stages an address, port, UID and key.
-Poll GET until `checking` clears and verify the saved UID and `error`.
+and latest sample during a session. `PUT` stages an address, port, UID and key for a standalone Still. For stock, send `protocol: "stock"`, the
+LAN IPv4 address, UID and port 80. Poll GET until `checking` clears and verify the saved UID and `error`.
 After a reboot, `paired` identifies a saved binding and `verified` becomes
 true when the accessory next proves its identity. `PATCH` takes
 `{"session_logging":true}` or `false` for that field. `DELETE` clears the
@@ -114,7 +132,7 @@ binding. Both devices advertise `picostill_brewer_link_v1`. The commands
 `picostill-manual` and `picostill-boil-point` use the same prompts as the dial.
 
 The Z requests fresh data every 1.5 seconds and cuts its outputs on a failed
-exchange or invalid reading. Requests time out after 3 seconds. PicoStill
+exchange or invalid reading. Requests time out after 3 seconds. A standalone PicoStill
 independently cuts its outputs if the Z fails to renew its session for 6.5
 seconds. Either machine can stop its session. Restoring network connectivity
 requires a fresh operator start. Physical tests are still needed for heat

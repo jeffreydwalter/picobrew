@@ -8,6 +8,10 @@ import (
 	"strings"
 )
 
+// A stock Z request can hold at most 20 named pauses in its 64-slot JSON pool.
+// Standalone firmware has room for 20 steps of either type.
+const MaxZProgramSteps = 20
+
 // ZProgram is the local Program Maker format. The archived cloud format
 // assigns different meanings to the same numeric locations.
 type ZProgram struct {
@@ -56,8 +60,8 @@ func (p ZProgram) Validate() error {
 	validName := func(s string) bool {
 		return strings.TrimSpace(s) != "" && len(s) <= 20 && strings.IndexFunc(s, func(c rune) bool { return c < 32 || c > 126 }) < 0
 	}
-	if !validName(p.Name) || len(p.Steps) < 1 || len(p.Steps) > 15 {
-		return errors.New("Z programs require a printable name of up to 20 characters and 1–15 steps")
+	if !validName(p.Name) || len(p.Steps) < 1 || len(p.Steps) > MaxZProgramSteps {
+		return fmt.Errorf("Z programs require a printable name of up to 20 characters and 1–%d steps", MaxZProgramSteps)
 	}
 	for i, s := range p.Steps {
 		if !validName(s.Name) || s.Time != nil && (*s.Time < 0 || *s.Time > 86400) {
@@ -88,4 +92,11 @@ func (r MachineRecipe) StepCount() int {
 		return len(r.ZProgram.Steps)
 	}
 	return len(r.Steps)
+}
+
+func (c Capabilities) RecipeStepLimit(r MachineRecipe) int {
+	if r.ZProgram != nil && c.ZProgramStepCapacity != 0 {
+		return c.ZProgramStepCapacity
+	}
+	return c.StepCapacity
 }

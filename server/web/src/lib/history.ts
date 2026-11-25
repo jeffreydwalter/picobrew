@@ -47,3 +47,28 @@ export function historyChannels(
 export function unheatedTarget(model: string, target: number | null) {
   return target === 0 && ['pico-s', 'pico-pro', 'pico-c'].includes(model)
 }
+
+const zymaticResets: Record<number, string> = {
+  300: 'Debug interface reset',
+  301: 'External reset',
+  302: 'Power-off reset',
+  303: 'Brownout reset',
+  304: 'System reset',
+  305: 'Software reset',
+}
+export function zymaticError(code: number) {
+  return zymaticResets[code] ?? `Brewer error ${code}`
+}
+export function zymaticReportLabel(report: NonNullable<Sample['stock_zymatic']>) {
+  if (report.kind === 'step') return report.step_name || 'Step reported'
+  if (report.kind === 'error')
+    return report.error_code == null ? 'Brewer error' : zymaticError(report.error_code)
+  return 'Temperature report'
+}
+export function zymaticReportState(report: NonNullable<Sample['stock_zymatic']>) {
+  if (report.state != null) return `Reported state ${report.state}`
+  if (report.error_flags == null) return ''
+  if (report.error_flags === 0) return 'No fault flags'
+  if (report.error_flags === 64) return 'Sensor disconnected'
+  return `Reported fault flags ${report.error_flags}`
+}

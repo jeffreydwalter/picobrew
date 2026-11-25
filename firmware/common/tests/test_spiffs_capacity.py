@@ -16,7 +16,7 @@ class SpiffsCapacityEvidenceTests(unittest.TestCase):
         supported = [case for case in profiles if case['model'] == 'picoferm' or case['partition_bytes'] != 0xFB000]
         self.assertEqual(len(supported), 4)
         z, = [case for case in supported if case['model'] == 'z-series']
-        self.assertEqual((z['partition_bytes'], z['recipe_slots'], z['steps_per_recipe']), (0x16f000, 16, 15))
+        self.assertEqual((z['partition_bytes'], z['recipe_slots'], z['steps_per_recipe']), (0x16f000, 16, 20))
         for case in supported:
             self.assertEqual(case['points'], 4224)
             self.assertTrue(case['full_history'] and case['restart_preserved'] and case['last_page_valid'])

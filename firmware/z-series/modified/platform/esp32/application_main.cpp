@@ -9,6 +9,7 @@
 #include "storage_ports.hpp"
 #include "msp_bus.hpp"
 #include "wired_network.hpp"
+#include "stock_still_neighbor.hpp"
 #include "zseries/board_settings.hpp"
 #include "factory_flash.hpp"
 #include "output_cutoff.hpp"
@@ -45,6 +46,7 @@ struct Application {
     std::uint32_t restart_ms = 0;
     platform::HttpSocket listener;
     platform::TelemetrySocket telemetry, still_socket;
+    StockStillNeighbor still_neighbor;
     BoardSettings board_settings{storage.binding()};
     WiredNetwork ethernet{firmware.system.spi};
     PicoHttpIo http_io{};
@@ -94,6 +96,9 @@ struct Application {
         Ports ports;ports.context=this;
         ports.storage=storage.binding();
         ports.still_io=still_socket.services();
+        ports.stock_still_neighbor=[](void* p, const char* host, const char* uid, std::uint32_t connection){
+            return static_cast<Application*>(p)->still_neighbor.check(host,uid,connection);
+        };
         ports.group_boot_nonce=esp_random();
         ports.millis=[](void*)->std::uint32_t{return ::millis();};
         ports.http_poll=[](void* p,std::uint32_t now){static_cast<Application*>(p)->http_poll(now);};

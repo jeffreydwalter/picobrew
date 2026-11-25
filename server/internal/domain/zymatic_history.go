@@ -14,22 +14,35 @@ func IsZymaticHistory(fields []string) bool {
 
 type fullSample Sample
 
+// The step event state and the periodic temperature error mask are separate OEM fields.
+type ZymaticReport struct {
+	Kind       string `json:"kind"`
+	StepName   string `json:"step_name,omitempty"`
+	State      *int   `json:"state,omitempty"`
+	ErrorFlags *int   `json:"error_flags,omitempty"`
+	ErrorCode  *int   `json:"error_code,omitempty"`
+	ResetPoint string `json:"reset_point,omitempty"`
+}
+
 func (s Sample) MarshalJSON() ([]byte, error) {
 	if !s.ZymaticHistory {
 		return json.Marshal(fullSample(s))
 	}
 	type compact struct {
-		ZymaticHistory bool       `json:"zymatic_history"`
-		ElapsedMS      int64      `json:"elapsed_ms"`
-		ObservedAt     *time.Time `json:"observed_at,omitempty"`
-		WortF          *float64   `json:"wort_f"`
-		ThermoblockF   *float64   `json:"thermoblock_f"`
-		TargetF        *float64   `json:"target_f"`
-		Compartment    *int       `json:"compartment"`
-		CurrentStep    *int       `json:"current_step"`
-		Source         string     `json:"source"`
+		StockZymatic   *ZymaticReport      `json:"stock_zymatic,omitempty"`
+		Readings       map[string]*float64 `json:"readings,omitempty"`
+		ZymaticHistory bool                `json:"zymatic_history"`
+		ElapsedMS      int64               `json:"elapsed_ms"`
+		ObservedAt     *time.Time          `json:"observed_at,omitempty"`
+		WortF          *float64            `json:"wort_f"`
+		ThermoblockF   *float64            `json:"thermoblock_f"`
+		TargetF        *float64            `json:"target_f"`
+		Compartment    *int                `json:"compartment"`
+		CurrentStep    *int                `json:"current_step"`
+		Source         string              `json:"source"`
 	}
 	row := compact{ZymaticHistory: true, ElapsedMS: s.ElapsedMS, ObservedAt: s.ObservedAt, WortF: s.WortF, ThermoblockF: s.ThermoblockF, TargetF: s.TargetF, Source: s.Source}
+	row.StockZymatic, row.Readings = s.StockZymatic, s.Readings
 	if s.Compartment >= 0 {
 		row.Compartment = &s.Compartment
 	}

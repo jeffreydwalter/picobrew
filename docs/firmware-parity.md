@@ -37,7 +37,7 @@ See the [firmware architecture and verification](../firmware/zymatic/modified/ap
 
 | Capability | S/Pro and Pico C | Generic Z | PicoStill | PicoFerm |
 | --- | --- | --- | --- | --- |
-| Installed recipe catalogue | Sixteen recipes, up to fifteen steps | Sixteen recipes, up to fifteen steps | Not advertised | Not advertised |
+| Installed recipe catalogue | 16 recipes, up to 15 steps each | 16 recipes, up to 20 steps for Z Program Maker or 15 for other formats | Not advertised | Not advertised |
 | Starter recipes and restore | Attributed model recipes | Requires an attributed native conversion; not advertised | Not applicable | Not applicable |
 | Physical panel and remote display/input | Native monochrome panel and encoder | Native grayscale panel, four display pages and ordered encoder input | No panel invented | No panel invented |
 | Normal operating programs | Native brewer programs and maintenance | Saved beer recipes, sous vide, coffee and maintenance programs | Native manual, essential-oil and cleaning modes | Explicit recording, sampling and calibration |

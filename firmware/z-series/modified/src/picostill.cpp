@@ -13,6 +13,7 @@ using api::detail::Writer;
 namespace {
 constexpr char RecordName[] = "stillpair";
 constexpr unsigned RecordSize = 1 + 64 + 13 + 65 + 2;
+constexpr char StockStopUnconfirmed[] = "PicoStill stop unconfirmed. If running, press its button.";
 bool still_program(unsigned id) {
     return id == unsigned(ZProgramId::PicoStillManual) || id == unsigned(ZProgramId::PicoStillBoilPoint);
 }
@@ -27,7 +28,8 @@ void Adapter::load_still_address() {
     if (result == RecordResult::Missing)
         return;
     StillAddress address;
-    if (result == RecordResult::Ok && size == sizeof data && data[0] == 1) {
+    if (result == RecordResult::Ok && size == sizeof data && (data[0] == 1 || data[0] == 2)) {
+        address.stock = data[0] == 2;
         std::memcpy(address.host, data + 1, 64);
         std::memcpy(address.uid, data + 65, 13);
         std::memcpy(address.key, data + 78, 65);
@@ -41,7 +43,8 @@ void Adapter::load_still_address() {
 }
 bool Adapter::save_still_address(const StillAddress &address) {
     using namespace api::detail;
-    std::uint8_t data[RecordSize] = {1};
+    std::uint8_t data[RecordSize] = {};
+    data[0] = address.stock ? 2 : 1;
     std::memcpy(data + 1, address.host, 64);
     std::memcpy(data + 65, address.uid, 13);
     std::memcpy(data + 78, address.key, 65);
@@ -119,6 +122,11 @@ bool Adapter::picostill_http(const PicoHttpRequest &req, PicoHttpResponse &res, 
                 field = 8;
                 valid = j.integer(1, 65535, port);
                 candidate.port = std::uint16_t(port);
+            } else if (!std::strcmp(key, "protocol")) {
+                char protocol[16];
+                field = 32;
+                valid = j.string(protocol, sizeof protocol) && !std::strcmp(protocol, "stock") && ports_.stock_still_neighbor;
+                candidate.stock = valid;
             } else if (!std::strcmp(key, "session_logging")) {
                 field = 16;
                 valid = j.boolean(enabled);
@@ -132,7 +140,7 @@ bool Adapter::picostill_http(const PicoHttpRequest &req, PicoHttpResponse &res, 
                 valid = false;
         }
         if (!valid || !j.token('}') || !j.done() ||
-            (req.method == PICO_HTTP_PATCH ? fields != 16 : fields != 15 || !candidate.valid()))
+            (req.method == PICO_HTTP_PATCH ? fields != 16 : fields != (candidate.stock ? 43u : 15u) || !candidate.valid()))
             result = {400, "invalid_pairing", "Invalid PicoStill address, identity, key or preference"};
         else if (req.method == PICO_HTTP_PATCH) {
             if (!set_still_logging(enabled))
@@ -156,6 +164,10 @@ bool Adapter::picostill_http(const PicoHttpRequest &req, PicoHttpResponse &res, 
     else {
         w.text("{\"paired\":");
         w.boolean(still_address_.uid[0]);
+        w.text(",\"stock_supported\":");
+        w.boolean(ports_.stock_still_neighbor != nullptr);
+        w.text(",\"protocol\":");
+        w.quote(still_address_.stock ? "stock" : "standalone");
         w.text(",\"verified\":");
         w.boolean(still_verified_);
         w.text(",\"checking\":");
@@ -169,7 +181,7 @@ bool Adapter::picostill_http(const PicoHttpRequest &req, PicoHttpResponse &res, 
         w.text(",\"error\":");
         w.quote(still_error_);
         w.text(",\"sample\":");
-        if (!still_session_ || !still_lease_[0])
+        if (!still_session_ || !still_claimed() || (still_address_.stock && !still_active_))
             w.text("null");
         else {
             const auto &sample = core_.still_samples.current;
@@ -224,15 +236,25 @@ void Adapter::close_still(bool fault) {
     hold_still_outputs();
     still_session_ = still_active_ = false;
     still_peer_.close();
-    if (still_lease_[0])
-        start_still_request(StillPeer::Stop, ports_.millis(ports_.context));
+    bool stop_unconfirmed = false;
+    if (fault)
+        still_error_ = "PicoStill connection or sensor interlock failed";
+    if (still_lease_[0] || still_peer_.stock_start_sent) {
+        if (!start_still_request(StillPeer::Stop, ports_.millis(ports_.context)) && still_address_.stock) {
+            stop_unconfirmed = true;
+            still_error_ = StockStopUnconfirmed;
+        }
+    }
+    stock_claimed_ = false;
+    still_peer_.stock_active = false;
+    still_peer_.stock_start_sent = false;
     still_lease_[0] = 0;
     core_.still.commands.pending = false;
-    if (fault) {
-        still_error_ = "PicoStill connection or sensor interlock failed";
+    if (fault || stop_unconfirmed) {
         api::detail::copy(core_.still.state.error.data(), core_.still.state.error.size(), still_error_);
         still_state(PicoStillStateId::Error);
-        stop("picostill-link");
+        if (fault)
+            stop("picostill-link");
     } else
         still_state(PicoStillStateId::Idle);
 }
@@ -251,7 +273,7 @@ void Adapter::tick_still(std::uint32_t now) {
         close_still(false);
         return;
     }
-    if (still_session_ && still_lease_[0] && now - last_still_sample_ >= link::LeaseMs) {
+    if (still_session_ && still_claimed() && now - last_still_sample_ >= link::LeaseMs) {
         close_still(true);
         return;
     }
@@ -259,17 +281,20 @@ void Adapter::tick_still(std::uint32_t now) {
     if (op != StillPeer::None) {
         const char *body = nullptr;
         std::size_t length = 0;
-        int read = still_peer_.poll(now, body, length);
-        if (!read)
-            return;
         link::Sample sample;
         const auto &target = op == StillPeer::Probe ? still_candidate_ : still_address_;
-        const bool ok = read > 0 && sample.parse(body, length) && !std::strcmp(sample.uid, target.uid);
+        const int read = target.stock ? still_peer_.stock_result(now, target, sample) :
+                                        still_peer_.poll(now, body, length);
+        if (!read)
+            return;
+        const bool ok = read > 0 && (target.stock ||
+                         (sample.parse(body, length) && !std::strcmp(sample.uid, target.uid)));
         still_peer_.close();
         if (op == StillPeer::Probe) {
             still_checking_ = false;
             if (!ok)
-                still_error_ = "Could not verify the PicoStill identity and key";
+                still_error_ = target.stock ? "Check the stock PicoStill UID, LAN address, firmware 0.0.35 and idle state" :
+                                               "Could not verify the PicoStill identity and key";
             else if (!save_still_address(still_candidate_))
                 still_error_ = "Could not save PicoStill pairing";
             else {
@@ -279,29 +304,44 @@ void Adapter::tick_still(std::uint32_t now) {
             still_candidate_ = {};
             return;
         }
-        if (op == StillPeer::Stop)
-            return; // Peer also cuts outputs on its own lease deadline.
-        if (!ok || !sample.healthy || !sample.lease[0] ||
-            (op != StillPeer::Claim && std::strcmp(sample.lease, still_lease_)) ||
-            sample.active != (still_active_ || op == StillPeer::Start)) {
+        if (op == StillPeer::Stop) {
+            if (target.stock && !ok) {
+                still_error_ = StockStopUnconfirmed;
+                api::detail::copy(core_.still.state.error.data(), core_.still.state.error.size(), still_error_);
+                still_state(PicoStillStateId::Error);
+            }
+            return;
+        }
+        const bool needs_sample = still_active_ || op == StillPeer::Start;
+        if (!ok || ((!target.stock || needs_sample) && !sample.healthy) ||
+            (!target.stock && (!sample.lease[0] || (op != StillPeer::Claim && std::strcmp(sample.lease, still_lease_)))) ||
+            sample.active != needs_sample) {
             close_still(true);
             return;
         }
         if (op == StillPeer::Claim) {
+            stock_claimed_ = target.stock;
             std::strcpy(still_lease_, sample.lease);
             still_verified_ = true;
             core_.still_samples = {};
             still_state(sample.clean ? PicoStillStateId::PendingStart : PicoStillStateId::PendingCleanedAck);
         } else if (op == StillPeer::Cleaned) {
-            if (!sample.clean) {
+            if (!target.stock && !sample.clean) {
                 close_still(true);
                 return;
             }
             still_state(PicoStillStateId::PendingStart);
         } else if (op == StillPeer::Start) {
             still_active_ = true;
+            still_peer_.stock_active = target.stock;
             release_still_outputs(true);
             still_state(PicoStillStateId::Running);
+        }
+        if (target.stock && !sample.healthy) {
+            // The stock accessory first publishes sensor data when it starts.
+            last_still_sample_ = now;
+            core_.refresh_observed();
+            return;
         }
         auto &samples = core_.still_samples;
         auto previous = samples.current;
@@ -327,7 +367,7 @@ void Adapter::tick_still(std::uint32_t now) {
     case StillCommandId::None:
         break;
     case StillCommandId::Scan:
-        if (!still_lease_[0]) {
+        if (!still_claimed()) {
             next = StillPeer::Claim;
             still_state(PicoStillStateId::Scanning);
         }
@@ -350,7 +390,7 @@ void Adapter::tick_still(std::uint32_t now) {
     case StillCommandId::Stop:
         // Waking the native runtime from standby passes through Idle and
         // emits a generic still cancel before it begins this program.
-        if (still_lease_[0] || core_.still.state.id != PicoStillStateId::Idle)
+        if (still_claimed() || core_.still.state.id != PicoStillStateId::Idle)
             close_still(false);
         return;
     case StillCommandId::Reconnect:
@@ -359,7 +399,7 @@ void Adapter::tick_still(std::uint32_t now) {
     default:
         break;
     }
-    if (next == StillPeer::None && still_lease_[0] && now - last_still_sample_ >= link::PollMs)
+    if (next == StillPeer::None && still_claimed() && now - last_still_sample_ >= link::PollMs)
         next = StillPeer::Poll;
     if (next != StillPeer::None && !start_still_request(next, now))
         close_still(true);

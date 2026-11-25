@@ -6,6 +6,8 @@ import { Button, ErrorBanner, Field, Modal } from './ui'
 import { StockSetupGuide } from './StockSetupGuide'
 import { ProgramTable } from './Program'
 import { TransferLoadingSheet } from './RecipeLoadingSheet'
+import { zymaticError } from '../lib/history'
+import { dateLabel } from '../lib/utils'
 
 type StockItem = {
   recipe_id: string
@@ -15,7 +17,12 @@ type StockItem = {
   hop_slots_by_minute?: Record<number, number>
   maintenance: boolean
 }
-type Menu = { machine: string; items: StockItem[]; last_requested: string }
+type Menu = {
+  machine: string
+  items: StockItem[]
+  last_requested: string
+  diagnostics?: { recent_errors?: { at: string; code: number }[] }
+}
 export const stockTarget = 'stock-zymatic-menu'
 export const offlineTarget = 'offline-zymatic-program'
 
@@ -279,6 +286,24 @@ export function StockZymaticTransfer({
           ))}
         </section>
       )}
+      {!offline &&
+        valid &&
+        menu.data?.machine === id &&
+        !!menu.data.diagnostics?.recent_errors?.length && (
+          <section>
+            <h4>Brewer reports outside a recorded session</h4>
+            <ul>
+              {menu.data.diagnostics.recent_errors
+                .slice()
+                .reverse()
+                .map((report, i) => (
+                  <li key={i}>
+                    {dateLabel(report.at)} · {zymaticError(report.code)}
+                  </li>
+                ))}
+            </ul>
+          </section>
+        )}
     </Modal>
   )
 }

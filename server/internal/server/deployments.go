@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
 	"sort"
@@ -135,8 +136,8 @@ func recipeCapabilityIssue(caps domain.Capabilities, recipe domain.MachineRecipe
 		return "This brewer needs firmware with original Z schedule support"
 	case recipe.ZProgram != nil && (caps.Model != "z-series" || !caps.ZProgramMaker):
 		return "This brewer does not support Z Program Maker programs"
-	case recipe.StepCount() > caps.StepCapacity:
-		return "Recipe exceeds the machine's step capacity"
+	case recipe.StepCount() > caps.RecipeStepLimit(recipe):
+		return fmt.Sprintf("This recipe has %d steps. The selected firmware supports up to %d for this format.", recipe.StepCount(), caps.RecipeStepLimit(recipe))
 	case hasZeroMinuteSteps(recipe) && !caps.ZeroMinuteSteps:
 		return "Update the machine firmware to support zero-minute heating steps"
 	}

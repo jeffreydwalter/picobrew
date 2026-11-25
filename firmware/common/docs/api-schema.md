@@ -120,8 +120,7 @@ when executing either command. Existing live-session `pause`/`resume` commands
 remain separate. Discard removes the checkpoint only after an explicit user
 action; clients do not add a device `confirm` argument when none is advertised.
 
-The common engine owns a persistent 16-record recipe catalogue with 15 steps
-per recipe. The existing S/Pro schema and bounds apply: IDs 1..20 ASCII
+The common engine stores 16 recipes with up to 15 steps in the shared recipe format. Z modules that report `z_program_step_capacity` also accept native Z Program Maker recipes up to that advertised limit. The existing S/Pro schema and bounds apply: IDs 1..20 ASCII
 alphanumerics/underscore/hyphen, names 1..31 printable ASCII, step names 1..21,
 locations 1..6, target 0 or 60..212 F, active minutes 0..599 and drain minutes
 0..120. An adapter must additionally validate the native conversion. Locations
@@ -146,7 +145,10 @@ command and machine preparation prompts.
 
 The program has `Name`, `IsBeer`, `UsePicoPakMode`, `Steps` and optionally
 `IsMetric` for display. Program and step names take 1–20 printable ASCII
-characters. The catalog supports up to 15 steps. For active steps, `StepType`
+characters. Discovery and the recipe list report `z_program_step_capacity` for
+Program Maker files. Updated Z brewers accept 20 steps. For earlier firmware,
+use `step_capacity` (15). Other recipe formats retain that 15-step limit.
+For active steps, `StepType`
 is 1 and `Location` is 1 for keg, 2 for mash, or 3–6 for adjuncts 1–4.
 `Temp` is Celsius, with an accepted range of −29 to 98 to cover original
 metric and imperial entries. A null or nonpositive target turns heating off.
@@ -222,4 +224,4 @@ A Z advertising `group_brewing_v1` accepts authenticated reads and writes at `/a
 
 A Z advertising `group_z_programs_v1` accepts `action:"z_program"` with a `program_id`. Supported IDs are 2 (Drain), 3 (Rack), 4 (Circulate), 5 and 6 (Sous vide without and with keg), 7 (PicoStill manual), 20–23 (Cold Brew, Hybrid, Hot and Custom coffee), 26 (PicoStill boil point) and 27 (Chill). Both ends must support this capability. Coffee requires `water_l`, `temperature_f`, `intensity` and `time_seconds`. The water limits come from the original 1–4.2 US gallon and 4–15.5 L pickers. Temperature is 100–200 °F, intensity is an integer from 1 to 15, and time is 60–5,400 seconds in one-minute increments. Accepting coffee loads the original program and presents the separate Start control. Reads include a localized `program_name` for display. The device determines that name.
 
-A Z advertising `picostill_brewer_link_v1` exposes the paired accessory at `/api/v1/picostill`. The brewer reports the accessory's four temperature readings, pressure, pump, cooling fan and program state during a session. The paired UID and verification status are readable between sessions. [Pairing, logging and commands](../../z-series/modified/README.md#using-a-picostill-with-the-z)
+A Z advertising `picostill_brewer_link_v1` exposes the paired accessory at `/api/v1/picostill`. The brewer reports the accessory's four temperature readings, pressure, pump, cooling fan and program state during a session. The paired UID and verification status are readable between sessions. When GET returns `stock_supported: true`, PUT also accepts `{"protocol":"stock","host":"192.168.1.42","uid":"001122334455","port":80}` for a stock 0.0.35 accessory on the same subnet. Poll GET until `checking` clears and the returned UID, protocol and verification status confirm the requested binding. [Pairing, logging and commands](../../z-series/modified/README.md#using-a-picostill-with-the-z)

@@ -243,7 +243,8 @@ bool Engine::Impl::load_recipes() {
         const std::uint8_t* p = bytes.data + i * 58; RecipeEntry& e = recipes[i];
         std::memcpy(e.id, p, 21); std::memcpy(e.name, p + 21, 32); e.steps = p[53]; e.generation = get32(p + 54);
         if (!e.id[0]) continue;
-        if (!valid_id(e.id) || !valid_text(e.name, 32) || !e.steps || e.steps > RecipeStepCapacity || !e.generation) return false;
+        if (!valid_id(e.id) || !valid_text(e.name, 32) || !e.steps ||
+            e.steps > (capabilities.z_program_maker ? ZProgramStepCapacity : RecipeStepCapacity) || !e.generation) return false;
         for (unsigned j = 0; j < i; ++j) if (!std::strcmp(e.id, recipes[j].id)) return false;
         Recipe recipe; if (!recipe_read(i, recipe).ok()) return false;
     }

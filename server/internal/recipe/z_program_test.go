@@ -2,11 +2,49 @@ package recipe
 
 import (
 	"encoding/json"
-	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/domain"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/domain"
 )
+
+func TestLongProgramMakerFiles(t *testing.T) {
+	profile, _ := supportedProfile("z")
+	program := domain.ZProgram{Name: "Long program", IsBeer: true}
+	for i := range domain.MaxZProgramSteps {
+		program.Steps = append(program.Steps, domain.ZProgramStep{Name: fmt.Sprintf("Pause %d", i+1), Type: 2})
+	}
+	raw, err := json.Marshal(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, err := Import(raw, "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := Translate(items[0], profile, 0)
+	if err != nil || !plan.CanDeploy || !reflect.DeepEqual(plan.MachineRecipe.ZProgram, &program) {
+		t.Fatalf("20-step standalone schedule changed: %+v, %v", plan, err)
+	}
+	out, err := ExportZProgram(items[0], profile)
+	if err != nil || string(out) != string(raw) {
+		t.Fatalf("stock file at exactly 64 JSON entries: %s, %v", out, err)
+	}
+	seconds := 0
+	items[0].NativeProgram.ZProgram.Steps[0].Time = &seconds
+	if _, err := ExportZProgram(items[0], profile); err == nil || !strings.Contains(err.Error(), "JSON memory") {
+		t.Fatalf("stock receiver has no space for a 65th entry: %v", err)
+	}
+	if _, err := Translate(items[0], profile, 0); err != nil {
+		t.Fatalf("standalone target inherited the stock JSON limit: %v", err)
+	}
+	program.Steps = append(program.Steps, program.Steps[0])
+	if err := program.Validate(); err == nil {
+		t.Fatal("accepted a 21st standalone step")
+	}
+}
 
 func TestProgramMakerExchangeAndTargetLimits(t *testing.T) {
 	const data = `{"Name":"Test","IsMetric":true,"IsBeer":false,"UsePicoPakMode":true,"Steps":[{"Name":"Adjunct 4","StepType":1,"Location":6,"Temp":64.21,"Time":5401,"Drain":37},{"Name":"Operator","StepType":2},{"Name":"Unheated","StepType":1,"Location":1,"Temp":null,"Time":0,"Drain":0}]}`

@@ -160,10 +160,12 @@
             <p id="stillLinkStatus" role="status" aria-live="polite"></p>
             <p id="stillSample" hidden></p>
             <form id="stillLinkForm">
+              <div class="settings-row" id="stillModeRow" hidden><label for="stillMode">PicoStill firmware</label><select id="stillMode"><option value="standalone">Standalone</option><option value="stock">Original 0.0.35</option></select></div>
+              <p id="stillStockHelp" hidden>Connect the stock PicoStill to the same LAN using its own Wi-Fi setup. Enter its LAN IPv4 address and the 12 characters after PicoStill_ in its Wi-Fi name. If the connection drops, check the PicoStill and press its button if it is still running. After a run, allow about 20 seconds for its automatic restart and wait for it to reconnect before starting again.</p>
               <div class="settings-row"><label for="stillHost">PicoStill host</label><input id="stillHost" maxlength="63" required placeholder="IP address or local hostname"></div>
-              <div class="settings-row"><label for="stillPort">HTTP port</label><input id="stillPort" type="number" min="1" max="65535" value="80" required></div>
+              <div class="settings-row" id="stillPortRow"><label for="stillPort">HTTP port</label><input id="stillPort" type="number" min="1" max="65535" value="80" required></div>
               <div class="settings-row"><label for="stillUID">PicoStill device UID</label><input id="stillUID" maxlength="12" pattern="[a-fA-F0-9]{12}" required></div>
-              <div class="settings-row"><label for="stillKey">PicoStill device key</label><input id="stillKey" type="password" maxlength="64" pattern="[a-fA-F0-9]{64}" autocomplete="off" required></div>
+              <div class="settings-row" id="stillKeyRow"><label for="stillKey">PicoStill device key</label><input id="stillKey" type="password" maxlength="64" pattern="[a-fA-F0-9]{64}" autocomplete="off" required></div>
               <div class="settings-actions"><button id="stillPair" class="button primary" disabled>Pair PicoStill</button><button id="stillUnpair" class="button" type="button" hidden>Unpair</button></div>
             </form>
             <label id="stillLogRow" class="checkbox" hidden><input type="checkbox" id="stillLogging"> Record PicoStill sessions</label>

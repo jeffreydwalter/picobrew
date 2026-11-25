@@ -124,6 +124,7 @@ type Capabilities struct {
 	PairingV1               bool                     `json:"pairing_v1,omitempty"`
 	ZCloudProgramV1         bool                     `json:"z_cloud_program_v1,omitempty"`
 	ZProgramMaker           bool                     `json:"z_program_maker,omitempty"`
+	ZProgramStepCapacity    int                      `json:"z_program_step_capacity,omitempty"`
 	OTAProtocol             string                   `json:"ota_protocol,omitempty"`
 	HubOTAV1                bool                     `json:"hub_ota_v1,omitempty"`
 	APIVersion              int                      `json:"api_version"`
@@ -323,6 +324,7 @@ type Profile struct {
 	BatchLiters      float64         `json:"batch_liters"`
 	Efficiency       float64         `json:"efficiency"`
 	MaxSteps         int             `json:"max_steps"`
+	ZProgramMaxSteps int             `json:"z_program_max_steps,omitempty"`
 	MaxTargetC       float64         `json:"max_target_c"`
 	MaxGrainKG       float64         `json:"max_grain_kg"`
 	MaxHopSlotG      float64         `json:"max_hop_slot_g"`
@@ -349,6 +351,7 @@ type Adapted struct {
 	ProfileFingerprint string         `json:"profile_fingerprint,omitempty"`
 }
 type Sample struct {
+	StockZymatic *ZymaticReport `json:"stock_zymatic,omitempty"`
 	// ZymaticHistory selects the named channels recorded by Zymatic EEPROM.
 	ZymaticHistory   bool                `json:"zymatic_history,omitempty"`
 	ElapsedMS        int64               `json:"elapsed_ms"`
@@ -415,6 +418,7 @@ type Conditioning struct {
 	Stages         []ConditioningStage `json:"stages"`
 }
 type Brew struct {
+	StockSerial         string `json:"stock_serial,omitempty"`
 	GroupID             string `json:"group_id,omitempty"`
 	GroupName           string `json:"group_name,omitempty"`
 	GroupSessionID      string `json:"group_session_id,omitempty"`

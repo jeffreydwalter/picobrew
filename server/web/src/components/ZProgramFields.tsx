@@ -85,12 +85,17 @@ export function ZProgramFields({
   program,
   update,
   confirmSample,
+  machineStepLimit,
 }: {
   program: ZProgram
   update: (next: ZProgram) => void
   confirmSample: boolean
+  machineStepLimit?: number
 }) {
   const hub = useHub()
+  const libraryStepLimit =
+    hub.profiles.find((profile) => profile.id === 'z')?.z_program_max_steps ?? 15
+  const stepLimit = Math.min(libraryStepLimit, machineStepLimit ?? libraryStepLimit)
   const savedUnit = program.IsMetric === undefined ? '' : program.IsMetric ? 'C' : 'F'
   const unit = savedUnit || hub.unit
   const stepKeys = useRef(program.Steps.map((_, i) => i))
@@ -198,9 +203,7 @@ export function ZProgramFields({
                     onChange={(e) =>
                       changeStep(
                         i,
-                        e.target.value === '2'
-                          ? { Name: s.Name, StepType: 2, Time: 0 }
-                          : activeZStep(s.Name)
+                        e.target.value === '2' ? { Name: s.Name, StepType: 2 } : activeZStep(s.Name)
                       )
                     }
                   >
@@ -279,7 +282,7 @@ export function ZProgramFields({
         <Button
           variant="secondary"
           type="button"
-          disabled={program.Steps.length >= 15}
+          disabled={program.Steps.length >= stepLimit}
           onClick={() => {
             stepKeys.current.push(nextKey.current++)
             update({ ...program, Steps: [...program.Steps, activeZStep('New step', 1, 0, 0)] })
@@ -288,6 +291,9 @@ export function ZProgramFields({
           <Plus size={16} />
           Add step
         </Button>
+        {program.Steps.length >= stepLimit && (
+          <span className="help-text"> Step limit reached ({stepLimit}).</span>
+        )}
       </section>
     </>
   )

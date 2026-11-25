@@ -8,14 +8,35 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import struct
+import tempfile
 
 ROOT=Path(__file__).resolve().parents[1]
 OEM=ROOT.parent/'reverse-engineered'
 COMMON=ROOT.parents[1]/'common'
 def digest(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+def deterministic_toolchain(source, directory):
+    """Use the pinned GNU ar in deterministic mode for the original build scripts."""
+    source = source.resolve()
+    binary = directory / 'bin'
+    binary.mkdir()
+    for entry in source.iterdir():
+        if entry.name != 'bin':
+            (directory / entry.name).symlink_to(entry)
+    for tool in (source / 'bin').iterdir():
+        dest = binary / tool.name
+        if tool.name == 'xtensa-esp32-elf-ar':
+            # The SDK's default ar mode embeds the build time in the symbol table.
+            dest.write_text('#!/bin/sh\nif [ "$1" = rcs ]; then shift; set -- rcsD "$@"; fi\n'
+                            'exec ' + shlex.quote(str(tool)) + ' "$@"\n')
+            dest.chmod(0o755)
+        else:
+            dest.symlink_to(tool)
+    return directory
 
 def build_recovery(args,output,objects,esptool,version):
     """Link only the immutable receiver, network transports, storage, and pump/heat cutoff."""
@@ -60,6 +81,11 @@ def main():
         parser.add_argument('--'+option,type=Path,required=True)
     parser.add_argument('--objects',type=Path,help='Reuse an already checked OEM object directory')
     args=parser.parse_args()
+    with tempfile.TemporaryDirectory(prefix='picobrew-z-toolchain-') as temporary:
+        args.toolchain=deterministic_toolchain(args.toolchain,Path(temporary))
+        return build_application(args)
+
+def build_application(args):
     output=args.output.resolve();output.mkdir(parents=True,exist_ok=True)
     objects=args.objects.resolve() if args.objects else output/'oem-objects'
     if not args.objects:

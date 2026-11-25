@@ -57,7 +57,7 @@ Recipe z_recipe(unsigned slot, unsigned revision) {
     Recipe recipe;
     std::snprintf(recipe.id,sizeof recipe.id,"z-%u",slot);
     std::snprintf(recipe.name,sizeof recipe.name,"Recipe %u rev %u",slot,revision);
-    recipe.step_count=RecipeStepCapacity;
+    recipe.step_count=revision>=2 ? ZProgramStepCapacity : RecipeStepCapacity;
     // Native cloud, kit, then two generations of the largest persistent format.
     recipe.z_program=revision>=2;
     if (revision==0) recipe.z_cloud_water_ml=16163;
@@ -86,7 +86,7 @@ void z_library(Engine& engine,bool populate) {
             const Recipe expected=z_recipe(slot,generation);
             if (populate) require(engine.recipe_store(expected).ok(),"store full Z recipe generation");
             Recipe actual;
-            require(engine.recipe_get(expected.id,actual).ok() && actual.step_count==RecipeStepCapacity &&
+            require(engine.recipe_get(expected.id,actual).ok() && actual.step_count==expected.step_count &&
                     !std::strcmp(actual.name,expected.name) && actual.z_cloud_water_ml==expected.z_cloud_water_ml &&
                     actual.z_program==expected.z_program && actual.pak.recipe_id==expected.pak.recipe_id,
                     "full Z recipe catalog readback");
@@ -111,7 +111,7 @@ CapacityResult exercise(unsigned model,unsigned region,unsigned logical_block) {
         require(bind(world,storage),"actual engine begin on SPIFFS");
         if (!model) {
             z_library(*world.engine,true);
-            result.recipes=world.engine->recipe_count();result.steps=RecipeStepCapacity;
+            result.recipes=world.engine->recipe_count();result.steps=ZProgramStepCapacity;
         }
         const char* start=model?"{\"command\":\"start\"}":"{\"command\":\"brew\",\"recipe_id\":\"z-0\"}";
         world_request(&world,PICO_HTTP_POST,"/api/v1/commands",start,3);

@@ -28,7 +28,7 @@ func importZProgram(data []byte) (domain.Recipe, error) {
 }
 
 // ExportZProgram checks both the selected Z equipment profile and the original
-// 0.0.119 local receiver's 64-slot JSON pool and 2048-byte request body.
+// 0.0.119 local receiver's 64-slot JSON pool and 2047-byte request body.
 func ExportZProgram(r domain.Recipe, profile domain.Profile) ([]byte, error) {
 	if profile.ID != "z" {
 		return nil, errors.New("select the Z brewer profile")
@@ -103,7 +103,7 @@ func ExportZProgram(r domain.Recipe, profile domain.Profile) ([]byte, error) {
 		return nil, err
 	}
 	data := bytes.TrimSpace(b.Bytes())
-	if len(data) > 2048 {
+	if len(data) > 2047 {
 		return nil, errors.New("program exceeds the stock Z request size")
 	}
 	return data, nil

@@ -24,7 +24,7 @@ Pico S, Pro and C use their PicoPak routing. The Hub compiles ingredient recipes
 
 The brewer ingredient view, printed brew sheet and shopping list show the catalog yeast strain even when the source only names the yeast. An unspecified pitch has no numerical quantity to scale. A measured yeast ingredient supplies the pitch for that library recipe. Hub BeerXML extensions retain fermentable placement, addition time and the published source strain across Hub imports.
 
-The wizard review follows the actual sequence of mash, boil and hop visits. Boil times count down. A return visit circulates through the existing slot load. The standalone S, Pro, C and generic Z transfer at most 15 steps. The stock Zymatic sync format allows 25, with a 255-minute limit per hold and a maximum target of 207 °F.
+The wizard review follows the actual sequence of mash, boil and hop visits. Boil times count down. A return visit circulates through the existing slot load. Wizard-generated ingredient recipes for standalone S, Pro, C and Z modules allow up to 15 steps. The stock Zymatic sync format allows 25, with a 255-minute limit per hold and a maximum target of 207 °F.
 
 The style picker includes all 200 guide-and-code entries in PicoBrew’s Beer Crafter, plus styles used in saved library recipes. Entering a custom style leaves its analytical targets unspecified.
 
@@ -32,7 +32,9 @@ The style picker includes all 200 guide-and-code entries in PicoBrew’s Beer Cr
 
 In **Recipes → Add recipe → Create a machine program**, choose the intended brewer. Pico S, Pro and C use direct keg, mash and adjunct routes. The stock Zymatic editor uses its menu protocol, including operator pauses. Z Program Maker supports active steps, operator pauses, beer setup and the PicoPak adjunct setting. Locations 1 and 2 on a Z are the keg and mash basket. Locations 3–6 select hop compartments 1–4. The file records Celsius and seconds regardless of the units displayed in the editor.
 
-Import original Program Maker JSON from the library. Use the Z export to open a program in a stock 0.0.119 brewer’s Program Maker. That export checks the stock receiver’s 2,048-byte body and 64-entry JSON pool. Programs that fit the standalone Z can exceed those stock limits. For a connected standalone Z advertising Program Maker support, **Send** checks the device capabilities and verifies the saved program by reading it back. A successful transfer leaves brewing under the operator’s control.
+Import original Program Maker JSON from the library. The Hub can edit programs with up to 20 steps. **Send** checks the connected standalone Z’s reported limit and verifies the saved program by reading it back. You can start the program when you are ready.
+
+Use **Export Z program** for stock 0.0.119. Its receiver allows 2,047 bytes and 64 JSON entries, so the number of steps that fit depends on their contents. For example, 20 named pauses with no duration or unit preference fit exactly 64 entries. The stock website adds a time field to each pause when it sends a file, which can put a previously fitting program over the receiver’s limit.
 
 An archived Z schedule uses a different recipe format. Copy it to the library and send it directly to compatible standalone Z firmware. For an original PicoPak, you also need the physical pack and the Z PicoPak Adapter. The kit record supplies its strength and bitterness settings and any adjustable timing ranges. Turning on the Program Maker PicoPak setting only changes adjunct routing. [Z recipes and front panel](family-devices.md#z-recipes-and-front-panel)
 

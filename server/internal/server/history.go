@@ -516,6 +516,10 @@ func (s *Server) exportBrew(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", `attachment; filename="brew-`+b.ID+`.csv"`)
 		out := csv.NewWriter(w)
 		defer out.Flush()
+		if b.Source == stockReportSource {
+			exportStockZymaticCSV(out, b.Samples)
+			return
+		}
 		columns := []string{"elapsed_ms", "observed_at", "wort_f", "thermoblock_f", "target_f", "step_seconds", "phase", "controller_status", "compartment", "current_step", "flags", "device_state", "source"}
 		zymatic := domain.IsZymaticHistory(b.SampleFields)
 		if zymatic {
@@ -596,7 +600,7 @@ func (s *Server) writeBackup(ctx context.Context, target io.Writer) error {
 		return json.NewEncoder(f).Encode(value)
 	}
 	err := s.db.ReadSnapshot(ctx, func(snapshot *store.Snapshot) error {
-		for _, kind := range []string{"device", "profile", "recipe", "recipe-revision", "brew", "deployment", "batch-deployment", "ai-advice"} {
+		for _, kind := range []string{"device", "profile", "recipe", "recipe-revision", "brew", "deployment", "batch-deployment", "ai-advice", stockDiagnosticsKind} {
 			rows, err := snapshot.List(kind)
 			if err != nil {
 				return err

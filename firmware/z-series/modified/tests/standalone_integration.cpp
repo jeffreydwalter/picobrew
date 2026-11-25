@@ -30,15 +30,43 @@ struct World {
     std::string still_request, still_response;
     std::size_t response_offset=0;
     unsigned still_chunk=53;
+    bool stock_socket=false, stock_mac=true, stock_active=false, stock_bad=false, stock_busy=false;
+    bool stock_online=true,stock_fan1=false,ignore_fan_command=false;
+    unsigned stock_start=0,stock_end=0,stock_fan=0;
+    std::string stock_version="#0.0.35#";
+    std::string stock_response(const std::string& request) {
+        assert(request.find("Authorization:")==std::string::npos);
+        const auto path=request.substr(4,request.find(' ',4)-4);
+        std::string body;
+        if(path=="/version")body=stock_version;
+        else if(path=="/runningprogram")body=stock_active||stock_busy?"#PicoManual#":"#None#";
+        else if(path=="/hardwareError")body="#None#";
+        else if(path=="/start"){++stock_start;stock_active=true;body="#T#";}
+        else if(path=="/end"){++stock_end;stock_active=false;stock_busy=true;body="#T#";}
+        else if(path=="/fanon" || path=="/fanoff"){
+            ++stock_fan;
+            if(!ignore_fan_command)stock_fan1=path=="/fanon";
+            body="#T#";
+        }
+        else if(path=="/fanstate")body=stock_fan1?"#T#":"#F#";
+        else if(path=="/data")body=stock_bad?"#nan,77,77,77,12.30,1,1,1,None#":
+            (stock_active?"#77.00,86.00,95.00,68.00,12.30,1,1,1,None#":"#77.00,86.00,95.00,68.00,12.30,0,0,0,None#");
+        else assert(false);
+        return "HTTP/1.0 200 OK\r\nConnection: close\r\n\r\n"+body;
+    }
     api::TelemetryIo still_io(){
         api::TelemetryIo io;io.context=this;
         io.begin=[](void* p,const char* host,std::uint16_t port){auto& w=self(p);w.still_request.clear();w.response_offset=0;
-            return !std::strcmp(host,"still.local")&&port==80;};
+            w.stock_socket=!std::strcmp(host,"192.168.1.11");
+            if(w.stock_socket)w.still_response.clear();
+            return ((w.stock_socket && w.stock_online)||!std::strcmp(host,"still.local"))&&port==80;};
         io.poll_connect=[](void*){return 1;};
         io.send=[](void* p,const std::uint8_t* data,std::size_t size){auto& w=self(p);
             unsigned count=static_cast<unsigned>(std::min<std::size_t>(size,w.still_chunk));w.still_request.append(reinterpret_cast<const char*>(data),count);return int(count);};
         io.receive=[](void* p,std::uint8_t* data,std::size_t size){auto& w=self(p);
+            if(w.stock_socket && w.still_response.empty())w.still_response=w.stock_response(w.still_request);
             const auto left=w.still_response.size()-w.response_offset;
+            if(w.stock_socket&&!left)return 0;
             if(!left)return int(PICO_HTTP_IO_AGAIN);
             const auto count=std::min<std::size_t>(w.still_chunk,std::min(size,left));
             std::memcpy(data,w.still_response.data()+w.response_offset,count);w.response_offset+=count;return int(count);};
@@ -117,6 +145,7 @@ struct World {
         h.display_setup.context=this;h.display_setup.report_information=[](void*){};h.display_setup.register_commands=[](void*){};
         h.display_delay.context=this;h.display_delay.milliseconds=[](void* p,std::uint32_t value){self(p).now+=value;};
         zseries::standalone::Ports ports;ports.context=this;ports.millis=core.ports.millis;ports.storage=storage();ports.group_boot_nonce=0x89ab1257u;ports.still_io=still_io();
+        ports.stock_still_neighbor=[](void* p,const char*,const char* uid,std::uint32_t){return self(p).stock_mac&&!std::strcmp(uid,"001122334455")?1:-1;};
         ports.http_poll=[](void* p,std::uint32_t){++self(p).http_polls;};
         ports.serial_poll=[](void*){};ports.save_network=[](void* p,const char*,const char*){return !self(p).reject_network;};ports.reconnect_network=[](void*){return true;};
         ports.lan_ready=[](void* p,std::uint32_t){return self(p).lan;};ports.save_configuration=[](void* p){return !self(p).reject_save;};
@@ -183,6 +212,8 @@ void maker_program() {
     const std::string put = std::string("{\"create_only\":true,\"z_program\":") + source + "}";
     assert(world.request(PICO_HTTP_GET, "/api/v1", nullptr, 200).find("\"z_program_maker\":true") != std::string::npos);
     const auto result = world.request(PICO_HTTP_PUT, path, put.c_str(), 201);
+    // Short Program Maker recipes keep the released 625-byte payload.
+    assert(world.files.at("r00.a").size() == 24 + 625);
     assert(result.find("\"Temp\":67.125") != std::string::npos);
     assert(result.find("\"IsBeer\":false,\"UsePicoPakMode\":true,\"IsMetric\":false") != std::string::npos);
     assert(result.find("\"StepType\":2,\"Time\":17}") != std::string::npos);
@@ -222,6 +253,54 @@ void maker_program() {
     assert(world.engine.recipe_get("maker", r).ok() && world.adapter.load_recipe(r, false).ok());
     const auto& instructions = world.core.program.record().view;
     assert(instructions.code[2].opcode == OpCode::NoTarget);
+}
+void long_maker_program() {
+    World w;
+    const char* path = "/api/v1/recipes/long";
+    const auto info = w.request(PICO_HTTP_GET, "/api/v1", nullptr, 200);
+    assert(info.find("\"z_program_step_capacity\":20") != std::string::npos);
+    assert(info.find("\"step_capacity\":15") != std::string::npos);
+    const auto program = [](unsigned count, const std::string& step) {
+        std::string json = R"({"Name":"Long brew","IsBeer":true,"UsePicoPakMode":false,"Steps":[)";
+        for (unsigned i = 0; i < count; ++i) {
+            if (i) json += ',';
+            json += step;
+        }
+        return json + "]}";
+    };
+    const auto wrap = [](const std::string& json) { return "{\"z_program\":" + json + "}"; };
+    // Exercise both the deployed HTTP arena and the worst-size Program Maker
+    // fields: quote-escaped label, full timers and a binary64 temperature.
+    std::string escaped_label;
+    for (unsigned i = 0; i < 20; ++i) escaped_label += "\\\"";
+    const std::string active = "{\"Name\":\"" + escaped_label +
+        R"(","StepType":1,"Location":6,"Temp":80.12345678901234,"Time":86400,"Drain":7200})";
+    const auto largest = w.request(PICO_HTTP_PUT,path,wrap(program(20, active)).c_str(),201);
+    assert(largest == w.request(PICO_HTTP_GET,path,nullptr,200));
+    w.request(PICO_HTTP_PUT,path,wrap(program(21, active)).c_str(),400);
+    assert(largest == w.request(PICO_HTTP_GET,path,nullptr,200));
+
+    // With minimal operator pauses all twenty fit the OEM 64-slot parser.
+    // Compare the actual compiled program, then reload the saved checkpoint.
+    auto source = program(20, R"({"Name":"Confirm","StepType":2})");
+    const auto stored = w.request(PICO_HTTP_PUT,path,wrap(source).c_str(),200);
+    World reopened(&w.files);
+    assert(reopened.request(PICO_HTTP_GET,path,nullptr,200) == stored);
+    ProgramBuffer original;
+    assert(parse_local_recipe(original, &source[0], source.size(), RecipeEnvironment(101325,100)).ready);
+    reopened.request(PICO_HTTP_POST,"/api/v1/commands",R"({"command":"brew","recipe_id":"long"})",202);
+    reopened.adapter.poll();
+    const auto& actual = reopened.core.program.record().view;
+    const auto& stock = original.record().view;
+    assert(actual.string_count == stock.string_count && actual.code_size == stock.code_size);
+    for (unsigned i = 0; i < stock.code_size; ++i)
+        assert(actual.code[i].opcode == stock.code[i].opcode && actual.code[i].argument == stock.code[i].argument);
+    assert(reopened.dispatch());
+    zseries::standalone::BrewRecovery recovery;
+    assert(recovery.load(reopened.storage()).ok() && recovery.present());
+    assert(recovery.recipe().step_count == 20 && recovery.recipe().steps[19].z.pause);
+    ProgramBuffer restored;
+    assert(recovery.restore(restored,101325).ok() && restored.record().view.code_size == stock.code_size);
 }
 
 void storage_preflight(){World w;auto r=recipe();assert(w.adapter.load_recipe(r,true).ok());const auto frames=w.frames.size();
@@ -952,6 +1031,68 @@ void pair_still(World& w){
     assert(state.find("\"verified\":true")!=std::string::npos && state.find(still_key)==std::string::npos);
 }
 void issue_still(World& w,StillCommandId id){PicoStillCommand cmd;cmd.id=id;w.core.still.commands.put(cmd);assert(w.adapter.service_stage(CoreTickStage::PicoStill,++w.now));}
+void stock_still_session() {
+    const char* pair=R"({"protocol":"stock","host":"192.168.1.11","uid":"001122334455","port":80})";
+    auto advance=[](World& w){for(unsigned i=0;i<45;++i)assert(w.adapter.service_stage(CoreTickStage::PicoStill,++w.now));};
+    World w;
+    w.request(PICO_HTTP_PUT,pairing_path,pair,202);advance(w);
+    auto info=w.request(PICO_HTTP_GET,pairing_path,nullptr,200);
+    assert(info.find("\"verified\":true")!=std::string::npos && info.find("\"protocol\":\"stock\"")!=std::string::npos);
+    World reboot(&w.files);assert(reboot.request(PICO_HTTP_GET,pairing_path,nullptr,200).find("\"protocol\":\"stock\"")!=std::string::npos);
+    for(unsigned fail=0;fail<3;++fail) {
+        World bad;bad.stock_mac=fail!=0;bad.stock_busy=fail==1;
+        if(fail==2)bad.stock_version="#0.0.30#";
+        bad.request(PICO_HTTP_PUT,pairing_path,pair,202);advance(bad);
+        assert(bad.request(PICO_HTTP_GET,pairing_path,nullptr,200).find("\"paired\":false")!=std::string::npos);
+        assert(!bad.stock_start && !bad.stock_end);
+    }
+    auto prepare=[&](World& brewer){
+        CoreCommand start;start.id=CoreCommandId::StartProgram;start.program_id=unsigned(ZProgramId::PicoStillManual);
+        assert(brewer.core.post(start)&&brewer.dispatch());
+        issue_still(brewer,StillCommandId::Stop);
+        issue_still(brewer,StillCommandId::Scan);advance(brewer);
+        assert(brewer.core.still.state.id==PicoStillStateId::PendingCleanedAck);
+        issue_still(brewer,StillCommandId::CleanedAck);advance(brewer);
+        assert(brewer.core.still.state.id==PicoStillStateId::PendingStart);
+    };
+    prepare(reboot);reboot.stock_busy=true;
+    issue_still(reboot,StillCommandId::Start);advance(reboot);
+    assert(reboot.adapter.stopped() && !reboot.stock_start && !reboot.stock_end);
+    prepare(w);issue_still(w,StillCommandId::Start);advance(w);
+    assert(w.core.still.state.id==PicoStillStateId::Running && w.stock_start==1);
+    assert(std::fabs(w.core.still_samples.current.temperature[2]-35.0)<1e-6);
+    assert(std::fabs(w.core.still_samples.current.pressure-12.30)<1e-6);
+    issue_still(w,StillCommandId::FanOn);advance(w);assert(w.stock_fan==1);
+    issue_still(w,StillCommandId::FanOff);advance(w);
+    assert(w.stock_fan==2 && !w.stock_fan1 && w.core.still.state.id==PicoStillStateId::Running);
+    assert(w.request(PICO_HTTP_GET,pairing_path,nullptr,200).find("\"fan_2_running\":true")!=std::string::npos);
+    w.stock_bad=true;w.now+=1600;advance(w);
+    assert(w.adapter.stopped() && !w.core.heater.state.enabled && !w.core.msp_state.pumps && w.stock_end==1);
+    for(unsigned fail=0;fail<3;++fail){
+        World fault(&w.files);
+        prepare(fault);issue_still(fault,StillCommandId::Start);advance(fault);
+        assert(fault.stock_active);
+        if(fail==0){ // Fan 1 stays off even though /fanon returned success and fan 2 is on.
+            fault.ignore_fan_command=true;
+            issue_still(fault,StillCommandId::FanOn);
+        }else{
+            // Failure before opening a stop socket, or after opening it when the address changed.
+            fault.stock_online=fail!=1;
+            fault.stock_mac=fail!=2;
+            issue_still(fault,StillCommandId::Reconnect);
+        }
+        advance(fault);
+        assert(fault.adapter.stopped() && !fault.core.heater.state.enabled && !fault.core.msp_state.pumps);
+        const std::string stopWarning="PicoStill stop unconfirmed. If running, press its button.";
+        const auto state=fault.request(PICO_HTTP_GET,pairing_path,nullptr,200);
+        if(fail==0){
+            assert(fault.stock_end==1 && !fault.stock_active && state.find(stopWarning)==std::string::npos);
+        }else{
+            assert(!fault.stock_end && fault.stock_active && state.find(stopWarning)!=std::string::npos);
+            assert(stopWarning==fault.core.still.state.error.data());
+        }
+    }
+}
 void still_pairing(){
     World w;assert(w.command("picostill-manual").status==409);
     w.request(PICO_HTTP_PUT,pairing_path,pairing("invalid").c_str(),400);
@@ -1205,7 +1346,8 @@ void group_interlocks() {
 }
 int main(int argc,char** argv){if(argc==4&&!std::strcmp(argv[1],"original-z")){for(double boil:{100.,93.})compare_archived_program(test_file(argv[2]),test_file(argv[3]),false,boil);return 0;}
     if(argc==3&&!std::strcmp(argv[1],"pak-corpus")){compare_pak_corpus(argv[2]);return 0;}assert(argc==2);const std::string test=argv[1];
-    if(test=="group-owner")group_owner_programs();else if(test=="group-owner-invalid")group_owner_validation();else if(test=="kit-dial")kit_strength_on_dial();else if(test=="still-programs")still_native_programs();else if(test=="still-pairing")still_pairing();else if(test=="still-session")still_session();else if(test=="pak-input")reject_pak_changes();else if(test=="group-brew")group_brew();else if(test=="group-routines")group_routines();else if(test=="group-interlocks")group_interlocks();
+    if(test=="group-owner")group_owner_programs();else if(test=="group-owner-invalid")group_owner_validation();else if(test=="kit-dial")kit_strength_on_dial();else if(test=="still-programs")still_native_programs();else if(test=="still-pairing")still_pairing();else if(test=="still-stock")stock_still_session();else if(test=="still-session")still_session();else if(test=="pak-input")reject_pak_changes();else if(test=="group-brew")group_brew();else if(test=="group-routines")group_routines();else if(test=="group-interlocks")group_interlocks();
+    else if(test=="long-maker")long_maker_program();
     else if(test=="maker")maker_program();else if(test=="recipe")owned_recipe();else if(test=="storage")storage_preflight();else if(test=="unheated")no_target();
     else if(test=="stop")stop_guard();else if(test=="input")input_order();else if(test=="offline")offline_and_reservation();
     else if(test=="settings")settings_and_display();else if(test=="status")status_fields();

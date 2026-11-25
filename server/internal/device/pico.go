@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -126,10 +127,15 @@ func (p *pico) request(ctx context.Context, method, path string, value, destinat
 	var err error
 	write := method != http.MethodGet
 	if value != nil {
-		body, err = json.Marshal(value)
-		if err != nil {
+		var encoded bytes.Buffer
+		encoder := json.NewEncoder(&encoded)
+		// HTML escaping can push a legal Program Maker file past the brewer's
+		// request limit. Device requests carry standalone JSON bodies.
+		encoder.SetEscapeHTML(false)
+		if err = encoder.Encode(value); err != nil {
 			return invalid("Device request could not be encoded")
 		}
+		body = bytes.TrimSuffix(encoded.Bytes(), []byte{'\n'})
 		if len(body) > maxRequestBytes {
 			return &Error{StatusCode: 413, Code: "payload_too_large", Message: "Device request exceeds 4095 bytes"}
 		}
@@ -401,8 +407,11 @@ func (p *pico) writeRecipe(ctx context.Context, recipe domain.MachineRecipe, cre
 		if recipe.ZCloud != nil && (capabilities.Model != "z-series" || !capabilities.ZCloudProgramV1 || recipe.StepCount() > capabilities.StepCapacity) {
 			return unsupportedCapability("z_cloud_program_v1")
 		}
-		if recipe.ZProgram != nil && (capabilities.Model != "z-series" || !capabilities.ZProgramMaker || recipe.StepCount() > capabilities.StepCapacity) {
+		if recipe.ZProgram != nil && (capabilities.Model != "z-series" || !capabilities.ZProgramMaker) {
 			return unsupportedCapability("z_program_maker")
+		}
+		if recipe.ZProgram != nil && recipe.StepCount() > capabilities.RecipeStepLimit(recipe) {
+			return &Error{StatusCode: 409, Code: "recipe_step_capacity", Message: fmt.Sprintf("This Z firmware supports up to %d Program Maker steps", capabilities.RecipeStepLimit(recipe))}
 		}
 		if zeroMinute && !capabilities.ZeroMinuteSteps {
 			return &Error{StatusCode: 409, Code: "unsupported_zero_minute_steps", Message: "This firmware does not advertise zero-minute heating steps. Update the brewer firmware before sending the original program."}

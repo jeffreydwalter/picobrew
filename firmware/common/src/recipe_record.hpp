@@ -11,7 +11,8 @@ constexpr std::size_t LegacyRecipeBytes = 54 + RecipeStepCapacity * 28;
 // starting keg charge (milliliters, little endian) and native beer setup flag.
 constexpr std::size_t CloudRecipeBytes = LegacyRecipeBytes + 3;
 constexpr std::size_t PakRecipeBytes = LegacyRecipeBytes + 12 + RecipeStepCapacity * 5;
-constexpr std::size_t ZRecipeBytes = 55 + RecipeStepCapacity * 38;
+constexpr std::size_t LegacyZRecipeBytes = 55 + RecipeStepCapacity * 38;
+constexpr std::size_t ZRecipeBytes = 55 + ZProgramStepCapacity * 38;
 static_assert(PakRecipeBytes < ZRecipeBytes && CloudRecipeBytes < ZRecipeBytes,
               "largest record buffer must also fit original cloud and PicoPak programs");
 
@@ -64,15 +65,16 @@ inline std::size_t write_recipe_record(std::uint8_t* bytes, const Recipe& recipe
         bytes[LegacyRecipeBytes + 2] = recipe.is_beer;
         return CloudRecipeBytes;
     }
-    return recipe.z_program ? ZRecipeBytes : LegacyRecipeBytes;
+    if (!recipe.z_program) return LegacyRecipeBytes;
+    return recipe.step_count > RecipeStepCapacity ? ZRecipeBytes : LegacyZRecipeBytes;
 }
 inline bool read_recipe_record(Recipe& recipe, const std::uint8_t* bytes, std::size_t size) {
-    if (size != ZRecipeBytes && size != LegacyRecipeBytes && size != CloudRecipeBytes && size != PakRecipeBytes) return false;
-    recipe.z_program = size == ZRecipeBytes;
+    recipe.z_program = size == ZRecipeBytes || size == LegacyZRecipeBytes;
+    if (!recipe.z_program && size != LegacyRecipeBytes && size != CloudRecipeBytes && size != PakRecipeBytes) return false;
     std::memcpy(recipe.id, bytes, 21);
     std::memcpy(recipe.name, bytes + 21, 32);
     recipe.step_count = bytes[53];
-    if (recipe.step_count > RecipeStepCapacity) return false;
+    if (recipe.step_count > (size == ZRecipeBytes ? ZProgramStepCapacity : RecipeStepCapacity)) return false;
     unsigned flags = recipe.z_program ? bytes[54] : 1;
     if (flags & ~15u) return false;
     recipe.is_beer = flags & 1;

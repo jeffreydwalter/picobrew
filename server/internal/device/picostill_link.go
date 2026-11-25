@@ -3,6 +3,7 @@ package device
 import (
 	"context"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"strconv"
 	"strings"
@@ -10,6 +11,8 @@ import (
 
 // PicoStillLink contains only fields safe to return to the browser.
 type PicoStillLink struct {
+	StockSupported bool             `json:"stock_supported,omitempty"`
+	Protocol       string           `json:"protocol,omitempty"`
 	Sample         *PicoStillSample `json:"sample,omitempty"`
 	Paired         bool             `json:"paired"`
 	Verified       bool             `json:"verified"`
@@ -35,6 +38,19 @@ type PicoStillBrewer interface {
 	PairPicoStill(context.Context, Adapter, string) (PicoStillLink, error)
 	UnpairPicoStill(context.Context) (PicoStillLink, error)
 	SetPicoStillLogging(context.Context, bool) (PicoStillLink, error)
+}
+
+type StockPicoStillBrewer interface {
+	PairStockPicoStill(context.Context, string, string) (PicoStillLink, error)
+}
+
+func (p *pico) PairStockPicoStill(ctx context.Context, host, uid string) (PicoStillLink, error) {
+	ip, err := netip.ParseAddr(host)
+	uid = strings.ToLower(uid)
+	if err != nil || !ip.Is4() || !ip.IsGlobalUnicast() && !ip.IsLinkLocalUnicast() || !stillUID.MatchString(uid) {
+		return PicoStillLink{}, invalid("Enter the PicoStill LAN IPv4 address and the 12-digit UID from its Wi-Fi network name")
+	}
+	return p.stillRequest(ctx, http.MethodPut, map[string]any{"protocol": "stock", "host": host, "port": 80, "uid": uid})
 }
 
 var stillHost = regexp.MustCompile(`^[A-Za-z0-9.-]{1,63}$`)
