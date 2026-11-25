@@ -114,7 +114,7 @@ or prove timing on the appliance.
 The checked-in [Pico S](../firmware/standalone/pico-s/firmware-report.json)
 and [Pico Pro](../firmware/standalone/pico-pro/firmware-report.json) reports
 give the exact sizes and hashes of the 1.0.0 images. Both reserve
-32 KiB each for stack and heap. Their shared website totals 28,303 compressed
+32 KiB each for stack and heap. Their shared website totals 28,399 compressed
 bytes in eight serial-flash blocks.
 
 The checked-in `analysis/standalone-validation.json` is an earlier development

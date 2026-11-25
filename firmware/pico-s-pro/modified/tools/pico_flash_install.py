@@ -61,7 +61,7 @@ PROFILE_UID_SHA256 = "7290674610eca1cf26581779a71c7f41a9c2fc367eb7189d0e93918319
 ORIGINAL_SIZE = 162792
 ORIGINAL_SHA256 = "e18c240fa1cf35222674bf3b4fa992a306c6e63b0b99be8793604f199085d702"
 CANDIDATE_SIZE = 169808
-CANDIDATE_SHA256 = "f9746997a6726f0c21785488a6911edd503b98d9df63b1ad10d82bf9f0ab7c75"
+CANDIDATE_SHA256 = "4c60e2e90bf257872759a30be3cf1af4f74882e54e4f8792eff1b259bbb83a1f"
 # Earlier 1.0.0 builds, taken from the v1.0.0 tag. The printed version
 # matches the new menu build, so the USB installer uses per-model hashes.
 STABLE_1_0_0_APPLICATIONS = {
@@ -165,7 +165,7 @@ APPLICATION_PAYLOAD_LIMIT = (APPLICATION_ALLOCATION_BLOCKS - 2) * 4096
 KEY_NAME = "/local/api.key"
 KEY_SIZE = 65
 # Shared by the stable Pico S and Pico Pro packages.
-WEB_MANIFEST_SHA256 = "60c83d575e902b620a266088fbb6e7fb8a2aa6f5d40babd85e103c638915f955"
+WEB_MANIFEST_SHA256 = "0542e44f32d604aa46062ae739490e003dde9ea359f174eb01e539cfbc0a5f16"
 WEB_DIRECTORY = Path(__file__).resolve().parents[1] / "firmware/web"
 C_FIRMWARE = Path(__file__).resolve().parents[3] / "pico-c/modified/firmware"
 C_RECOVERY = {
@@ -182,10 +182,10 @@ C_STOCK = {
     "pico-c-ssd1309": (155864, "6f2dedfcd7ab10b5a421b05dc4ee792cd44753d7e302fd8ee645ca4f6556c226"),
 }
 C_STANDALONE = {
-    "pico-c-ssd1325": (167848, "050bba58f516070695d2d9c74ddced71ea7d30a1368558d61e8dda98b98c22fe"),
-    "pico-c-ssd1309": (167768, "59ee93b0a53ba01faaa50030d7a8028d4ad1c58bb0397f9c6dfd23734e75a83e"),
+    "pico-c-ssd1325": (167848, "9dbd988506d43f2c1d227638de003bc498a0aa9c11c90de58fa4c8606c45b1bd"),
+    "pico-c-ssd1309": (167768, "d424f2bc9f6a7836a2b84d74dbd1d5bcddd83daac18f7b46f6249e0110c2a669"),
 }
-C_WEB_MANIFEST_SHA256 = "f36f04abd8d4f9596724d7500ff636d37a903e39412f2f06d41addbf287b6b2f"
+C_WEB_MANIFEST_SHA256 = "2583ac79cf47c31e258b5d2aa8b8087440c4d7597ff4bd905395838acee34ae9"
 UID_NAME = "/sys/uid.txt"
 LOADER_NAME = "/sys/mcuimg.bin"
 # These counts, flags and mirroring define the supported TI allocation shape.
@@ -393,7 +393,7 @@ def candidate_identity(model):
     if model == "pico-pro":
         return CANDIDATE_SIZE, CANDIDATE_SHA256
     if model == "pico-s":
-        return 169792, "6bba8df4cc845f7e7c853391a2858b4e1aa2b63d058466e6514faae7f8efaa95"
+        return 169792, "4dd458facba2698d988862e4d74d87cff70b8d62cf3ca95860559e18122f42dd"
     if model in C_STANDALONE:
         return C_STANDALONE[model]
     raise InstallError("Unknown target model")

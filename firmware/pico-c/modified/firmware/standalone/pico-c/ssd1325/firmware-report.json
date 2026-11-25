@@ -19,7 +19,7 @@
   "api_key_embedded": false,
   "firmware_update": false,
   "hub_ota_protocol": 1,
-  "browser_manifest_sha256": "f36f04abd8d4f9596724d7500ff636d37a903e39412f2f06d41addbf287b6b2f",
+  "browser_manifest_sha256": "2583ac79cf47c31e258b5d2aa8b8087440c4d7597ff4bd905395838acee34ae9",
   "browser_storage": {
     "schema_version": 1,
     "block_size": 4096,
@@ -71,12 +71,12 @@
         "payload": "history.js.gz",
         "content_type": "application/javascript; charset=utf-8",
         "content_encoding": "gzip",
-        "length": 7432,
+        "length": 7528,
         "max_size": 7680,
         "allocation_blocks": 2,
-        "sha256": "7b89c13ca4c8c1827aacc741d3e2aaaf2d753f8fb5821f459dc8fefc804f0852",
-        "source_length": 22405,
-        "source_sha256": "4e9b4b636443f3f5c4d44f389c03beece59871410f5b7ea0061709551ce3bf66"
+        "sha256": "086dea352149908d4dcf47f579b58f6b55633ab99a144dc0cdc257d4a7d71cbf",
+        "source_length": 22644,
+        "source_sha256": "0fe7b42b3441e8bbf43a10e459aa809649cd5d1be4c507d9eef4742725b2fd23"
       },
       {
         "source": "style.css",
@@ -100,7 +100,7 @@
     "web/favicon.ico": "63cb852c23c1b1bda83e133dcb7e070aabb3e594531196ddeab8e23d32baa4ea",
     "web/history.js": "fcf40ac457b3456ada69317a2dc5a378214a147e86ec4be05bc94ea50c9ac337",
     "web/index.html": "7d7b488c0e236d5d47da94bcbc700aaddfba0f5538a1db33d8c6d07a6072def9",
-    "web/recipes.js": "8ce84401d7897802824d2538e57c8422525fc64b3e6f7e722df27360683d351f",
+    "web/recipes.js": "e2df8df9bcd7e62ca22d554313d8389215f5e418cb14992d883dbbfd7c19c98a",
     "web/style.css": "324c01607a05a3ca15eb8ac77877d0a973be9c56da67cf1380ed64921776590d"
   },
   "production_entry": "platform/firmware_main.cpp",
@@ -145,9 +145,9 @@
       "_ebss": "0x200376f0"
     }
   },
-  "elf_sha256": "bd3abe977f74a34e2c5252551fbff147c4c9e5d851fe89724e3e6718749b7642",
-  "binary_sha256": "050bba58f516070695d2d9c74ddced71ea7d30a1368558d61e8dda98b98c22fe",
-  "update_body_sha256": "4977bd531bc895c5e8ef45cc7169e45a0ee796aaa3bdf37bb0a4204df1ede224",
+  "elf_sha256": "451ea643e611e3aa7ab3179baa69a0ea7db81a85b0c79f91c4b2b5b110aa6013",
+  "binary_sha256": "9dbd988506d43f2c1d227638de003bc498a0aa9c11c90de58fa4c8606c45b1bd",
+  "update_body_sha256": "e59353367d75f1b6c8dc381012d0bf22d80dd3e3a5c2b63a91d8c2d50b1982bb",
   "update_body_bytes": 335738,
   "sdk_link_passed": true,
   "sdk_source_files": 53,
@@ -164,7 +164,7 @@
     "src/local_starter_recipes.inc": "5de924b9763ceb0dc9a260a9582b703596ed7ffe9652616462926377070bd36e",
     "src/local_store.c": "7133382a54b0dab8028f34a20e10421e8fe41e9111d2cac46bd43e3ff043e873",
     "src/local_telemetry.c": "663a17ff37896c2e5f019bb3ee08727a4a61ff9c1d7f44a14108644d69fa5b41",
-    "src/local_web_assets.c": "87cb4537461a0ca9ef5b24ddbf968ae91669b083ed097875ababc020eb333c82",
+    "src/local_web_assets.c": "f67e93d4bf4777e2b7e46269a671fabcfb81a2be134d64212985ff3096f9ae00",
     "src/network/api.c": "d5afc69c41b586852237a841efafc7a13cff2f6d07a8ac800366a5946e4ab040",
     "src/network/network.c": "8c48d0441fec9fbe44267130348a68a06704ac0adcf9b1eb154668846190552a",
     "src/network/network_internal.h": "e20f107a5c7b8f039d42baf7f52ba6e9ad816501ee30f9eb459bfd713f9d7993",

@@ -444,7 +444,7 @@ class BrowserWorkflow(unittest.TestCase):
         self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth"))
         self.page.screenshot(path=str(self.output / "overview-mobile.png"), full_page=True)
         self.page.locator('[data-tab="recipes"]').click()
-        document = dict(id="imported", **backend.recipe("Imported recipe"))
+        document = dict(id="imported", revision=42, **backend.recipe("Imported recipe"))
         self.page.locator("#importFile").set_input_files({"name": "recipe.json", "mimeType": "application/json",
                                                         "buffer": json.dumps(document).encode()})
         expect(self.page.locator("#recipeName")).to_have_value("Imported recipe")

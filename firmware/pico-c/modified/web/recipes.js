@@ -14,6 +14,9 @@ function readRecipeFile(text) {
       current.add(key);
     }
   }
+  // A revision belongs to the source brewer. An imported copy gets a new one.
+  if(recipe && Object.hasOwn(recipe,'id') && Number.isInteger(recipe.revision) &&
+     recipe.revision>0 && recipe.revision<=0xffffffff)delete recipe.revision;
   return recipe;
 }
 
