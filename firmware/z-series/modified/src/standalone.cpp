@@ -637,6 +637,7 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
     return ok;
 }
 bool Adapter::handle_ui(const HeadUiAction& action){
+    if(action.effect==HeadUiEffect::About)return show_machine_details();
     if(action.effect==HeadUiEffect::SetStillLogging){
         if(still_session_||core_.core.state.id!=CoreStateId::Idle||!set_still_logging(action.first==1))return false;
         return head_.synchronize()==HeadApplicationResult::Ok;
@@ -702,6 +703,41 @@ bool Adapter::show_about(){
        !screen.menu_data.append(back,text("Back","Atras","Retour")))return false;
     page_=Page::Original;
     return screen.menu_screen(text("About","Acerca de","A propos"))==HeadScreenResult::Ok;
+}
+bool Adapter::show_machine_details(){
+    auto& screen=head_.screens;
+    screen.clear_data();
+    char line[40];
+    auto field=[&](const char* label,const char* value){
+        ::snprintf(line,sizeof line,"%s: %s",label,value);
+        return screen.scroll_data.append(line);
+    };
+    const char* unknown=text("Unknown","Desconocido","Inconnu");
+    if(!screen.scroll_data.append("Pico Z / ESP32")||
+       !field("Firmware",picobrew::esp32_ota::Version)||
+       !field("UID",core_.identifier[0]?core_.identifier.data():unknown))return false;
+    const auto boiler=core_.eeprom.data.boiler;
+    if(!field(text("Boiler","Caldera","Chaudiere"),
+              boiler==BoilerType::Big?text("Large","Grande","Grande"):
+              boiler==BoilerType::Small?text("Small","Pequena","Petite"):unknown))return false;
+    const auto& msp=head_.observed.msp;
+    char value[20];
+    ::snprintf(value,sizeof value,"%u.%u",unsigned(msp.version_major),unsigned(msp.version_minor));
+    if(!field("MSP",msp.id==Z_MSP_APP_RUNNING?value:unknown))return false;
+    const auto bytes=head_.observed.flash_bytes;
+    ::snprintf(value,sizeof value,"%lu MiB",static_cast<unsigned long>(bytes/1048576u));
+    if(!field("Flash",bytes?value:unknown))return false;
+    if(!screen.scroll_data.append(engine_&&engine_->forwarding_enabled()?
+        text("Hub reporting on","Envio al Hub activo","Envoi au Hub actif"):
+        text("Hub reporting off","Envio al Hub inactivo","Envoi au Hub inactif")))return false;
+    HeadScreenRequest request;
+    request.title=text("Machine details","Datos de maquina","Infos machine");
+    request.screen.layout=6;
+    request.custom_scroll=true;
+    request.scroll_alignment=DisplayTextAlignment::Left;
+    request.scroll_command=static_cast<UiCommand>(LocalAbout);
+    request.scroll_button=text("Back","Atras","Retour");
+    return screen.show(request)==HeadScreenResult::Ok;
 }
 bool Adapter::show_pairing(){
     if(!ports_.pair_prompt||!ports_.pair_decide)return show_about();
