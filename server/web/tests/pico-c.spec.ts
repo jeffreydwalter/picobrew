@@ -157,6 +157,7 @@ for (const viewport of [
         const path = new URL(request.url()).pathname
         let result: unknown
         if (path === '/api/v1/devices') result = [machine]
+        else if (path.endsWith('/brew-invite')) result = { invite: null }
         else if (path.endsWith('/display')) {
           if (commands.length) {
             waitingForFrame = true
