@@ -609,7 +609,9 @@ function recipeFromForm() {
   const minimum=state.zCloud || state.zKit ? 32 : 60;
   if(steps.some(step=>step.target_f!==0 && step.target_f<minimum)){notify('Use 0 or a target between '+minimum+' and 212 °F.',true);return null;}
   const result={id:$('recipeId').value,name:$('recipeName').value,steps};
-  if(state.zCloud && steps.some((s,i)=>s.location!==6 && s.target_f>0 && s.target_f<60 && steps[i-1]?.location!==6)){
+  if(steps.some((s,i)=>s.target_f>0 && s.target_f<60 &&
+    ((state.zCloud && s.location!==6 && steps[i-1]?.location!==6) ||
+     (state.zKit && state.zKit.step_options[i].action===0 && state.zKit.step_options[i-1]?.action!==1)))){
     notify('Place an operator pause before a chilling step below 60 °F.',true);return null;
   }
   if(state.zKit){
@@ -808,8 +810,9 @@ function readRecipeFile(text) {
   const validId=id=>typeof id==='string' && id.length>=1 && id.length<=20 && !/[^a-zA-Z0-9_-]/.test(id);
   if(recipe && Object.hasOwn(recipe,'PicoRecipeID')){
     if(!hasOnlyFields(recipe,['Name','Abv','Ibu','PicoRecipeID','PicoBeerID','Steps']) || !Array.isArray(recipe.Steps) ||
-      recipe.Steps.some(s=>!hasOnlyFields(s,['Name','Location','Temp','Time','Drain','Action','MinTime','MaxTime'])))
-      throw new Error('Unsupported fields in the original PicoPak.');
+      recipe.Steps.some(s=>!hasOnlyFields(s,['Name','Location','Temp','Time','Drain','Action','MinTime','MaxTime']) ||
+        ['Name','Location','Temp','Time','Drain','Action'].some(key=>s[key]==null)))
+      throw new Error('Missing or unsupported fields in the original PicoPak.');
     const program={id:'pico-pak-'+recipe.PicoRecipeID,name:recipe.Name,
       steps:recipe.Steps.map(s=>({name:s.Name,location:s.Location,target_f:s.Temp,minutes:s.Time,drain_minutes:s.Drain})),
       z_pak:{recipe_id:recipe.PicoRecipeID,beer_id:recipe.PicoBeerID,abv:recipe.Abv,ibu:recipe.Ibu,
@@ -840,14 +843,16 @@ function readRecipeFile(text) {
         ['min_time','max_time'].some(k=>k in o && !integer(o[k],0,599)))) throw new Error('This brewer or file does not support the supplied PicoPak schedule.');
     for(const key of ['abv','ibu']){
       if(!('selected_'+key in p))continue;
-      if(!integer(p['selected_'+key],0,10)||!integer(p[key],1,9)||!p.step_options.some((o,i)=>o.action===0 &&
-        o.min_time!=null && o.max_time!=null && (key==='abv'?recipe.steps[i]?.location===2:recipe.steps[i]?.location>=3)))
+      const selected=p['selected_'+key];
+      if(!integer(selected,0,10) || (selected!==p[key] && (!integer(p[key],1,9) || !p.step_options.some((o,i)=>
+        o.action===0 && o.min_time!=null && o.max_time!=null && (key==='abv'?recipe.steps[i]?.location===2:recipe.steps[i]?.location>=3)))))
         throw new Error('This PicoPak has no matching authored adjustment for the selected strength.');
     }
   }
   if(cloud && (state.info.z_cloud_program_v1!==true || !hasOnlyFields(recipe.z_cloud,['start_water_ml','is_beer']) ||
     !integer(recipe.z_cloud.start_water_ml,1,16163) || typeof recipe.z_cloud.is_beer!=='boolean'))
     throw new Error('This Z schedule requires a compatible brewer and a valid starting-water quantity.');
+  if(kit && !label(recipe.name,31))throw new Error('Give this kit a device name of up to 31 printable ASCII characters in the Hub, then transfer it.');
   if(!hasOnlyFields(recipe,['id','name','steps','z_cloud','z_pak']) || !validId(recipe.id) || !label(recipe.name,31) ||
      !Array.isArray(recipe.steps) || !integer(recipe.steps.length,1,15))throw new Error('Choose a Pico Local recipe with a valid ID, name, and 1–15 steps.');
   for(const [i,step] of recipe.steps.entries()) {
@@ -855,6 +860,7 @@ function readRecipeFile(text) {
        !integer(step.location,cloud?0:1,6) || (step.target_f!==0 && !integer(step.target_f,cloud || kit?32:60,212)) ||
        !integer(step.minutes,state.info.zero_minute_steps===true ? 0 : 1,599) ||
        (cloud && step.location!==6 && step.target_f>0 && step.target_f<60 && recipe.steps[i-1]?.location!==6) ||
+       (kit && recipe.z_pak.step_options[i].action===0 && step.target_f>0 && step.target_f<60 && recipe.z_pak.step_options[i-1]?.action!==1) ||
        ('drain_minutes' in step && !integer(step.drain_minutes,0,120)))throw new Error('Step '+(i+1)+' contains unsupported fields or values.');
   }
   return recipe;

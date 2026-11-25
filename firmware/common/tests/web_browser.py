@@ -41,7 +41,7 @@ def main():
                         if name in descriptors: descriptors[name]={'allowed':fields,'required':[] if name=='encoder' else fields[:2] if name=='set-fan' else fields}
                     info = {'api_version':1,'mode':'standalone','model':model,'model_name':{'z-series':'Pico Z','picoferm':'PicoFerm','picostill':'PicoStill'}[model],'model_family':model,'firmware_version':'1.2.0-fixture','commands':allowed,'command_fields':descriptors,'settings_fields':['temperature_unit','language','detailed_status'] if brewing else ['temperature_unit'],'recipe_capacity':16 if brewing else 0,'step_capacity':15 if brewing else 0,'front_panel':brewing,'telemetry_forwarding':True,'capabilities':{'recipes':brewing,'brewing':brewing,'heating':brewing,'front_panel':brewing,'temperature':True,'pressure':not brewing,'battery':model=='picoferm','fermentation':model=='picoferm','pump':model!='picoferm','fans':model=='picostill'}}
                     info['z_program_maker']=brewing;info['z_state_v1']=brewing
-                    info['z_cloud_program_v1']=brewing;info['group_brewing_v1']=brewing
+                    info['z_picopak_v1']=brewing;info['z_cloud_program_v1']=brewing;info['group_brewing_v1']=brewing
                     info['zero_minute_steps']=brewing
                     info['history_sample_interval_ms']=720000 if model=='picoferm' else 15000
                     saved_recipes={}
@@ -267,6 +267,23 @@ def main():
                         assert json.loads(captured.value.path().read_text())==cloud
                         page.locator('#cloudWater').fill('17')
                         assert not page.locator('#cloudWater').evaluate('(e)=>e.checkValidity()')
+                        kit_step={'Name':'Mash','Action':0,'Location':2,'Temp':152,'Time':20,'Drain':2,'MinTime':25,'MaxTime':15}
+                        kit={'PicoRecipeID':1,'PicoBeerID':47,'Name':'Original kit','Abv':5,'Ibu':6,'Steps':[kit_step]}
+                        for step in [{k:v for k,v in kit_step.items() if k!='Drain'},dict(kit_step,Temp=55)]:
+                            import_wire(json.dumps(dict(kit,Steps=[step])))
+                            expect(page.locator('#notice')).to_contain_text('unsupported')
+                        page.once('dialog',lambda d:d.accept())
+                        import_wire(json.dumps(kit))
+                        expect(page.locator('#kitStrength')).to_be_visible()
+                        expect(page.locator('#kitBitterness')).to_be_hidden()
+                        expect(page.locator('#steps select').first).to_be_disabled()
+                        page.locator('#kitStrength').select_option('8')
+                        with page.expect_download() as adapter_download:
+                            page.locator('#exportRecipe').click()
+                        adapter=json.loads(adapter_download.value.path().read_text())
+                        assert adapter['z_pak']=={'recipe_id':1,'beer_id':47,'abv':5,'ibu':6,'selected_abv':8,
+                                                 'step_options':[{'action':0,'min_time':25,'max_time':15}]}
+                        assert adapter['steps']==[dict(base_step,minutes=20,drain_minutes=2)]
                         page.locator('[data-tab="overview"]').click()
                         status['ready']=False
                         expect(page.locator('#runProgram')).to_be_disabled()
