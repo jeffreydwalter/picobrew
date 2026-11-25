@@ -82,13 +82,14 @@ module.exports = function testOffline({cpu, words, run, execute, word, image}) {
   const coldCalls = {
     0xa386: () => {}, 0x44fa: () => {}, 0x1604e: () => {}, 0x8734: () => {},
     0x81f0: () => {
-      screens.push(string(0x2010));
-      cpu.data[24] = 0;  // operator selects Brew a Recipe, then American Brown Ale
+      screens.push(Array.from({length: cpu.data[22]}, (_, row) => string(0x2010 + row * 21)));
+      cpu.data[24] = 0;  // Select Brew Recipe, then the first available recipe.
     },
   };
   execute(0x10660, [0xf6fe], coldCalls);
   assert.equal(screens.length, 2);
-  assert.equal(screens[0], 'Brew a Recipe'); assert(screens[1].includes(name.slice(0, 18)));
+  assert.deepEqual(screens[0], ['Brew Recipe', 'Clean/Rinse', 'Machine Setup', 'Help', 'About Zymatic', 'Delayed Start']);
+  assert(screens[1][0].includes(name.slice(0, 18)));
   assert.equal(cpu.data[0x089d], 1);
   cpu.SP = originalSP;
 

@@ -1,54 +1,54 @@
 {
   "tag": "v1.0.0",
-  "candidate_tag": "usb-candidate-45486825821-1",
+  "candidate_tag": "usb-candidate-45515140119-1",
   "assets": {
     "darwin-amd64": {
       "platform": "darwin-amd64",
       "name": "picobrew-usb-darwin-amd64",
-      "bytes": 27121888,
-      "sha256": "13e2582ba3b44d8178a696608fae910f98a36d5f79cd1852f26f0731caa3ed14",
-      "inputs_sha256": "401d244b60353e6bc5ae9b2ff899668599280eb0124c8f417dfa590e88c26e3d",
-      "notices_sha256": "8407d0fe122e6ad852e79b825f573727b4af100205eb73c0303fe87de7df1261"
+      "bytes": 27121696,
+      "sha256": "7bd70aa040afee6fa966ba37537b5e3abf3f188456624f70a29b7ea83d6232ce",
+      "inputs_sha256": "b4bc154553c6ceb50a6f4f360c85ccb05537ec23e4222c03311e52582ca1d503",
+      "notices_sha256": "87afdfc65952ab31ffc6f3064738b0ccfece1730f15ce950fe85f7f909a4feac"
     },
     "darwin-arm64": {
       "platform": "darwin-arm64",
       "name": "picobrew-usb-darwin-arm64",
-      "bytes": 26869312,
-      "sha256": "65cb96d98103cfee44d93ade8bf7f751ab96ffeef0712151154ce26fb4e396f0",
-      "inputs_sha256": "401d244b60353e6bc5ae9b2ff899668599280eb0124c8f417dfa590e88c26e3d",
-      "notices_sha256": "606be2f15bf6db0c98411c12aeaca11d43bc7b0e6f6a5b073f4504f674e2aa26"
+      "bytes": 26870464,
+      "sha256": "f2b8385ddf6095b4d83719e5d220ba744838e06804c0e5904084d7038390e239",
+      "inputs_sha256": "b4bc154553c6ceb50a6f4f360c85ccb05537ec23e4222c03311e52582ca1d503",
+      "notices_sha256": "d54e8908dcfea0bb326fb2336838210453d4c62cd14c9c546eb83be5a5db9abe"
     },
     "linux-amd64": {
       "platform": "linux-amd64",
       "name": "picobrew-usb-linux-amd64",
-      "bytes": 42636696,
-      "sha256": "6eb7727e77f17db816146f141b2a128ae3d4e1d90182a5f8beaff2243ece4084",
-      "inputs_sha256": "401d244b60353e6bc5ae9b2ff899668599280eb0124c8f417dfa590e88c26e3d",
-      "notices_sha256": "ebbdbfcec1c0c9c7f0c60a04a5a76cf7ead60d5af560465a1bda8f191f48bda9"
+      "bytes": 42637616,
+      "sha256": "2568505bb0d917b87ffd3c022003dd591447ad49389248b870dc0fd5cc204cc6",
+      "inputs_sha256": "b4bc154553c6ceb50a6f4f360c85ccb05537ec23e4222c03311e52582ca1d503",
+      "notices_sha256": "ae0af3fcb9cab0d088f17c01d744617469705830d4eff246bedf40611a673aac"
     },
     "linux-arm": {
       "platform": "linux-arm",
       "name": "picobrew-usb-linux-arm",
-      "bytes": 23731040,
-      "sha256": "3c238524dfabc9c04ffe324680f9732cfabf06c411607fb6bbb41243624b58df",
-      "inputs_sha256": "401d244b60353e6bc5ae9b2ff899668599280eb0124c8f417dfa590e88c26e3d",
-      "notices_sha256": "dded69529b36596eda8cc75e7f587774e0ef14e5d889dadb660497053db8cd54"
+      "bytes": 23731560,
+      "sha256": "59a8758ff2de807da9c57a160826fcec04a7f0c735611a26a669dc5bdc73a93d",
+      "inputs_sha256": "b4bc154553c6ceb50a6f4f360c85ccb05537ec23e4222c03311e52582ca1d503",
+      "notices_sha256": "9aa7ccea2ac4f7ff614ff27e9d8f3d0d77b54bde7aa6661cfd49d7697191c98d"
     },
     "linux-arm64": {
       "platform": "linux-arm64",
       "name": "picobrew-usb-linux-arm64",
-      "bytes": 41737688,
-      "sha256": "4d35a570082aa4ca933da875d79723d7d9d352f510c603194c3294e7ced7bbe2",
-      "inputs_sha256": "401d244b60353e6bc5ae9b2ff899668599280eb0124c8f417dfa590e88c26e3d",
-      "notices_sha256": "9e1c4e7ee41bbc796c267d322bc01358a300ec43f3b5c719cb3a31835ee13b5c"
+      "bytes": 41736056,
+      "sha256": "27f4c6774ec7512af98ab813d0f96f0da4de2e08be9d9723c865f2528ac529f3",
+      "inputs_sha256": "b4bc154553c6ceb50a6f4f360c85ccb05537ec23e4222c03311e52582ca1d503",
+      "notices_sha256": "384c7478fc054f1a3dd4da1613c10ebaa758920eeb81ecbca9ed153312456824"
     },
     "windows-amd64": {
       "platform": "windows-amd64",
       "name": "picobrew-usb-windows-amd64.exe",
-      "bytes": 28684194,
-      "sha256": "8e44c3cf45ca068b71bfea1e250ff456c55c84d8111729d3c268765c51432985",
-      "inputs_sha256": "401d244b60353e6bc5ae9b2ff899668599280eb0124c8f417dfa590e88c26e3d",
-      "notices_sha256": "508ffffc10164f86cdb048f452d9931aee261eed50001ed407b18004dd9ceadf"
+      "bytes": 28685017,
+      "sha256": "074989e3f8f0ba9ae76a05f334650d6e240ee7d75db2393006a0a3d7bf79a42d",
+      "inputs_sha256": "b4bc154553c6ceb50a6f4f360c85ccb05537ec23e4222c03311e52582ca1d503",
+      "notices_sha256": "1f8ea06992d92cf87cdb6151483b1dd4e54d7dac9fdfc42fb32a9ce0e703c259"
     }
   },
   "prefer_candidate": true

@@ -45,6 +45,16 @@ OFFLINE = {
 }
 DERIVED = {"provision_legacy_sum": 2, "provision_crc": 4}
 
+# First row in the six-entry 1.1.14 Home menu. Keep subsequent flash addresses fixed.
+RECIPE_MENU_ADDRESS = 0x00ce
+OEM_RECIPE_LABEL = b"Brew a Recipe\0"
+RECIPE_MENU_PATCH = ("brew-recipe-label", RECIPE_MENU_ADDRESS, OEM_RECIPE_LABEL,
+                     b"Brew Recipe\0".ljust(len(OEM_RECIPE_LABEL), b"\0"))
+
+
+def has_oem_recipe_label(image):
+    return image.startswith(OEM_RECIPE_LABEL, RECIPE_MENU_ADDRESS)
+
 
 def legacy_sum(image):
     return 2 * sum(image[i] | image[i+1] << 8 for i in range(0, 0x10000, 4)) & 0xffff
@@ -118,7 +128,7 @@ def call(address):
     return b"\x0e\x94" + struct.pack("<H", address // 2)
 
 
-def patch_list(symbols, port=80, version=VERSION):
+def patch_list(symbols, port=80, version=VERSION, *, legacy_menu=False):
     end = symbols["__extension_bss_end"] - 0x800000
     host = symbols["zymatic_hub_host"] - 0x800000
     authority = symbols["zymatic_hub_authority"] - 0x800000
@@ -149,6 +159,8 @@ def patch_list(symbols, port=80, version=VERSION):
         ("zero-bss-low", 0x233c, bytes.fromhex("aa38"), immediate(0x3000, 26, end & 255)),
         ("malloc-start", 0x1bb10, struct.pack("<H", BSS), struct.pack("<H", end)),
     ]
+    if version == VERSION and not legacy_menu:
+        patches.append(RECIPE_MENU_PATCH)
     if seek_layout(version):
         patches.append(("home-care", 0x105da, bytes.fromhex("0e94f840"), call(symbols["zymatic_home_menu"])))
     for pc in SERIAL_READS:
@@ -201,7 +213,7 @@ def provisioning(key, uid, hub_host):
             "provision_host": hub_host.encode("ascii").ljust(64, b"\0")}
 
 
-def build_application(original, key, uid, hub_host="picobrew.com", offline_program=None, *, version=VERSION):
+def build_application(original, key, uid, hub_host="picobrew.com", offline_program=None, *, version=VERSION, legacy_menu=False):
     if not stock.is_original_app(original):
         raise ValueError("Use the verified, decoded application from the Zymatic 1.1.14 archive")
     tables.verify_library(original)
@@ -210,7 +222,7 @@ def build_application(original, key, uid, hub_host="picobrew.com", offline_progr
     code, record = template(version)
     symbols = record["symbols"]
     _, port = hub_origin(hub_host)
-    patches = patch_list(symbols, port, version)
+    patches = patch_list(symbols, port, version, legacy_menu=legacy_menu)
     for name, pc, before, after in patches:
         if image[pc:pc+len(before)] != before:
             raise ValueError(f"Original 1.1.14 bytes differ at {name}")
@@ -279,14 +291,16 @@ def recognize_private_application(flash, *, version=VERSION):
     recovered = bytearray(application[:tables.CRT] + initializer)
     recovered[tables.POOL:tables.POOL_END] = raw_pool
     recovered[tables.CRC_TABLE:tables.CRC_TABLE+256] = tables.sensor_crc_table()
-    for name, pc, before, after in patch_list(symbols, port, version):
+    legacy_menu = has_oem_recipe_label(application)
+    for name, pc, before, after in patch_list(symbols, port, version, legacy_menu=legacy_menu):
         if recovered[pc:pc+len(after)] != after:
             return None
         recovered[pc:pc+len(before)] = before
     if not stock.is_original_app(recovered):
         return None
     try:
-        expected, metadata = build_application(bytes(recovered), values["provision_key"], uid, host, recipe, version=version)
+        expected, metadata = build_application(bytes(recovered), values["provision_key"], uid, host, recipe,
+                                               version=version, legacy_menu=legacy_menu)
     except ValueError:
         return None
     if expected != application:
