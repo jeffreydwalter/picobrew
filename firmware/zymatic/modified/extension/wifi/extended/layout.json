@@ -1,0 +1,15 @@
+{
+  "application_bytes": 130002,
+  "compiler": "Arduino AVR GCC 7.3.0-atmel3.6.1-arduino7",
+  "extension_sha256": "7dbe3920521ba7106648f5fd85613c6bba247e49e8a128fb8819de7caff3609f",
+  "sram_reserved_bytes": 765,
+  "symbols": {
+    "provision_crc": 129998,
+    "provision_host": 129869,
+    "provision_key": 129933,
+    "provision_legacy_sum": 129351,
+    "provision_recipe": 129353,
+    "provision_uid": 129965
+  },
+  "template_sha256": "55b69f9fc380519f4e82ff8b9228eaae329da5d7ba120a9da7a1b08dcb6d93e4"
+}

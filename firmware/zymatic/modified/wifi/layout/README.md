@@ -1,6 +1,6 @@
 # Zymatic Wi-Fi memory checks
 
-The bench builds a compact and an extended Zymatic application from the verified OEM 1.1.14 image. It links the experimental Wi-Fi listener, checks the flash and SRAM limits and runs the existing firmware against a simulated AVR and Ethernet controller. The release installer uses the existing application profiles.
+The bench builds a compact and an extended Zymatic application from the verified OEM 1.1.14 image. It links the Wi-Fi listener, checks flash and SRAM limits, and runs the composed firmware on a simulated AVR. CI also compares each layout byte for byte with the credential-free installer delta in `extension/wifi/`. The Hub’s USB worker uses those same deltas to provision each brewer from verified OEM 1.1.14 without installing a compiler.
 
 From the Zymatic `modified` directory, run the same check as CI. It uses the project's pinned Arduino AVR GCC 7.3.0-atmel3.6.1-arduino7 toolchain, simavr 1.8, a host C compiler, Python 3.10 or newer, Git history containing the pinned compact revision and the locked Node dependencies in `../reverse-engineered/tests`. The original firmware input may be the vendor ZIP or its HEX. Each build uses a temporary directory and synthetic credentials.
 
@@ -16,9 +16,9 @@ make wifi-bench ARDUINO_AVR_BIN="$ARDUINO_AVR_BIN" ZYMATIC_TEST_HEX="$ZYMATIC_TE
 | Compact | 36 bytes before `0x1e000` | 689 / 768 bytes | Ethernet API, original controls, offline recipe selection, session handling, image integrity and commissioning |
 | Extended | 46 bytes before `0x1fc00` | 765 / 768 bytes | Compact features, About pairing, remote dial, live OLED, session history and the device website |
 
-Both candidates hook the CC3000 listener into the normal Home menu and a read-only recipe pause. The extended candidate also serves the physical About pairing wait. The scheduler hands the radio back to the original client before entering a stock network operation. The firmware shares one HTTP request workspace between the radio and Ethernet, and defers a competing display refresh while the radio owns the SPI bus. [Tested firmware scopes and board limits](../integration/README.md)
+Both profiles hook the CC3000 listener into the normal Home menu and a read-only recipe pause. The extended profile also serves the physical About pairing wait. The scheduler hands the radio back to the original client before entering a stock network operation. The firmware shares one HTTP request workspace between the radio and Ethernet, and defers a competing display refresh while the radio owns the SPI bus. [Tested firmware scopes and board limits](../integration/README.md)
 
-The compact candidate uses lossless OEM table packing and reuses verified AVR library routines present in the original image. It retains its 8 KiB boot boundary. The extended build reads the UID and key directly from flash, freeing 65 bytes of SRAM. Firmware selection still depends on the installed boot layout.
+The compact profile uses lossless OEM table packing and reuses verified AVR library routines present in the original image. It retains its 8 KiB boot boundary. The extended build reads the UID and key directly from flash, freeing 65 bytes of SRAM. Firmware selection still depends on the installed boot layout.
 
 ## Flash layout evidence
 

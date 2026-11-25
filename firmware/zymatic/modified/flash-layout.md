@@ -1,6 +1,8 @@
 # Zymatic 1.0.0 extended flash layout
 
-This build composes a 130,036-byte ATmega1284P application from the recognized PicoBrew 1.1.14 image. Its final USB page ends at byte address `0x1fc00`. A unit must have a verified boot section starting there. A unit reserving 2, 4 or 8 KiB, or one whose boot section is unknown, uses the compact 122,628-byte application. [Installation and boot evidence](recovery.md)
+The Wi-Fi release composes a 130,002-byte ATmega1284P application from the recognized PicoBrew 1.1.14 image. Its final USB page ends at byte address `0x1fc00`. A unit must have a verified boot section starting there. A unit reserving 2, 4 or 8 KiB, or one whose boot section is unknown, uses the compact 122,844-byte application. [Installation and boot evidence](recovery.md)
+
+The tables below describe the earlier Ethernet layout, which remains recognizable for upgrades and stock restoration. The Wi-Fi layouts reuse its lossless OEM data packing and reclaim additional space across the original program. The installer verifies the OEM hash, applies a pinned, credential-free layout delta, provisions the private device fields, and derives both application checksums. The recognizer removes provisioning and checks the neutral layout hash before requiring an exact rebuild. [Wi-Fi memory map and reconstruction](wifi/layout/README.md)
 
 | Byte range, end exclusive | Original use | Extended build contents |
 | --- | --- | --- |

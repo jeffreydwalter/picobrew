@@ -1,12 +1,12 @@
 # Zymatic firmware and USB setup
 
-Zymatic **1.0.0** offers a local website and authenticated monitoring over Ethernet. Recipe and session sync work over Ethernet or Wi-Fi. One recipe is available offline after commissioning. The original controller runs the brew and enforces its interlocks. USB installation, restoration and runtime behavior have been exercised in simulation. Physical qualification is pending. [Application and verification](application.md) · [Offline recipe selection](offline-recipe.md)
+Zymatic **1.0.0** serves its local website and authenticated API over Ethernet, or over Wi-Fi from the Home menu and read-only recipe pauses. Recipe and session sync work over Ethernet or Wi-Fi. One recipe is available offline after commissioning. The original controller runs the brew and enforces its interlocks. USB installation, restoration and runtime behavior have been exercised in simulation. Physical qualification is pending. [Application and verification](application.md) · [Offline recipe selection](offline-recipe.md)
 
 ## Set up from the Hub
 
 1. Connect the idle, powered Zymatic's rear USB port to the computer running the Hub. Close PicoFlash and any serial monitors. The downloadable Hub includes the programmer for its platform.
 2. Open **Brewery → Add machine → USB setup and recovery**. Choose the Zymatic connection and **Install standalone firmware**. The Hub compares two flash reads, saves the verified backup and shows the firmware it can install. Follow the prompts and keep power and USB connected through readback.
-3. After installation, check **About Zymatic** for **1.0.0**. Connect the brewer to Ethernet, choose **Add machine** in the completed USB job and enter the brewer's network address. The Hub uses the device key it saved during installation. Keep a private backup of the Hub data directory.
+3. After installation, check **About Zymatic** for **1.0.0**. Connect to Ethernet or leave the Wi-Fi-connected brewer on its Home menu. Choose **Add machine** in the completed USB job and enter the brewer's network address. The Hub uses the device key it saved during installation. Keep a private backup of the Hub data directory.
 
 First conversion from stock **1.1.14** installs the compact build. The extended build adds remote dial controls and retained history on a unit with independently verified boot space. Both builds use USB for firmware updates. In the same USB dialog, choose **Back up original firmware** for a backup or **Restore original firmware** to return to stock. [USB setup and restoration](../../../server/docs/firmware-packages.md#usb-setup-backup-and-stock-restoration)
 
@@ -38,7 +38,7 @@ From the checkout’s `server/` directory, use a brewer running the verified sto
 
 Setup captures two matching flash reads, checks the original application and available flash, then asks for two confirmations before it writes. It generates a unique UID and key for that brewer. Keep the key and the private Hub data directory for later updates and restoration. To set the recipe offered offline, add `--offline-program /absolute/path/zymatic-program.json`. The default is American Brown Ale. On an already converted brewer, omitting the recipe or host retains the installed value.
 
-Disconnect USB after verification and check **About Zymatic** for the version reported by the installer. Initial setup installs the compact **1.0.0** build. An independent boot measurement can qualify the same brewer for the extended **1.0.0** build. The USB installer reports which profile it selected. On Ethernet, pair the brewer's IP address and key in the Hub. Use the recipe menu on the brewer for both Wi-Fi and Ethernet sync. To return to stock, run the restore command above against the same Hub data directory. Restoration clears the recognized extension and its private key from program flash and checks the complete readable result.
+Disconnect USB after verification and check **About Zymatic** for the version reported by the installer. Initial setup installs the compact **1.0.0** build. An independent boot measurement can qualify the same brewer for the extended **1.0.0** build. The USB installer reports which profile it selected. Pair the brewer’s IP address and key in the Hub. Use Ethernet to monitor heating, circulation and drain steps. To add Wi-Fi service to an earlier Ethernet-only 1.0.0 installation, run USB setup again using the same Hub data. Use the recipe menu on the brewer for both Wi-Fi and Ethernet sync. To return to stock, run the restore command above against the same Hub data directory. Restoration clears the recognized extension and its private key from program flash and checks the complete readable result.
 
 ## Use the original Windows updater
 
