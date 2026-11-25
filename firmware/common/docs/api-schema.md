@@ -104,6 +104,8 @@ locations 1..6, target 0 or 60..212 F, active minutes 0..599 and drain minutes
 keep device-specific recovered meaning; they are not interchangeable physical
 compartments across models. `zero_minute_steps` is explicitly advertised.
 When discovery advertises `recipe_create_only`, send `create_only: true` in a recipe PUT when creating a new recipe or importing a copy. An existing ID returns 409 `recipe_exists` and keeps the saved recipe. Omitting the field preserves the usual create-or-update behavior.
+
+When discovery advertises `recipe_conditional_write`, GET or PUT of a single recipe returns a positive `revision`. Send that value as `if_revision` in a PUT or DELETE JSON body to modify the version you read. A change to the saved recipe catalog, including deletion and recreation, returns HTTP 409 `recipe_changed`. Reopen the recipe to review changes. A PUT can also round-trip the returned `revision` field. Supply only one revision field and omit `create_only: true` when updating.
 The common engine exposes catalogue reads to the local front panel and passes
 the full selected recipe to the adapter's brew command. Mutations require an
 idle device and verified persistent writes. Defaults are offered only when an

@@ -32,6 +32,7 @@ unsigned Engine::Impl::discovery_json(Writer& writer) {
     writer.text("{"); identity_json(writer, identity);
     if (pico_http_pairing_available(false)) writer.text(",\"pairing_v1\":true");
     if (capabilities.ota_protocol) { writer.text(",\"ota_protocol\":"); writer.quote(capabilities.ota_protocol); }
+    if (capabilities.flags & Recipes) writer.text(",\"recipe_conditional_write\":true");
     if (capabilities.z_program_maker) writer.text(",\"z_program_maker\":true");
     writer.text(",\"api_version\":1,\"release_channel\":\"stable\",\"firmware_version\":"); writer.quote(identity.firmware_version);
     writer.format(",\"mode\":\"standalone\",\"recipe_capacity\":%u,\"step_capacity\":%u,\"recipe_create_only\":%s,\"zero_minute_steps\":%s,\"restore_default_recipes\":%s,\"starter_recipe_count\":%u,\"recipe_labels\":\"printable ASCII\",\"commands\":[",
@@ -173,18 +174,26 @@ unsigned Engine::Impl::recipes_api(const PicoHttpRequest& request, Writer& write
     if (!valid_id(suffix)) return error(writer, Result(400, "invalid_recipe", "Invalid recipe ID"));
     if (request.method == PICO_HTTP_GET) {
         Recipe recipe; const Result result = owner.recipe_get(suffix, recipe); if (!result.ok()) return error(writer, result);
-        recipe_json(writer, recipe); return 200;
+        recipe_json(writer, recipe, catalogue_generation); return 200;
     }
+    std::uint32_t revision = 0;
     if (request.method == PICO_HTTP_DELETE) {
-        const Result result = recipe_delete(suffix); if (!result.ok()) return error(writer, result);
+        if (request.body_length) {
+            Json json(request.body, request.body_length); char key[40]; std::int64_t number;
+            if (!json.token('{') || !json.key(key) || std::strcmp(key, "if_revision") ||
+                !json.integer(1, UINT32_MAX, number) || !json.token('}') || !json.done())
+                return error(writer, Result(400, "invalid_recipe", "Expected a positive if_revision"));
+            revision = static_cast<std::uint32_t>(number);
+        }
+        const Result result = recipe_delete(suffix, revision); if (!result.ok()) return error(writer, result);
         writer.text("{\"deleted\":true}"); return 200;
     }
     if (request.method != PICO_HTTP_PUT) return method_error(writer);
     Recipe recipe; Json json(request.body, request.body_length);
     bool create_only = false;
-    if (!parse_recipe(json, suffix, recipe, create_only)) return error(writer, Result(400, "invalid_recipe", "Invalid or duplicate recipe fields"));
-    bool created = false; const Result result = recipe_write(recipe, &created, create_only); if (!result.ok()) return error(writer, result);
-    recipe_json(writer, recipe); return created ? 201 : 200;
+    if (!parse_recipe(json, suffix, recipe, create_only, revision)) return error(writer, Result(400, "invalid_recipe", "Invalid or duplicate recipe fields"));
+    bool created = false; const Result result = recipe_write(recipe, &created, create_only, revision); if (!result.ok()) return error(writer, result);
+    recipe_json(writer, recipe, catalogue_generation); return created ? 201 : 200;
 }
 unsigned Engine::Impl::command_api(const PicoHttpRequest& request, Writer& writer) {
     if (request.method != PICO_HTTP_POST) return method_error(writer);
