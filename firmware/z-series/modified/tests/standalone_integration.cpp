@@ -846,8 +846,8 @@ void kit_strength_on_dial(){
         assert(next_prompt==24&&!w.core.heater.state.started);
     }
     World peer;assert(peer.engine.recipe_store(kit).ok());
-    auto fields=[&](const char* extra,const char* id="1000000000000002"){
-        auto payload=group_recipe_offer(peer.engine.recipe_revision(),id);payload.pop_back();payload+=extra;return payload+"}";
+    auto fields=[&](const char* extra){
+        auto payload=group_recipe_offer(peer.engine.recipe_revision());payload.pop_back();payload+=extra;return payload+"}";
     };
     const auto offered=fields(R"(,"selected_abv":0,"selected_ibu":5)");
     peer.request(PICO_HTTP_POST,group_path,fields(R"(,"selected_abv":11)").c_str(),400);
