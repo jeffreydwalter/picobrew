@@ -1,4 +1,5 @@
 import { CareNotice, MachineCare } from '../components/MachineCare'
+import { BrewInvitations } from '../components/BrewGroups'
 import { MachineManagement } from '../components/MachineManagement'
 import { useEffect, useState } from 'react'
 import {
@@ -47,6 +48,9 @@ import { LinkedPicoFerms } from '../components/PicoFermAssociation'
 const programNames: Record<string, string> = {
   'sous-vide': 'Sous vide',
   'cold-brew': 'Cold brew',
+  coffee: 'Coffee menu',
+  'picostill-manual': 'PicoStill manual',
+  'picostill-boil-point': 'PicoStill boiling point',
   manual: 'Manual brew',
   rinse: 'Rinse',
   'first-rinse': 'First rinse',
@@ -369,6 +373,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
         }
       />
       {device.error && <ErrorBanner message={device.error} />}
+      <BrewInvitations devices={[device]} deviceID={device.id} />
       <CareNotice maintenance={device.online ? device.status?.maintenance : undefined} />
       {device.model_error && (
         <div className="connection-advisory" role="status">

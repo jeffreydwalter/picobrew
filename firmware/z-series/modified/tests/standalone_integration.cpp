@@ -366,6 +366,16 @@ void sensor_fault_cutoff(){
     }
 }
 void buffered_coffee(){
+    {World w;
+        w.request(PICO_HTTP_POST,"/api/v1/commands",R"({"command":"coffee"})",202);
+        w.adapter.poll();w.head_tick();
+        const auto& menu=w.head.screens.menu_data;
+        for(auto mode:{UiCommand::CoffeeColdBrewTweak,UiCommand::CoffeeHotTweak,UiCommand::CoffeeHybridTweak,UiCommand::CoffeeCustomTweak}){
+            bool present=false;for(unsigned n=0;n<menu.count;++n)present|=menu.items[n].event.command==mode;
+            assert(present);
+        }
+        assert(w.core.core.state.id==CoreStateId::Idle&&!w.core.core.commands.pending);
+    }
     for(unsigned previous=0;previous<2;++previous){World w;
         if(previous)assert(w.adapter.load_recipe(recipe(),false).ok());
         w.head.core_events.pending=false;

@@ -1,4 +1,5 @@
 import './fleet.scss'
+import {BrewGroupManager, BrewInvitations} from '../components/BrewGroups'
 import { careTasksDue } from '../components/MachineCare'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -118,6 +119,8 @@ export default function Fleet({
       {firmwareID && (
         <MachineFirmwareDialog deviceID={firmwareID} onClose={() => setFirmwareID('')} />
       )}
+      <BrewGroupManager devices={devices}/>
+      <BrewInvitations devices={devices}/>
       {devices.length ? (
         <div className="brewery-list">
           {ordered.map((device) => (

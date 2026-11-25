@@ -296,6 +296,10 @@ export interface Conditioning {
   }[]
 }
 export interface Brew {
+  group_id?: string
+  group_name?: string
+  group_session_id?: string
+  group_source_device_id?: string
   picoferm_id?: string
   picoferm_name?: string
   picoferm_recording_id?: string

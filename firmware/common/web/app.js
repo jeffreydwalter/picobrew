@@ -11,7 +11,7 @@ let apiExplorer;
 let brewHistory;
 const hasFeature = name => PicoDevice.feature(state.info,name);
 const allowedCommand = name => state.capabilities.includes(name);
-const programLabels = {'sous-vide':'Sous vide', 'cold-brew':'Cold brew', manual:'Manual brewing',
+const programLabels = {'sous-vide':'Sous vide', 'cold-brew':'Cold brew', coffee:'Coffee menu', 'picostill-manual':'PicoStill manual', 'picostill-boil-point':'PicoStill boiling point', manual:'Manual brewing',
   rinse:'Rinse', 'first-rinse':'First rinse', descale:'Descale', circulate:'Circulate',
   'drain-reservoir':'Drain reservoir', 'drain-filter':'Drain step filter', 'rack-beer':'Rack beer',
   clean:'Clean',drain:'Drain',chill:'Chill',utilities:'Utilities menu', settings:'Settings menu'};

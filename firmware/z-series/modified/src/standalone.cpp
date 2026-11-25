@@ -24,7 +24,7 @@ constexpr std::uint32_t LocalRecipes = 0x10000, SelectLocalRecipe = 0x10001,
                         LocalPairCancel = 0x1000a, LocalPairApprove = 0x1000b;
 const api::CommandDescriptor commands[] = {
     {"brew",api::RecipeId,api::RecipeId},{"sous-vide",0,0},
-    {"cold-brew",0,0},{"rinse",0,0},{"clean",0,0},{"circulate",0,0},
+    {"coffee",0,0},{"cold-brew",0,0},{"rinse",0,0},{"clean",0,0},{"circulate",0,0},
     {"drain",0,0},{"rack-beer",0,0},{"chill",0,0},{"utilities",0,0},
     {"settings",0,0},{"stop",0,0},{"clear-stop",0,0},
     {"pause",0,0},{"resume",0,0},{"encoder",api::Delta|api::Click,0},
@@ -326,6 +326,7 @@ void Adapter::poll(){
     else {
         UiCommand command=UiCommand::None;
         if(!std::strcmp(name,"sous-vide"))command=UiCommand::StartSousVideWithKeg;
+        else if(!std::strcmp(name,"coffee"))command=UiCommand::CoffeeMenu;
         else if(!std::strcmp(name,"cold-brew"))command=UiCommand::CoffeeColdBrewTweak;
         else if(!std::strcmp(name,"rinse"))command=UiCommand::StartRinse;
         else if(!std::strcmp(name,"clean"))command=UiCommand::StartClean;
