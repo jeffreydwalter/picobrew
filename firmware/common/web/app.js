@@ -128,6 +128,11 @@ async function respondGroup(op) {
 let stillLink=null, stillPending=false, stillChecked=0;
 function renderStillLink() {
   const idle=state.connected && state.status?.ready && !state.status?.busy && !stillPending && !stillLink?.checking;
+  const stock=stillLink?.stock_supported && $('stillMode').value==='stock';
+  $('stillModeRow').hidden=!stillLink?.stock_supported;
+  $('stillStockHelp').hidden=!stock && stillLink?.protocol!=='stock';
+  $('stillKeyRow').hidden=$('stillKey').disabled=!!stock;
+  $('stillPortRow').hidden=$('stillPort').disabled=!!stock;
   $('stillPair').disabled=!idle || !stillLink;
   $('stillUnpair').hidden=!stillLink?.paired;
   $('stillUnpair').disabled=!idle;
@@ -412,13 +417,17 @@ function hasOnlyFields(object, allowed) {
   return object && typeof object==='object' && !Array.isArray(object) && Object.keys(object).every(key=>allowed.includes(key));
 }
 
+function zProgramStepLimit() {
+  return state.info.z_program_step_capacity ?? state.info.step_capacity ?? 15;
+}
+
 function validZProgram(program) {
   const name=value=>typeof value==='string' && /^[ -~]{1,20}$/.test(value) && value.trim().length>0;
   const seconds=(value,max)=>Number.isInteger(value) && value>=0 && value<=max;
   return hasOnlyFields(program,['Name','IsBeer','UsePicoPakMode','Steps','IsMetric']) && name(program.Name) &&
     typeof program.IsBeer==='boolean' && typeof program.UsePicoPakMode==='boolean' &&
     (program.IsMetric===undefined || typeof program.IsMetric==='boolean') &&
-    Array.isArray(program.Steps) && program.Steps.length>=1 && program.Steps.length<=15 &&
+    Array.isArray(program.Steps) && program.Steps.length>=1 && program.Steps.length<=zProgramStepLimit() &&
     program.Steps.every(s=>s && name(s.Name) && (s.StepType===2
       ? hasOnlyFields(s,['Name','StepType','Time']) && (s.Time===undefined || seconds(s.Time,86400))
       : s.StepType===1 && hasOnlyFields(s,['Name','StepType','Location','Temp','Time','Drain']) &&
@@ -428,7 +437,8 @@ function validZProgram(program) {
 }
 
 function addZStep(step={Name:'Mash',StepType:1,Location:2,Temp:65,Time:3600,Drain:0}) {
-  if ($('steps').children.length>=15) {notify('A recipe can contain up to 15 steps.',true);return;}
+  const limit=zProgramStepLimit();
+  if ($('steps').children.length>=limit) {notify('This brewer can save up to '+limit+' Program Maker steps.',true);return;}
   const row=$('steps').insertRow();
   function field(tag,label) {
     const control=document.createElement(tag);
@@ -564,7 +574,7 @@ function editRecipe(recipe, existing=false) {
   $('stepTarget').textContent='Target °'+(program ? $('zUnits').value : 'F');
   $('stepTimeHeading').textContent=program ? 'Hold (min:sec)' : 'Minutes';
   $('stepDrain').textContent=program ? 'Drain (min:sec)' : 'Drain min';
-  $('recipeLimits').textContent=program ? 'Up to 15 steps. A pause waits for the operator to continue.' : 'Up to 15 steps. A target of 0 means unheated circulation.';
+  $('recipeLimits').textContent=program ? 'Up to '+zProgramStepLimit()+' steps. A pause waits for the operator to continue.' : 'Up to 15 steps. A target of 0 means unheated circulation.';
   $('recipeRoutingHint').textContent=program ? 'Import or export Z Program Maker JSON. Use minutes:seconds for exact timing.' : 'Choose the flow path for each step.';
   if(state.zCloud){
     $('recipeRoutingHint').textContent='The brewer uses the saved water quantity during setup. Pauses wait for you to continue.';
@@ -891,9 +901,11 @@ $('importRecipe').addEventListener('drop',event=>{
   event.preventDefault();importRecipeFile(event.dataTransfer.files[0]);
 });
 $('exportRecipe').addEventListener('click',()=>{const recipe=recipeFromForm();if(recipe)download(recipe.id+'.json',recipe.z_program || recipe);});
+$('stillMode').addEventListener('change',renderStillLink);
 $('stillLinkForm').addEventListener('submit',event=>{
   event.preventDefault();
   const body={host:$('stillHost').value.trim(),port:Number($('stillPort').value),uid:$('stillUID').value.toLowerCase(),key:$('stillKey').value.toLowerCase()};
+  if(stillLink?.stock_supported && $('stillMode').value==='stock'){body.protocol='stock';body.port=80;delete body.key;}
   $('stillKey').value='';
   void changeStillLink('PUT',body);
 });

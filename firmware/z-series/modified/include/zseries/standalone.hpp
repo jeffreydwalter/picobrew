@@ -23,6 +23,7 @@ struct Ports {
     std::uint32_t group_boot_nonce = 0;
     api::Storage storage;
     api::TelemetryIo still_io;
+    int (*stock_still_neighbor)(void*, const char*, const char*, std::uint32_t) = nullptr;
 };
 
 // Owns custom policy and input copies; executes through the recovered controller.
@@ -165,7 +166,8 @@ private:
     char still_lease_[17] = {};
     const char* still_error_ = "";
     bool still_verified_ = false, still_session_ = false;
-    bool still_active_ = false, still_checking_ = false;
+    bool still_active_ = false, still_checking_ = false, stock_claimed_ = false;
+    bool still_claimed() const { return stock_claimed_ || still_lease_[0]; }
     volatile std::uint32_t still_output_hold_ = 0;
     void hold_still_outputs();
     void release_still_outputs(bool armed);

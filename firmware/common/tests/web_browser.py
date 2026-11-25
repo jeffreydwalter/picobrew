@@ -41,6 +41,7 @@ def main():
                         if name in descriptors: descriptors[name]={'allowed':fields,'required':[] if name=='encoder' else fields[:2] if name=='set-fan' else fields}
                     info = {'api_version':1,'mode':'standalone','model':model,'model_name':{'z-series':'Pico Z','picoferm':'PicoFerm','picostill':'PicoStill'}[model],'model_family':model,'firmware_version':'1.2.0-fixture','commands':allowed,'command_fields':descriptors,'settings_fields':['temperature_unit','language','detailed_status'] if brewing else ['temperature_unit'],'recipe_capacity':16 if brewing else 0,'step_capacity':15 if brewing else 0,'front_panel':brewing,'telemetry_forwarding':True,'capabilities':{'recipes':brewing,'brewing':brewing,'heating':brewing,'front_panel':brewing,'temperature':True,'pressure':not brewing,'battery':model=='picoferm','fermentation':model=='picoferm','pump':model!='picoferm','fans':model=='picostill'}}
                     info['z_program_maker']=brewing;info['z_state_v1']=brewing
+                    if brewing: info['z_program_step_capacity']=20
                     info['z_picopak_v1']=brewing;info['z_cloud_program_v1']=brewing;info['group_brewing_v1']=brewing
                     info['zero_minute_steps']=brewing
                     info['history_sample_interval_ms']=720000 if model=='picoferm' else 15000
@@ -225,9 +226,11 @@ def main():
                         original={'Name':'Original hops','IsBeer':False,'UsePicoPakMode':True,'IsMetric':True,
                                   'Steps':[{'Name':'Fourth compartment','StepType':1,'Location':6,'Temp':67.1,'Time':5401,'Drain':61},
                                            {'Name':'Add berries','StepType':2},{'Name':'Cold','StepType':1,'Location':1,'Temp':None,'Time':86400,'Drain':7200}]}
+                        original['Steps'].extend({'Name':f'Pause {i}','StepType':2} for i in range(4,21))
                         page.once('dialog',lambda d:d.accept())
                         page.locator('#importFile').set_input_files({'name':'program.json','mimeType':'application/json','buffer':json.dumps(original).encode()})
-                        expect(page.locator('#steps tr')).to_have_count(3)
+                        expect(page.locator('#steps tr')).to_have_count(20)
+                        expect(page.locator('#recipeLimits')).to_contain_text('Up to 20')
                         expect(page.get_by_label('Duration in minutes and seconds').first).to_have_value('90:01')
                         expect(page.get_by_label('Flow path').nth(1)).to_be_disabled()
                         page.locator('#zUnits').select_option('F')

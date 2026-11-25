@@ -35,7 +35,7 @@ bool valid_text(const char* value, std::size_t capacity) {
 }
 bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker, bool z_cloud, bool z_pak) {
     if (!valid_id(recipe.id) || !valid_text(recipe.name, sizeof(recipe.name)) ||
-        !recipe.step_count || recipe.step_count > RecipeStepCapacity) return false;
+        !recipe.step_count || recipe.step_count > (recipe.z_program ? ZProgramStepCapacity : RecipeStepCapacity)) return false;
     const auto& kit=recipe.pak;
     if(kit.recipe_id && (!z_pak || recipe.z_program || recipe.z_cloud_water_ml || !kit.beer_id ||
        kit.abv < -1 || kit.ibu < -1 || kit.selected_abv < -1 || kit.selected_abv>10 ||
@@ -229,7 +229,7 @@ bool parse_z_program(Json& json, Recipe& recipe) {
             bit = 8;
             if (!json.token('[') || json.peek(']')) return false;
             do {
-                if (recipe.step_count >= RecipeStepCapacity || !parse_z_step(json, recipe.steps[recipe.step_count++])) return false;
+                if (recipe.step_count >= ZProgramStepCapacity || !parse_z_step(json, recipe.steps[recipe.step_count++])) return false;
             } while (json.next(']'));
             if (!json.token(']')) return false;
         } else if (!std::strcmp(key, "IsMetric")) {

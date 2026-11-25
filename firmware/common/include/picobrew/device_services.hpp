@@ -7,6 +7,13 @@ namespace picobrew { namespace standalone {
 
 constexpr std::size_t RecipeCapacity = 16;
 constexpr std::size_t RecipeStepCapacity = 15;
+// Stock Program Maker's 64 JSON slots fit four root members plus twenty
+// minimum-size pauses (one array element and two members per pause).
+#ifdef PICOBREW_NO_RECIPE_LIBRARY
+constexpr std::size_t ZProgramStepCapacity = RecipeStepCapacity;
+#else
+constexpr std::size_t ZProgramStepCapacity = 20;
+#endif
 constexpr std::size_t SensorCapacity = 8;
 constexpr std::size_t ActuatorCapacity = 4;
 constexpr std::size_t DisplayPageBytes = 1024;
@@ -147,7 +154,7 @@ struct RecipeStep {
 struct Recipe {
     char id[21] = {};
     char name[32] = {};
-    RecipeStep steps[RecipeStepCapacity];
+    RecipeStep steps[ZProgramStepCapacity];
     std::uint8_t step_count = 0;
     // A nonzero charge selects the archived Z cloud grammar (locations 0–6).
     std::uint16_t z_cloud_water_ml = 0;

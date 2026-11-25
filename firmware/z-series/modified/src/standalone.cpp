@@ -65,6 +65,11 @@ bool cloud_step(void* context,std::size_t index,HttpRecipeStep& out){
     return true;
 }
 ProgramBuildResult build(ProgramBuffer& buffer,const api::Recipe& recipe,double pressure,double boil){
+    // The recovered writer can drop instructions when full. A local Program
+    // Maker step uses at most five opcodes, including the explicit heat stop.
+    static_assert(2 + 5 * api::ZProgramStepCapacity <= ProgramBuffer::instruction_capacity &&
+                  1 + api::ZProgramStepCapacity <= ProgramBuffer::string_capacity,
+                  "All Program Maker steps and their names must fit the native program");
     if(recipe.z_cloud_water_ml || recipe.pak.recipe_id){
         HttpRecipe input;
         input.name=recipe.name;input.type_code=recipe.is_beer?"Beer":"Other";input.is_beer=recipe.is_beer;
@@ -152,7 +157,7 @@ bool Adapter::bind(Ports ports,api::Engine& engine){
        !core_.msp.transport.transmit||!core_.msp.transport.receive||!core_.msp.transport.delay_ms)return false;
     const auto& sensor=core_.ports.sensor_bus;
     if(!sensor.begin_transmission||!sensor.write||!sensor.end_transmission||!sensor.request_from||!sensor.read||!sensor.delay_ms)return false;
-    ports_=ports;still_peer_.io=ports.still_io;engine_=&engine;original_core_=core_.core.services;original_head_=head_.flow.services;original_head_core_=head_.core.services;original_ui_=head_.ui.services;
+    ports_=ports;still_peer_.io=ports.still_io;still_peer_.identity_context=ports.context;still_peer_.check_neighbor=ports.stock_still_neighbor;engine_=&engine;original_core_=core_.core.services;original_head_=head_.flow.services;original_head_core_=head_.core.services;original_ui_=head_.ui.services;
     original_gpio_=core_.ports.heater_gpio;original_msp_=core_.msp.transport;original_sensor_=sensor;
     auto& bus=core_.ports.sensor_bus;bus.context=this;
     bus.begin_transmission=[](void* p,std::uint8_t address){auto& s=*static_cast<Adapter*>(p);if(!s.sensor_failed_)s.original_sensor_.begin_transmission(s.original_sensor_.context,address);};

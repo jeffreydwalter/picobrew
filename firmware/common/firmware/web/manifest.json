@@ -5,10 +5,10 @@
       "source": "index.html",
       "content_type": "text/html; charset=utf-8",
       "content_encoding": "gzip",
-      "length": 6278,
-      "source_length": 22736,
-      "source_sha256": "de3f3dafcc3d58f5e5b160dcc737dbe94c01bc3ccb781bdd49f60cbc2ecb2287",
-      "sha256": "42c56659fd7ff785890ed3a87c37dc4e253824a89a9e2a00513a383b53e47974",
+      "length": 6462,
+      "source_length": 23309,
+      "source_sha256": "dbf2f3920e7507ef001646b7c8d5320da9b574e5cf93bb688a90905faa1414ad",
+      "sha256": "508153f564a93b854de072314be6867e34b2131c9f59fb3f5399c21941e2952b",
       "file_path": "/common/web/index.html.gz"
     },
     {
@@ -25,10 +25,10 @@
       "source": "app.js",
       "content_type": "application/javascript; charset=utf-8",
       "content_encoding": "gzip",
-      "length": 18129,
-      "source_length": 61687,
-      "source_sha256": "395157225a95bddde38738a57ffbbbbc032601cc4ce2839ccd54b468571114c4",
-      "sha256": "e1ba5c1f262386bff1c1693b774d6151cfd2ec5225139b5eb741efa0aecafc2c",
+      "length": 18354,
+      "source_length": 62396,
+      "source_sha256": "e38293a88a57e8d72acf1d23584fd492cd6579745f2232f01b744696bd2e770f",
+      "sha256": "ee1197b25570f141399c790fee8d897b37cd0c878d1e7e2ce676c65460ae329c",
       "file_path": "/common/web/app.js.gz"
     },
     {
