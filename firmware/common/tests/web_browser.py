@@ -57,7 +57,7 @@ def main():
                     hub_launch=width==390
                     ticket="43"*32 if hub_launch else None
                     claims=0
-                    invite={'id':'0123456789abcdef','state':'pending','action':'rinse','from':'Test brewer'}
+                    invite={'id':'0123456789abcdef','state':'pending','action':'brew','recipe_id':'kit','selected_abv':0,'selected_ibu':8,'from':'Test brewer'}
                     def route_api(route):
                         nonlocal ticket,claims
                         request=route.request;path=request.url.split('/api/v1',1)[1];requests.append((request.method,path))
@@ -189,6 +189,7 @@ def main():
                         assert commands[-1]=={'command':'discard-interrupted'}
                         expect(page.locator('#runProgram')).to_be_enabled()
                         expect(page.locator('#groupDetail')).to_contain_text('Test brewer')
+                        expect(page.locator('#groupDetail')).to_contain_text('Strength 0/10 · Bitterness 8/10')
                         assert ('POST','/group-brew') not in requests
                         page.locator('#declineGroup').click()
                         expect(page.locator('#groupInvite')).to_be_hidden()

@@ -17,6 +17,8 @@ type Invite = {
   source_name: string
   target_device_id: string
   action: string
+  selected_abv?: number
+  selected_ibu?: number
   recipe_name?: string
   state: string
   message?: string
@@ -263,6 +265,15 @@ export function BrewInvitations({ devices, deviceID }: { devices: Device[]; devi
       <ErrorBanner message={error} />
       {invites.map((invite) => {
         const device = devices.find((d) => d.id === invite.target_device_id)
+        const kitSettings =
+          invite.action === 'brew'
+            ? [
+                invite.selected_abv != null && `Strength ${invite.selected_abv}/10`,
+                invite.selected_ibu != null && `Bitterness ${invite.selected_ibu}/10`,
+              ]
+                .filter(Boolean)
+                .join(' · ')
+            : ''
         const canRespond = invite.state === 'pending' && Date.parse(invite.expires_at) > Date.now()
         return (
           <article className="panel brew-invitation" key={invite.target_device_id + invite.id}>
@@ -282,6 +293,7 @@ export function BrewInvitations({ devices, deviceID }: { devices: Device[]; devi
                   (invite.menu_serial ? 'Zymatic ' + invite.menu_serial : 'this brewer')}
                 . {invite.message}
               </p>
+              {kitSettings && <p>{kitSettings}</p>}
             </div>
             {canRespond ? (
               <div className="form-actions">

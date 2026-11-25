@@ -106,7 +106,12 @@ function displayGroup(invite) {
   if(!groupInvite)return;
   const recipe=state.recipes.find(r=>r.id===invite.recipe_id);
   const program=invite.action==='brew' ? (recipe?.name || invite.recipe_id) : (programLabels[invite.action] || invite.action);
-  $('groupDetail').textContent=invite.from+' invited this brewer to start '+program+'.';
+  const dose=[];
+  if(invite.action==='brew'){
+    if(Number.isInteger(invite.selected_abv))dose.push('Strength '+invite.selected_abv+'/10');
+    if(Number.isInteger(invite.selected_ibu))dose.push('Bitterness '+invite.selected_ibu+'/10');
+  }
+  $('groupDetail').textContent=invite.from+' invited this brewer to start '+program+'.'+(dose.length?' '+dose.join(' · '):'');
   $('joinGroup').disabled=groupResponding || state.status?.filter_inserted===false;
   $('declineGroup').disabled=groupResponding;
 }
