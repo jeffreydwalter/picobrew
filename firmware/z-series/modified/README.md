@@ -67,7 +67,12 @@ Advertised commands include `brew`, `sous-vide` (with keg), `sous-vide-no-keg`, 
 The Hub can group individual Z modules with compatible brewers. Starting a saved
 recipe, Rinse or Clean on a member creates an invitation that the Hub can deliver
 to other members. Each receiving Z shows the sender and the staged recipe or
-routine on its OLED. Turn the dial to **Accept and start** or press **Decline**.
+routine on its OLED. Two Z modules with compatible firmware can also share Drain,
+Rack, Circulate, Chill, either Sous vide setup, all four coffee profiles and
+either PicoStill program. Each Z taking part in a PicoStill program must have
+its own linked Still. For coffee, **Review coffee** opens the native program
+with the sender’s fill, intensity, temperature and time. Press **Start** on
+that brewer to continue. For the other programs, turn the dial to **Accept and start** or press **Decline**.
 The authenticated web interface can also answer the invitation.
 
 A saved recipe runs through the normal Z compiler, including native Program Maker

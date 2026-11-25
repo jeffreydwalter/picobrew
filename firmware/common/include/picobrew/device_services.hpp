@@ -49,6 +49,7 @@ struct Capabilities {
     bool z_picopak_v1 = false;
     bool z_state_v1 = false;
     bool group_brewing_v1 = false;
+    bool group_z_programs_v1 = false;
     bool picostill_brewer_link_v1 = false;
     const char* ota_protocol = nullptr;
     // Advertise only when the adapter supplies attributed, validated defaults.
