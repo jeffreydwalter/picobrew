@@ -5,12 +5,12 @@ const PicoHttpAsset pico_web_assets[] = {
     /* gzip SHA-256: 94b2446a58f8ac412176f7b748834177eb2d0d01805b8ed1b4d7cd3fd1964950 */
     {"/", "text/html; charset=utf-8", "gzip", NULL, 6872, "/local/web/i.gz"},
     {"/index.html", "text/html; charset=utf-8", "gzip", NULL, 6872, "/local/web/i.gz"},
-    /* gzip SHA-256: 15f548135895c8756bdf67073725bc1987986a937bc55a53b37b9ab9baa28002 */
-    {"/app.js", "application/javascript; charset=utf-8", "gzip", NULL, 7013, "/local/web/a.gz"},
-    /* gzip SHA-256: 3f069fff004a58abd085b3b03627a61fda0ff5ac9c6f06df9276c7ede5090582 */
-    {"/api-explorer.js", "application/javascript; charset=utf-8", "gzip", NULL, 3543, "/local/web/e.gz"},
-    /* gzip SHA-256: 44a6fc8671480c9be83642d647be646ce729bc8012f0c3c5bb30b59db6c16dbb */
-    {"/history.js", "application/javascript; charset=utf-8", "gzip", NULL, 7413, "/local/web/h.gz"},
+    /* gzip SHA-256: 71c72df215e24d465744994565c0b7cf2bcfaa132c6595c619f32bdf93877073 */
+    {"/app.js", "application/javascript; charset=utf-8", "gzip", NULL, 7043, "/local/web/a.gz"},
+    /* gzip SHA-256: c275649cc37bf70b163ca8a57473ca7ab6bca2f62047bfd52bf3a35c4833a804 */
+    {"/api-explorer.js", "application/javascript; charset=utf-8", "gzip", NULL, 3552, "/local/web/e.gz"},
+    /* gzip SHA-256: 7b89c13ca4c8c1827aacc741d3e2aaaf2d753f8fb5821f459dc8fefc804f0852 */
+    {"/history.js", "application/javascript; charset=utf-8", "gzip", NULL, 7432, "/local/web/h.gz"},
     /* gzip SHA-256: 2dff81b32d34e303eab42f07b2860b125c9a84a43dc31e50bfa31b08232a4596 */
     {"/style.css", "text/css; charset=utf-8", "gzip", NULL, 3508, "/local/web/s.gz"},
 };

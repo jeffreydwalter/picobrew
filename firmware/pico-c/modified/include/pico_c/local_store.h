@@ -16,7 +16,8 @@ typedef enum PicoLocalStoreResult {
     PICO_LOCAL_STORE_FULL,
     PICO_LOCAL_STORE_IO,
     PICO_LOCAL_STORE_CORRUPT,
-    PICO_LOCAL_STORE_EXISTS
+    PICO_LOCAL_STORE_EXISTS,
+    PICO_LOCAL_STORE_CHANGED
 } PicoLocalStoreResult;
 
 /* 0: exists, 1: definitely absent, negative: I/O failure. Missing and failed
@@ -38,11 +39,15 @@ typedef struct PicoLocalRecipe {
 
 bool pico_local_recipe_id_valid(const char *id);
 bool pico_local_recipe_valid(const PicoLocalRecipe *recipe);
+/* GET returns the committed catalog revision. PUT compares a nonzero input
+ * revision and replaces it with the committed revision on success. DELETE
+ * compares a nonzero revision. Unconditional callers may pass NULL or 0. */
 PicoLocalStoreResult pico_local_recipe_get(PicoNetwork *network, const char *id,
-                                          PicoLocalRecipe *recipe);
+                                          PicoLocalRecipe *recipe, uint32_t *revision);
 PicoLocalStoreResult pico_local_recipe_put(PicoNetwork *network,
-                                          const PicoLocalRecipe *recipe, bool create_only, bool *created);
-PicoLocalStoreResult pico_local_recipe_delete(PicoNetwork *network, const char *id);
+                                          const PicoLocalRecipe *recipe, bool create_only, bool *created,
+                                          uint32_t *revision);
+PicoLocalStoreResult pico_local_recipe_delete(PicoNetwork *network, const char *id, uint32_t revision);
 /* Returns each occupied slot by ordinal, without an unbounded directory scan. */
 PicoLocalStoreResult pico_local_recipe_at(PicoNetwork *network, unsigned ordinal,
                                          PicoLocalRecipe *recipe);

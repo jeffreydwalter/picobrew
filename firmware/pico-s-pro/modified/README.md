@@ -107,9 +107,9 @@ component under `firmware/`.
 branding and the OLED model name. Browser branding follows that API identity.
 The build checks vectors, the complete link, the physical RAM budget, absence
 of the discontinued cloud protocol strings, and separation from test fixtures.
-The stable applications are **169,304 bytes** for Pico S and **169,312 bytes**
+The stable applications are **169,792 bytes** for Pico S and **169,808 bytes**
 for Pico Pro. Both reserve **32 KiB each for stack and heap** and leave
-**1,112 bytes of unallocated SRAM** at link time. The five compressed website
+**88 bytes of unallocated SRAM** at link time. The five compressed website
 files occupy eight serial-flash blocks. The per-model [build reports](firmware/standalone/README.md)
 record the linked memory layout and the reserved feature buffers. Runtime peak
 stack and heap use still require measurement.

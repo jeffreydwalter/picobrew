@@ -355,13 +355,16 @@ PicoLocalStoreResult pico_local_recipes_restore_defaults(PicoNetwork *n,
     if (result != PICO_LOCAL_STORE_OK) return result;
     return install_starters(n, &index, added, preserved);
 }
-PicoLocalStoreResult pico_local_recipe_get(PicoNetwork *n, const char *id, PicoLocalRecipe *r)
+PicoLocalStoreResult pico_local_recipe_get(PicoNetwork *n, const char *id, PicoLocalRecipe *r, uint32_t *revision)
 {
     if (!pico_local_recipe_id_valid(id) || !r) return PICO_LOCAL_STORE_INVALID;
     Index index; PicoLocalStoreResult result = load_index(n, &index);
     if (result != PICO_LOCAL_STORE_OK) return result;
     for (unsigned i = 0; i < 16; ++i)
-        if (!strcmp(index.entries[i].id, id)) return read_recipe(n, &index, i, r);
+        if (!strcmp(index.entries[i].id, id)) {
+            if (revision) *revision = index.generation;
+            return read_recipe(n, &index, i, r);
+        }
     return PICO_LOCAL_STORE_NOT_FOUND;
 }
 PicoLocalStoreResult pico_local_recipe_at(PicoNetwork *n, unsigned ordinal, PicoLocalRecipe *r)
@@ -388,7 +391,7 @@ PicoLocalStoreResult pico_local_recipe_visit(PicoNetwork *n,
     }
     return PICO_LOCAL_STORE_OK;
 }
-PicoLocalStoreResult pico_local_recipe_put(PicoNetwork *n, const PicoLocalRecipe *r, bool create_only, bool *created)
+PicoLocalStoreResult pico_local_recipe_put(PicoNetwork *n, const PicoLocalRecipe *r, bool create_only, bool *created, uint32_t *revision)
 {
     if (!pico_local_recipe_valid(r)) return PICO_LOCAL_STORE_INVALID;
     Index index; PicoLocalStoreResult result = load_index(n, &index);
@@ -399,6 +402,7 @@ PicoLocalStoreResult pico_local_recipe_put(PicoNetwork *n, const PicoLocalRecipe
         if (!index.entries[i].id[0] && empty < 0) empty = (int)i;
     }
     bool is_new = slot < 0;
+    if (revision && *revision && (is_new || *revision != index.generation)) return PICO_LOCAL_STORE_CHANGED;
     if (!is_new && create_only) return PICO_LOCAL_STORE_EXISTS;
     if (is_new) slot = empty;
     if (slot < 0) return PICO_LOCAL_STORE_FULL;
@@ -412,25 +416,27 @@ PicoLocalStoreResult pico_local_recipe_put(PicoNetwork *n, const PicoLocalRecipe
     encode_recipe(raw, r, e->generation); recipe_name(name, (unsigned)slot, e->bank);
     if (!write_record(n, name, raw, sizeof raw) || !save_index(n, &index))
         return PICO_LOCAL_STORE_IO;
+    if (revision) *revision = index.generation + 1;
     if (created) *created = is_new;
     return PICO_LOCAL_STORE_OK;
 }
-PicoLocalStoreResult pico_local_recipe_delete(PicoNetwork *n, const char *id)
+PicoLocalStoreResult pico_local_recipe_delete(PicoNetwork *n, const char *id, uint32_t revision)
 {
     if (!pico_local_recipe_id_valid(id)) return PICO_LOCAL_STORE_INVALID;
     Index index; PicoLocalStoreResult result = load_index(n, &index);
     if (result != PICO_LOCAL_STORE_OK) return result;
     for (unsigned i = 0; i < 16; ++i) {
         if (strcmp(index.entries[i].id, id)) continue;
+        if (revision && revision != index.generation) return PICO_LOCAL_STORE_CHANGED;
         memset(&index.entries[i], 0, sizeof index.entries[i]);
         return save_index(n, &index) ? PICO_LOCAL_STORE_OK : PICO_LOCAL_STORE_IO;
     }
-    return PICO_LOCAL_STORE_NOT_FOUND;
+    return revision ? PICO_LOCAL_STORE_CHANGED : PICO_LOCAL_STORE_NOT_FOUND;
 }
 bool pico_local_recipe_load(PicoNetwork *n, const char *id, PicoRecipe *r, char name[32])
 {
     PicoLocalRecipe stored;
-    if (!r || !name || pico_local_recipe_get(n, id, &stored) != PICO_LOCAL_STORE_OK) return false;
+    if (!r || !name || pico_local_recipe_get(n, id, &stored, NULL) != PICO_LOCAL_STORE_OK) return false;
     PicoProgramContext *program = r->program;
     memset(r, 0, sizeof *r); r->program = program;
     memcpy(r->identifier, stored.id, sizeof r->identifier);

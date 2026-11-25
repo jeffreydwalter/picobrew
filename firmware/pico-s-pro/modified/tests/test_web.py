@@ -262,6 +262,23 @@ class BrowserWorkflow(unittest.TestCase):
         expect(self.page.locator("#notice")).to_have_text("Recipe deleted.")
         expect(self.page.locator("#recipeCapacity")).to_have_text("1 / 16")
 
+    def test_stale_editor_keeps_draft_and_newer_saved_recipe(self):
+        path = "/api/v1/recipes/house-ale"
+        self.connect()
+        self.page.locator('[data-tab="recipes"]').click()
+        self.page.locator(".recipe-item").filter(has_text="House ale").click()
+        self.page.locator("#recipeName").fill("My draft")
+        with LOCK:
+            backend.request("PUT", path, backend.recipe("Other brewer's edit"))
+        self.page.locator("#saveRecipe").click()
+        expect(self.page.locator("#notice")).to_contain_text("Reopen this recipe")
+        expect(self.page.locator("#recipeName")).to_have_value("My draft")
+        self.page.once("dialog", lambda dialog: dialog.accept())
+        self.page.locator("#deleteRecipe").click()
+        expect(self.page.locator("#notice")).to_contain_text("Reopen this recipe")
+        with LOCK:
+            self.assertEqual(backend.request("GET", path)[1]["name"], "Other brewer's edit")
+
     def test_import_rejects_unrepresentable_steps_before_touching_the_editor(self):
         self.connect()
         self.page.locator('[data-tab="recipes"]').click()

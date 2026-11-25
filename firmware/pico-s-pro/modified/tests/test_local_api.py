@@ -165,6 +165,7 @@ class LocalApi(unittest.TestCase):
         self.assertTrue(data["pairing_v1"])
         self.assertTrue(data["zero_minute_steps"])
         self.assertTrue(data["recipe_create_only"])
+        self.assertTrue(data["recipe_conditional_write"])
         self.assertTrue(data["restore_default_recipes"])
         self.assertEqual(data["starter_recipe_count"], 8)
         self.assertEqual(data["firmware_version"], "1.0.0")
@@ -193,7 +194,8 @@ class LocalApi(unittest.TestCase):
         original = recipe(count=15)
         code, saved = request("PUT", "/api/v1/recipes/house-ale", dict(original, create_only=True))
         self.assertEqual(code, 201)
-        self.assertEqual(saved, dict(id="house-ale", **original))
+        self.assertGreater(saved["revision"], 0)
+        self.assertEqual(saved, dict(id="house-ale", revision=saved["revision"], **original))
         self.assertEqual(LIB.test_recipe_list(), 1)
         self.assertEqual(LIB.test_load_recipe(b"house-ale"), 1)
         self.assertEqual(request("GET", "/api/v1/status")[1]["recipe_name"], "House ale")
@@ -208,6 +210,26 @@ class LocalApi(unittest.TestCase):
         self.assertEqual(request("DELETE", "/api/v1/recipes/house-ale"), (204, None))
         LIB.test_reset(0)
         self.assertEqual(request("GET", "/api/v1/recipes/house-ale")[0], 404)
+
+    def test_revision_prevents_overwrites_and_deletion_after_recreation(self):
+        path = "/api/v1/recipes/house"
+        original = request("PUT", path, recipe())[1]
+        revision = original["revision"]
+        for invalid in (0, -1, 1.5, "1", 4294967296):
+            self.assertEqual(request("PUT", path, dict(recipe(), if_revision=invalid))[0], 400)
+            self.assertEqual(request("DELETE", path, {"if_revision": invalid})[0], 400)
+        self.assertEqual(request("PUT", path, dict(original, if_revision=revision))[0], 400)
+        self.assertEqual(request("PUT", path, dict(original, create_only=True))[0], 400)
+        updated = request("PUT", path, dict(original, name="Edited"))[1]
+        self.assertGreater(updated["revision"], revision)
+        LIB.test_reset(0)
+        self.assertEqual(request("PUT", path, original)[1]["error"], "recipe_changed")
+        self.assertEqual(request("DELETE", path, {"if_revision": revision})[1]["error"], "recipe_changed")
+        self.assertEqual(request("GET", path), (200, updated))
+        self.assertEqual(request("DELETE", path, {"if_revision": updated["revision"]})[0], 204)
+        self.assertEqual(request("PUT", path, updated)[0], 409)
+        self.assertEqual(request("PUT", path, recipe())[0], 201)
+        self.assertEqual(request("PUT", path, updated)[0], 409)
 
     def test_recipe_capacity_and_slot_reuse(self):
         for index in range(16):
@@ -257,6 +279,7 @@ class LocalApi(unittest.TestCase):
         self.assertEqual(LIB.test_recipe_list(), 8)
         for entry in expected:
             stored = request("GET", "/api/v1/recipes/" + entry["id"])[1]
+            self.assertGreater(stored.pop("revision"), 0)
             self.assertEqual(stored, {key: entry[key] for key in ("id", "name", "steps")})
             self.assertEqual(LIB.test_load_recipe(entry["id"].encode()), 1)
         self.assertEqual(request("PUT", "/api/v1/recipes/pico-pak-64", recipe("My Pico Pale"))[0], 200)
@@ -420,8 +443,8 @@ class LocalApi(unittest.TestCase):
                 LIB.test_reset(0)
                 code, saved = request("GET", "/api/v1/recipes/test")
                 self.assertEqual(code, 200, (write_index, truncated))
-                allowed = [dict(id="test", **recipe("Before"))]
-                if write_index == 1: allowed.append(dict(id="test", **recipe("After")))
+                allowed = [dict(id="test", revision=2, **recipe("Before"))]
+                if write_index == 1: allowed.append(dict(id="test", revision=3, **recipe("After")))
                 self.assertIn(saved, allowed, (write_index, truncated))
 
     def test_busy_mutations_and_validated_command_dispatch(self):
