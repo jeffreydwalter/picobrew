@@ -43,7 +43,7 @@ public:
         std::uint8_t mac[6] = {};
         const bool identity = esp_efuse_mac_get_default(mac) == ESP_OK;
         if (identity) ::snprintf(uid_, sizeof(uid_), "%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-        if (!recovery_) device_.begin(hardware && identity, uid_);
+        if (!recovery_) {device_.link_nonce(esp_random());device_.begin(hardware && identity, uid_);}
         const bool mounted = files_.mount(); std::size_t total = 0, used = 0;
         // The selected clean-install partition is 2 MiB. The independently
         // exercised historical 0x16f000 sizing profile also retains 4,224
@@ -117,6 +117,7 @@ private:
             }
             return true;
         }
+        if (!self.recovery_ && self.device_.brewer_link(*req,*res,arena,capacity)) return true;
         return self.engine_.handle(*req, *res, arena, capacity);
     }
     static api::Clock clock() { api::Clock c; c.millis = [](void*) { return static_cast<std::uint32_t>(::millis()); }; return c; }

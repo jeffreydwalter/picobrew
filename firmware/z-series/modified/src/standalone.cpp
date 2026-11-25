@@ -26,7 +26,7 @@ const api::CommandDescriptor commands[] = {
     {"brew",api::RecipeId,api::RecipeId},{"sous-vide",0,0},
     {"cold-brew",0,0},{"rinse",0,0},{"clean",0,0},{"circulate",0,0},
     {"drain",0,0},{"rack-beer",0,0},{"chill",0,0},{"utilities",0,0},
-    {"settings",0,0},{"stop",0,0},{"clear-stop",0,0},
+    {"settings",0,0},{"picostill-manual",0,0},{"picostill-boil-point",0,0},{"stop",0,0},{"clear-stop",0,0},
     {"pause",0,0},{"resume",0,0},{"encoder",api::Delta|api::Click,0},
     {"resume-interrupted",api::Confirm,api::Confirm},{"discard-interrupted",0,0}
 };
@@ -75,7 +75,15 @@ ProgramBuildResult build(ProgramBuffer& buffer,const api::Recipe& recipe,double 
     }
     return buffer.set_code(code.data(),count);
 }
-bool recordable(std::uint32_t id){return id==24||id==28||id==5||id==6||(id>=20&&id<=23);}
+}
+static const char* session_command(std::uint32_t id,bool local_recipe){
+    if(id==7)return "picostill-manual";
+    if(id==26)return "picostill-boil-point";
+    return local_recipe?"brew":"program";
+}
+bool Adapter::recordable(std::uint32_t id) const {
+    if(id==7||id==26)return core_.eeprom.data.still_session_mode!=SessionMode::Offline;
+    return id==24||id==28||id==5||id==6||(id>=20&&id<=23);
 }
 Adapter::Adapter(CoreApplication& core,HeadApplication& head) noexcept:core_(core),head_(head){}
 const char* Adapter::text(const char* en,const char* es,const char* fr) const noexcept {
@@ -87,7 +95,7 @@ api::DeviceServices Adapter::services() noexcept {
     out.capabilities=[](void* p){api::Capabilities caps;
         if (static_cast<Adapter*>(p)->wireless_) caps.ota_protocol = "esp32-factory-v1";
         caps.flags=api::Recipes|api::Brewing|api::Heating|api::Pump|api::Temperature|api::Pressure|api::FrontPanel;
-        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.group_brewing_v1=true;caps.zero_minute_steps=true;caps.z_program_maker=true;caps.dedicated_pause_resume=true;return caps;};
+        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.group_brewing_v1=true;caps.picostill_brewer_link_v1=true;caps.zero_minute_steps=true;caps.z_program_maker=true;caps.dedicated_pause_resume=true;return caps;};
     out.snapshot=[](void* p,api::Snapshot& value){return static_cast<Adapter*>(p)->snapshot(value);};
     out.execute=[](void* p,const api::Command& value){return static_cast<Adapter*>(p)->execute(value);};
     out.idle=[](void* p){return static_cast<Adapter*>(p)->idle();};
@@ -107,7 +115,7 @@ bool Adapter::bind(Ports ports,api::Engine& engine){
        !core_.msp.transport.transmit||!core_.msp.transport.receive||!core_.msp.transport.delay_ms)return false;
     const auto& sensor=core_.ports.sensor_bus;
     if(!sensor.begin_transmission||!sensor.write||!sensor.end_transmission||!sensor.request_from||!sensor.read||!sensor.delay_ms)return false;
-    ports_=ports;engine_=&engine;original_core_=core_.core.services;original_head_=head_.flow.services;original_head_core_=head_.core.services;original_ui_=head_.ui.services;
+    ports_=ports;still_peer_.io=ports.still_io;engine_=&engine;original_core_=core_.core.services;original_head_=head_.flow.services;original_head_core_=head_.core.services;original_ui_=head_.ui.services;
     original_gpio_=core_.ports.heater_gpio;original_msp_=core_.msp.transport;original_sensor_=sensor;
     auto& bus=core_.ports.sensor_bus;bus.context=this;
     bus.begin_transmission=[](void* p,std::uint8_t address){auto& s=*static_cast<Adapter*>(p);if(!s.sensor_failed_)s.original_sensor_.begin_transmission(s.original_sensor_.context,address);};
@@ -157,6 +165,8 @@ bool Adapter::begin(){
     core_.eeprom.data.azure_enabled=BoolOption::False;core_.core.state.offline=true;core_.core.state.azure_enabled=false;
     core_.azure.enabled=false;core_.registration.enabled=false;core_.session_logger.stop_requested=false;
     core_.local_server.enable(false);
+    load_still_address();
+    if(core_.eeprom.data.still_session_mode==SessionMode::Unknown)core_.eeprom.data.still_session_mode=SessionMode::Online;
     const auto recovered=recovery_.load(ports_.storage);
     if(!recovered.ok()&&engine_)engine_->event("recovery-error",recovered.error);
     // The composition selects verified modified network credentials. Original
@@ -171,17 +181,39 @@ void Adapter::sensor_failure(){
 }
 void ZSERIES_HEATER_IRAM Adapter::guarded_write(void* p,std::uint8_t pin,bool enabled){
     auto& self=*static_cast<Adapter*>(p);
-    if(self.inhibited_&&(pin==OriginalHeaterEnablePin||pin==self.core_.heater.output_pin))enabled=false;
+    if((self.inhibited_||self.still_output_hold_)&&(pin==OriginalHeaterEnablePin||pin==self.core_.heater.output_pin))enabled=false;
     self.original_gpio_.write_pin(self.original_gpio_.context,pin,enabled);
 }
 void Adapter::guarded_transmit(void* p,std::uint8_t address,const std::uint8_t* bytes,std::size_t size){
     auto& self=*static_cast<Adapter*>(p);
-    if(self.inhibited_&&size>=5&&bytes[0]==8&&
+    if((self.inhibited_||self.still_output_hold_)&&size>=5&&bytes[0]==8&&
        (bytes[2]==Z_MSP_PUMPS_SET||bytes[2]==Z_MSP_KEG_ON||bytes[2]==Z_MSP_DRAIN_ON||bytes[2]==Z_MSP_HEX_ON)){
         std::uint8_t stopped[6];const auto length=z_msp_app_frame(stopped,sizeof stopped,Z_MSP_PUMPS_SET,0,1);
         self.original_msp_.transmit(self.original_msp_.context,address,stopped,length);return;
     }
     self.original_msp_.transmit(self.original_msp_.context,address,bytes,size);
+}
+void Adapter::stop_pumps(){
+    if(core_.msp_state.id==Z_MSP_APP_RUNNING){std::uint8_t frame[6],response[9];
+        const auto size=z_msp_app_frame(frame,sizeof frame,Z_MSP_PUMPS_SET,0,1);
+        original_msp_.transmit(original_msp_.context,core_.msp.address,frame,size);
+        original_msp_.delay_ms(original_msp_.context,core_.msp.response_delay);
+        original_msp_.receive(original_msp_.context,core_.msp.address,response,sizeof response);
+        z_msp_apply_response(&core_.msp_state,response);}
+}
+// Native standby wake requests pump mask 0x40 and the running transition arms
+// heater enable before the operator has finished the Still setup screens.
+void Adapter::hold_still_outputs(){
+    {ControlGuard guard(core_.ports.control);still_output_hold_=1;
+        original_gpio_.write_pin(original_gpio_.context,OriginalHeaterEnablePin,false);
+        original_gpio_.write_pin(original_gpio_.context,core_.heater.output_pin,false);}
+    stop_pumps();
+}
+void Adapter::release_still_outputs(bool armed){
+    ControlGuard guard(core_.ports.control);
+    still_output_hold_=0;
+    if(armed&&!inhibited_&&core_.heater.state.enabled)
+        original_gpio_.write_pin(original_gpio_.context,OriginalHeaterEnablePin,true);
 }
 bool Adapter::stop(const char* reason){
     if(!bound_)return false;
@@ -190,6 +222,7 @@ bool Adapter::stop(const char* reason){
         core_.heater.pid.automatic=false;
         original_gpio_.write_pin(original_gpio_.context,OriginalHeaterEnablePin,false);
         original_gpio_.write_pin(original_gpio_.context,core_.heater.output_pin,false);}
+    close_still(false);
     if(joined_program_||invite_state_==InviteState::Pending)finish_invite(InviteState::Unavailable);
     joined_program_=0;
     group_source_id_[0]=0;
@@ -198,12 +231,7 @@ bool Adapter::stop(const char* reason){
     if(begun_){RuntimeCommand stop;stop.id=RuntimeCommandId::Stop;core_.post_runtime(stop);}
     // The transport guard also covers future console/Runtime pump commands.
     // Send directly so an OEM moving-valve assertion cannot postpone cutoff.
-    if(core_.msp_state.id==Z_MSP_APP_RUNNING){std::uint8_t frame[6],response[9];
-        const auto size=z_msp_app_frame(frame,sizeof frame,Z_MSP_PUMPS_SET,0,1);
-        original_msp_.transmit(original_msp_.context,core_.msp.address,frame,size);
-        original_msp_.delay_ms(original_msp_.context,core_.msp.response_delay);
-        original_msp_.receive(original_msp_.context,core_.msp.address,response,sizeof response);
-        z_msp_apply_response(&core_.msp_state,response);}
+    stop_pumps();
     if(core_.core.state.id==CoreStateId::Starting)core_.core.transition(CoreStateId::Idle);
     if(engine_&&begun_){engine_->cancel_prepared_session();engine_->event("stop",reason);}native_prepared_=false;
     if(begun_){
@@ -218,7 +246,7 @@ bool Adapter::idle() const noexcept {
     // Native standby clears the screen and is an idle controller state. A
     // canonical remote start may wake it without a synthetic encoder action.
     const bool home=(core_.core.state.id==CoreStateId::Idle&&page_==Page::Home)||core_.core.state.id==CoreStateId::StandBy;
-    return begun_&&home&&core_.runtime.state.id==RuntimeStateId::Standby&&
+    return begun_&&home&&!still_session_&&still_peer_.op==StillPeer::None&&core_.runtime.state.id==RuntimeStateId::Standby&&
         !queued_&&!encoder_click_&&!core_.core.commands.pending&&!core_.runtime_commands.pending;
 }
 bool Adapter::wake_standby(){
@@ -288,6 +316,8 @@ api::Result Adapter::execute(const api::Command& input){
     if(core_.system_error||core_.msp_state.errors||core_.msp_state.id!=Z_MSP_APP_RUNNING)return unavailable();
     bool known=false;for(const auto& descriptor:commands)if(!std::strcmp(input.name,descriptor.name))known=true;
     if(!known)return {400,"invalid_command","This Z command is not supported"};
+    if((!std::strcmp(input.name,"picostill-manual")||!std::strcmp(input.name,"picostill-boil-point"))&&!still_address_.uid[0])
+        return {409,"pairing_required","Pair a PicoStill first"};
     queued_command_=input;queued_command_.recipe=nullptr;
     if(!std::strcmp(input.name,"brew")){
         if(!input.recipe)return {400,"invalid_recipe","An existing recipe is required"};
@@ -333,6 +363,8 @@ void Adapter::poll(){
         else if(!std::strcmp(name,"drain"))command=UiCommand::StartDrain;
         else if(!std::strcmp(name,"rack-beer"))command=UiCommand::StartRack;
         else if(!std::strcmp(name,"chill"))command=UiCommand::StartChill;
+        else if(!std::strcmp(name,"picostill-manual"))command=UiCommand::StartPicoStillManual;
+        else if(!std::strcmp(name,"picostill-boil-point"))command=UiCommand::StartPicoStillBoilPoint;
         else if(!std::strcmp(name,"utilities"))command=UiCommand::Utilities;
         else if(!std::strcmp(name,"settings"))command=UiCommand::Settings;
         HeadUiEvent event;event.command=command;
@@ -395,6 +427,15 @@ bool Adapter::service_stage(CoreTickStage stage,std::uint32_t now){
         core_.refresh_observed();
         return ok;
     }
+    case CoreTickStage::PicoStill:if(begun_)tick_still(now);return true;
+    case CoreTickStage::Runtime:
+        // The native StillStart opcode posts an accessory command before the
+        // next pump/valve instruction. Await the remote controller's ACK.
+        if(still_session_ && !stopped() &&
+           ((core_.still.commands.pending&&core_.still.commands.value.id==StillCommandId::Start)||
+            (core_.still.state.id==PicoStillStateId::Starting&&!still_active_)) &&
+           !(core_.runtime_commands.pending&&core_.runtime_commands.value.id==RuntimeCommandId::Stop))return true;
+        break;
     case CoreTickStage::Azure:return offline_policy(now);
     case CoreTickStage::HttpServer:ports_.http_poll(ports_.context,now);return true;
     case CoreTickStage::SerialCommand:ports_.serial_poll(ports_.context);return true;
@@ -482,6 +523,11 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
         if(!matches_joined||!group_ready()||core_.safeties.filter_missing)return show_home();
     }
     if(stopped()||id==static_cast<std::uint32_t>(ZProgramId::ManualBrew))return show_home();
+    const bool distilling=id==7||id==26;
+    if(still_checking_||still_peer_.op==StillPeer::Stop||still_session_||still_output_hold_)return show_home();
+    if(distilling&&(!still_address_.uid[0]||core_.system_error||core_.msp_state.errors||!recovery_.ready()||recovery_.present())){
+        engine_->event("session-error","PicoStill pairing, controller, or unresolved brew recovery");return show_home();
+    }
     const auto* program=core_.programs.find(id);
     if(!program)return false;
     const bool local_brew=id==24&&program->type==SessionType::LocalBrew;
@@ -490,7 +536,7 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
         if(!recovery_.ready()||(recovery_.present()&&!recovery_active_&&!(local_brew&&requested_resume))){
             engine_->event("session-error",recovery_.ready()?"recovery_pending":"recovery_storage");return show_home();}
         std::uint32_t token=session_token_+1;if(!token)++token;
-        const auto reserved=engine_->prepare_session(local_brew?"brew":"program",program->view.name,token);
+        const auto reserved=engine_->prepare_session(session_command(id,local_brew),program->view.name,token);
         if(!reserved.ok()){engine_->event("session-error",reserved.error?reserved.error:"storage_error");return show_home();}
         session_token_=token;
         native_prepared_=true;
@@ -504,8 +550,10 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
     // recipes contain no starting water volume. Leave the session quantity
     // unspecified so the native loading screen gives its generic water prompt.
     if(local_brew)core_.program.parameters.water={0,Unit::Liter};
+    if(distilling)hold_still_outputs();
     const bool ok=original_core_.perform(original_core_.context,action,result);
     if(ok&&core_.core.state.id==CoreStateId::Starting&&core_.core.state.program_id==id){
+        if(distilling){still_state(PicoStillStateId::Idle);still_session_=true;still_active_=false;still_error_="";}
         care_recorded_=requested_resume;
         group_source_id_[0]=0;
         if(joined)finish_invite(InviteState::Accepted);
@@ -516,6 +564,10 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
     return ok;
 }
 bool Adapter::handle_ui(const HeadUiAction& action){
+    if(action.effect==HeadUiEffect::SetStillLogging){
+        if(still_session_||core_.core.state.id!=CoreStateId::Idle||!set_still_logging(action.first==1))return false;
+        return head_.synchronize()==HeadApplicationResult::Ok;
+    }
     if(action.effect==HeadUiEffect::NetworkConfiguration)return show_network();
     if(action.effect==HeadUiEffect::DispatchCoreCommand&&action.first==static_cast<std::uint32_t>(CoreCommandId::WiFiScan))
         return start_wifi_scan();
@@ -542,6 +594,7 @@ bool Adapter::show_home(){
         screen.menu_data.append(resume,text("Resume interrupted","Reanudar interrumpido","Reprendre brassage"));}
     if((recovery_.present()&&!recovery_active_)||!recovery_.ready()){HeadUiEvent discard;discard.command=static_cast<UiCommand>(LocalDiscard);
         screen.menu_data.append(discard,text("Discard interrupted","Descartar pendiente","Abandonner reprise"));}
+    if(still_address_.uid[0])screen.menu_data.append(UiCommand::PicoStillMenu);
     for(auto command:{UiCommand::StartSousVideWithKeg,UiCommand::CoffeeMenu,UiCommand::Utilities,UiCommand::Settings})screen.menu_data.append(command);
     if(stopped()){HeadUiEvent clear;clear.command=static_cast<UiCommand>(LocalClearStop);screen.menu_data.append(clear,text("Clear stop","Quitar parada","Effacer arret"));}
     const unsigned due=engine_?engine_->care_due():0;
@@ -556,6 +609,7 @@ bool Adapter::show_settings(){
     auto& screen=head_.screens;screen.clear_data();
     for(auto command:{UiCommand::ConfigureNetwork,UiCommand::ConfigureUnits,UiCommand::ConfigureLanguage,UiCommand::ConfigureSlideshowDetail})
         if(!screen.menu_data.append(command))return false;
+    if(still_address_.uid[0])screen.menu_data.append(UiCommand::ConfigurePicoStill);
     HeadUiEvent about;
     about.command=static_cast<UiCommand>(LocalAbout);
     if(!screen.menu_data.append(about,text("About","Acerca de","A propos"))||
@@ -812,7 +866,7 @@ api::Result Adapter::snapshot(api::Snapshot& out){
     const auto& menu=head_.encoder.state.menu;out.encoder_position=static_cast<std::int32_t>(menu.selected);out.encoder_max=menu.count?static_cast<std::int32_t>(menu.count-1):0;
     out.recording=recordable(core_.core.state.program_id)&&(core_.core.state.id==CoreStateId::Starting||core_.core.state.id==CoreStateId::Running||core_.core.state.id==CoreStateId::Stopping);
     if(out.recording)native_prepared_=false;
-    out.session_token=session_token_;out.command=out.recording?(core_.core.state.session_type==SessionType::LocalBrew?"brew":"program"):"";
+    out.session_token=session_token_;out.command=out.recording?session_command(core_.core.state.program_id,local_brew):"";
     recovery_.describe(out.recovery,!recovery_active_&&!resuming_);
     static const char* const pump_ids[]={"keg-pump","drain-pump","hex-pump"};
     static const char* const pump_labels[]={"Keg pump","Drain pump","HEX pump"};

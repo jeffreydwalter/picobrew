@@ -39,7 +39,7 @@ struct Application {
     bool update_ready = false, update_store_ready = false;
     std::uint32_t restart_ms = 0;
     platform::HttpSocket listener;
-    platform::TelemetrySocket telemetry;
+    platform::TelemetrySocket telemetry, still_socket;
     PicoHttpIo http_io{};
     PicoHttpServer http{};
     MspBus bus;
@@ -85,6 +85,7 @@ struct Application {
         firmware.core.msp.diagnostics=&diagnostics;
         Ports ports;ports.context=this;
         ports.storage=storage.binding();
+        ports.still_io=still_socket.services();
         ports.group_boot_nonce=esp_random();
         ports.millis=[](void*)->std::uint32_t{return ::millis();};
         ports.http_poll=[](void* p,std::uint32_t now){static_cast<Application*>(p)->http_poll(now);};
@@ -121,6 +122,7 @@ struct Application {
             }
             return true;
         }
+        if(self.adapter.picostill_http(*req,*res,arena,capacity))return true;
         if(self.adapter.group_http(*req,*res,arena,capacity))return true;
         return self.engine.handle(*req,*res,arena,capacity);
     }
