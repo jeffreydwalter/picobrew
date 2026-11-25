@@ -77,7 +77,7 @@ struct World {
         PicoHttpRequest request={};PicoHttpResponse response={};char arena[PICO_HTTP_ARENA_CAPACITY]={};
         request.auth_configured=request.authenticated=true;request.method=method;std::snprintf(request.path,sizeof(request.path),"%s",path);
         if(body){request.body_length=std::strlen(body);CHECK(request.body_length<sizeof(arena));std::memcpy(arena,body,request.body_length);}
-        request.body=arena;CHECK(engine.handle(request,response,arena,sizeof(arena)));status=response.status;
+        request.body=arena;CHECK(device.brewer_link(request,response,arena,sizeof arena)||engine.handle(request,response,arena,sizeof(arena)));status=response.status;
         CHECK(response.body_length<sizeof(arena));return std::string(reinterpret_cast<const char*>(response.body),response.body_length);
     }
     std::string command(const char* body){return request("/api/v1/commands",body,PICO_HTTP_POST);}
@@ -156,5 +156,39 @@ void physical_button_and_wrap(){
     zero.tick(1000);CHECK(zero.ports.requests==requests);zero.tick(1000);CHECK(zero.ports.requests==requests+2);
 }
 }
-int main(){discovery_and_start_guard();reservation_and_manual_control();native_programs_and_faults();physical_button_and_wrap();
+void paired_brewer(){
+    World w;w.warm();w.device.link_nonce(0x11335577);
+    auto request=[&](const char* op,const char* token,unsigned expected,const char* brewer="010203040506"){
+        std::string body=std::string("{\"op\":\"")+op+"\",\"brewer\":\""+brewer+"\",\"uid\":\"000011112222\"";
+        if(token)body+=std::string(",\"lease\":\"")+token+"\"";
+        body+="}";auto res=w.request("/api/v1/brewer-link",body.c_str(),PICO_HTTP_POST);
+        if(w.status!=expected)std::fprintf(stderr,"%s t=%u idle=%d healthy=%d expected %u got %u %s\n",op,w.ports.time,w.device.idle(),w.device.sensors_healthy(),expected,w.status,res.c_str());
+        CHECK(w.status==expected);return res;
+    };
+    const char* token="1133557700000001";
+    CHECK(request("probe",nullptr,200).find("\"lease\":\"\"")!=std::string::npos);
+    CHECK(w.engine.record_care(api::CareEvent::StillUsed).ok());
+    CHECK(request("claim",nullptr,200).find(token)!=std::string::npos);
+    CHECK(!w.device.idle()&&w.off());
+    request("claim",nullptr,409,"999999999999");
+    request("start",token,409,"999999999999");request("start",token,409);
+    w.command("{\"command\":\"clean\"}");CHECK(w.status==409&&w.off());
+    request("cleaned",token,200);CHECK(w.off());
+    CHECK(request("start",token,200).find("\"active\":true")!=std::string::npos);
+    CHECK(w.device.controller.running()&&w.device.controller.program==oem::ProgramId::PicoManual);
+    request("start",token,200);request("fan-on",token,200);CHECK(w.device.hardware.fans.first.enabled);
+    request("fan-off",token,200);CHECK(!w.device.hardware.fans.first.enabled);
+    w.tick(5000);request("poll",token,200);w.tick(5000);
+    request("probe",nullptr,200); // Discovery cannot renew another brewer's session.
+    w.tick(1499);CHECK(w.device.controller.running());w.tick(1);
+    CHECK(w.off()&&w.device.idle()&&std::string(w.snapshot().stop_reason)=="brewer-link-timeout");
+    request("start",token,409);w.tick(2200);request("claim",nullptr,200);
+    w.ports.button=false;w.poll();CHECK(w.off()&&w.device.idle());w.ports.button=true;w.poll();
+    request("start","1133557700000002",409);
+    request("claim",nullptr,200);request("cleaned","1133557700000003",200);request("start","1133557700000003",200);
+    w.ports.adc_ok=false;w.tick(3000);CHECK(w.off()&&w.device.idle());
+    PicoHttpRequest req{};std::strcpy(req.path,"/api/v1/brewer-link");req.method=PICO_HTTP_POST;req.auth_configured=true;
+    PicoHttpResponse res{};char out[300];CHECK(w.device.brewer_link(req,res,out,sizeof out)&&res.status==401);
+}
+int main(){paired_brewer();discovery_and_start_guard();reservation_and_manual_control();native_programs_and_faults();physical_button_and_wrap();
     std::printf("PicoStill standalone: %u checks passed; native controller, sensor conversions, guarded outputs, physical controls, history and rollover\n",checks);}
