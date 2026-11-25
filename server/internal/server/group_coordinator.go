@@ -98,7 +98,7 @@ func (s *Server) syncBrewGroup(ctx context.Context, d *runtimeDevice, status dom
 	if err != nil {
 		return err
 	}
-	if g == nil && (invite == nil || !activeInvite(invite.State) && invite.State != "withdrawn") {
+	if g == nil && (invite == nil || !activeInvite(invite.State) && (invite.State != "withdrawn" || !invite.ExpiresAt.After(time.Now()))) {
 		return nil
 	}
 	wire, ok := d.adapter.(device.GroupBrewer)
@@ -129,6 +129,7 @@ func (s *Server) syncBrewGroup(ctx context.Context, d *runtimeDevice, status dom
 		invite.Message = "This firmware does not support group invitations."
 		return s.saveInvite(*invite)
 	}
+	observed := time.Now()
 	live, err := wire.GroupState(ctx)
 	if err != nil {
 		return err
@@ -140,8 +141,13 @@ func (s *Server) syncBrewGroup(ctx context.Context, d *runtimeDevice, status dom
 		return err
 	}
 	if g != nil && validEvent(live.Source) {
-		if err = s.recordGroupStart(ctx, d, view, *g, wire, *live.Source); err != nil {
-			return err
+		event := *live.Source
+		age, valid := sourceAge(*event.AgeMS, observed)
+		event.AgeMS = &age
+		if valid {
+			if err = s.recordGroupStart(ctx, d, view, *g, wire, event); err != nil {
+				return err
+			}
 		}
 	}
 	invite, err = s.memberInvite(view.ID)
@@ -236,6 +242,11 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 	return err
 }
 func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v domain.DeviceView, w device.GroupBrewer, live *device.GroupOffer, i *brewInvite) error {
+	if v.Status.DeviceUID != "" && i.SourceUID == v.Status.DeviceUID && activeInvite(i.State) {
+		i.State = "unavailable"
+		i.Message = "Both registrations identify the same physical brewer."
+		return s.saveInvite(*i)
+	}
 	if i.TargetUID != "" && i.TargetUID != v.Status.DeviceUID {
 		return nil
 	}
@@ -262,8 +273,11 @@ func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v d
 				return nil
 			}
 			i.State = "pending"
-		case "accepted", "declined", "expired", "withdrawn":
+		case "accepted", "declined", "expired", "withdrawn", "unavailable":
 			i.State = live.State
+			if i.State == "unavailable" {
+				i.Message = "The brewer could not start the requested routine."
+			}
 		default:
 			return nil
 		}
@@ -329,4 +343,62 @@ func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v d
 	}
 	i.State = "pending"
 	return s.saveInvite(*i)
+}
+
+// Remove an outstanding prompt from a reachable registered device before its
+// poller goes away. A disconnected device enforces the original offer's TTL.
+func (s *Server) withdrawBeforeUnregister(ctx context.Context, d *runtimeDevice) error {
+	v := groupView(d)
+	if !v.Online || v.Status == nil || v.Capabilities == nil || !v.Capabilities.GroupBrewingV1 {
+		return nil
+	}
+	wire, ok := d.adapter.(device.GroupBrewer)
+	if !ok {
+		return nil
+	}
+	s.groupMu.Lock()
+	defer s.groupMu.Unlock()
+	i, err := s.memberInvite(v.ID)
+	if err != nil || i == nil {
+		return err
+	}
+	if i.HubConfirmation || i.TargetUID == "" || i.TargetUID != v.Status.DeviceUID || !i.ExpiresAt.After(time.Now()) || (!activeInvite(i.State) && i.State != "withdrawn") {
+		return nil
+	}
+	if _, err = s.verifiedStatus(ctx, d); err != nil {
+		return err
+	}
+	state, err := wire.GroupState(ctx)
+	if err != nil {
+		return err
+	}
+	if state.Invite != nil && state.Invite.ID == i.ID && state.Invite.State == "pending" {
+		if err = wire.GroupRespond(ctx, device.GroupOffer{Op: "withdraw", ID: i.ID}); err != nil {
+			return err
+		}
+		i.State = "withdrawn"
+		i.Message = "The brewer was removed from the group."
+		if err = s.saveInvite(*i); err != nil {
+			return err
+		}
+		_, err = s.verifiedStatus(ctx, d)
+	}
+	return err
+}
+
+// Count time spent waiting for a device read or another group operation.
+// An old observation cannot gain another two minutes by sitting in a queue.
+func sourceAge(age uint32, observed time.Time) (uint32, bool) {
+	elapsed := int64(0)
+	if !observed.IsZero() {
+		elapsed = time.Since(observed).Milliseconds()
+		if elapsed < 0 {
+			return 0, false
+		}
+	}
+	total := int64(age) + elapsed
+	if total >= inviteLifetime.Milliseconds() {
+		return 0, false
+	}
+	return uint32(total), true
 }
