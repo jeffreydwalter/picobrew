@@ -99,6 +99,15 @@ struct standalone::Engine::Impl {
     detail::Records records;
     Identity identity;
     Capabilities capabilities;
+    bool has_recipe_library() const {
+#ifdef PICOBREW_NO_RECIPE_LIBRARY
+        // The PicoFerm only records fermentation. Its ESP8266 shares a small
+        // DRAM pool between constant strings, TCP, SPIFFS and the runtime heap.
+        return false;
+#else
+        return capabilities.flags & Recipes;
+#endif
+    }
     Snapshot snapshot;
     Settings settings;
     detail::TelemetryConfig telemetry;

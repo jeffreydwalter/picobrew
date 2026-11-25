@@ -31,7 +31,7 @@ def main():
     check_pin(toolchain,OEM/'dependencies/toolchain.json');check_pin(arduino,OEM/'dependencies/arduino-esp8266.json')
     output.mkdir(parents=True,exist_ok=True);sdk=arduino/'tools/sdk';core=arduino/'cores/esp8266'
     binary=toolchain/'bin';cc=binary/'xtensa-lx106-elf-gcc';cxx=binary/'xtensa-lx106-elf-g++';ar=binary/'xtensa-lx106-elf-ar'
-    flags=['-Os','-Wall','-Wextra','-Werror','-mlongcalls','-mtext-section-literals','-ffunction-sections','-fdata-sections','-falign-functions=4',
+    flags=['-DPICOBREW_NO_RECIPE_LIBRARY','-Os','-Wall','-Wextra','-Werror','-mlongcalls','-mtext-section-literals','-ffunction-sections','-fdata-sections','-falign-functions=4',
            '-fno-fast-math','-ffp-contract=off','-D__ets__','-DICACHE_FLASH','-U__STRICT_ANSI__','-DESP8266','-DARDUINO_ARCH_ESP8266','-DARDUINO=10805','-DF_CPU=80000000L','-DLWIP_OPEN_SRC']
     includes=[ROOT/'include',ROOT/'platform/esp8266',OEM/'include',COMMON/'include',COMMON/'platform/esp8266',
               core,core/'umm_malloc',core/'libb64',core/'spiffs',arduino/'variants/generic',sdk/'include',sdk/'lwip/include',sdk/'libc/xtensa-lx106-elf/include']
