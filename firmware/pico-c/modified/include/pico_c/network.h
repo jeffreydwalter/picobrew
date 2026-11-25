@@ -158,6 +158,7 @@ typedef struct PicoNetwork {
     PicoIpv4 server_ip;
     PicoStillConnection still;
     uint32_t last_recovery_save_ms;
+    uint32_t loaded_recipe_revision; /* Same catalog read that supplied the running steps. */
     uint32_t assertion_count;
     uint32_t log_consecutive_failures;
     uint8_t boot_info[8];

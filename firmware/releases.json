@@ -8,10 +8,10 @@
       "firmware_version": "1.0.0",
       "kind": "standalone",
       "hub_ota_protocol": 1,
-      "binary_bytes": 169792,
-      "binary_sha256": "4dd458facba2698d988862e4d74d87cff70b8d62cf3ca95860559e18122f42dd",
-      "archive_sha256": "71be14473457cb1d79d43aeaecb9371c494643bc715e55cb8cfd111a1f5d838a",
-      "source_commit": "eeab37d499c7126cdffbcfe215b8cc5c505847f8"
+      "binary_bytes": 170368,
+      "binary_sha256": "3d3017701f625e3341490a002103ebc613d8c8be91c66a01163fc25a9c1b7665",
+      "archive_sha256": "527b1894e22f50489cf43f6b10a5eb72964dfa709d6eb5bc20a593ba44759c96",
+      "source_commit": "c83d9b48c4388731522d1a093bf24a9dfc5f511a"
     },
     {
       "model": "pico-pro",
@@ -19,10 +19,10 @@
       "firmware_version": "1.0.0",
       "kind": "standalone",
       "hub_ota_protocol": 1,
-      "binary_bytes": 169808,
-      "binary_sha256": "4c60e2e90bf257872759a30be3cf1af4f74882e54e4f8792eff1b259bbb83a1f",
-      "archive_sha256": "b9ce1201919c3b5f3dd3931be99a941d4e242ec5d429f9d52e0503c3d0419589",
-      "source_commit": "eeab37d499c7126cdffbcfe215b8cc5c505847f8"
+      "binary_bytes": 170376,
+      "binary_sha256": "afcc36c42e06a3119e8acbf5af677640b4a38723fb20eae319d3b6bdf77e95f2",
+      "archive_sha256": "4ce5d7aeb1c4235083c293982648aed107d327495d72d904eeafb90dae4eb241",
+      "source_commit": "c83d9b48c4388731522d1a093bf24a9dfc5f511a"
     },
     {
       "model": "pico-c",
@@ -30,11 +30,11 @@
       "firmware_version": "1.0.0",
       "kind": "standalone",
       "hub_ota_protocol": 1,
-      "binary_bytes": 167848,
-      "binary_sha256": "9dbd988506d43f2c1d227638de003bc498a0aa9c11c90de58fa4c8606c45b1bd",
-      "archive_sha256": "80b9d6569ca66ddbba16e1345cf495e286b10b9e8aad9ad2e8c6507eba33da8e",
+      "binary_bytes": 168424,
+      "binary_sha256": "b396463b25fb4b84b3e8334355031b88dfae5cd91dc0a54e6201d830ae133744",
+      "archive_sha256": "c659eb59e59d4a8917c215a4af64b55c7b72b834690e9225c07ec7e92eebe6c5",
       "display_variant": "ssd1325",
-      "source_commit": "eeab37d499c7126cdffbcfe215b8cc5c505847f8"
+      "source_commit": "c83d9b48c4388731522d1a093bf24a9dfc5f511a"
     },
     {
       "model": "pico-c",
@@ -42,11 +42,11 @@
       "firmware_version": "1.0.0",
       "kind": "standalone",
       "hub_ota_protocol": 1,
-      "binary_bytes": 167768,
-      "binary_sha256": "d424f2bc9f6a7836a2b84d74dbd1d5bcddd83daac18f7b46f6249e0110c2a669",
-      "archive_sha256": "433073225e1d08c624198af722b12798a75c55cc7e041ba018bdd70e38ce501a",
+      "binary_bytes": 168344,
+      "binary_sha256": "d817dd7ed2efc716f1aa36f1801a024a8d57f77831427f502c3699931a4aab71",
+      "archive_sha256": "276c0feddd2950d06521d1f4a282f842df0025610464a4811e0040b2c447c626",
       "display_variant": "ssd1309",
-      "source_commit": "eeab37d499c7126cdffbcfe215b8cc5c505847f8"
+      "source_commit": "c83d9b48c4388731522d1a093bf24a9dfc5f511a"
     },
     {
       "model": "z-series",

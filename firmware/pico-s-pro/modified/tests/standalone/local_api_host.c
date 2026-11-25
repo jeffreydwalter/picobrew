@@ -293,6 +293,11 @@ int test_last_delta(void) { return last_delta; }
 int test_last_click(void) { return last_click; }
 int test_session(char *out, size_t capacity) { return pico_local_session_new(&appliance.network, out, capacity); }
 int test_load_settings(void) { return pico_local_settings_load(&appliance.network); }
+unsigned test_group_joined(void) { return appliance.state.group_joined; }
+void test_group_start(unsigned age, int rinse) {
+    appliance.state.group_started_ms = now_ms - age;
+    appliance.state.group_rinse = rinse != 0;
+}
 int test_load_recipe(const char *id)
 {
     return pico_local_recipe_load(&appliance.network, id, &appliance.state.recipe,

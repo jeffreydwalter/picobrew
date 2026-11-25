@@ -249,6 +249,9 @@ static void first_rinse(void *c)
 }
 static void rinse(void *c)
 {
+#if PICO_STANDALONE
+    app(c)->state.group_armed = true; /* Explicit Utilities selection. */
+#endif
     pico_recipe_rinse(&app(c)->recipe);
 }
 static void circulation_program(void *c)
@@ -1193,6 +1196,7 @@ void pico_application_loop(PicoApplication *a)
     switch (selection) {
 #if PICO_STANDALONE
     case 41:
+        a->state.group_armed = true;
         pico_recipe_rinse(&a->recipe); break;
     case 42:
         pico_recipe_run_deep_clean(&a->recipe); break;
