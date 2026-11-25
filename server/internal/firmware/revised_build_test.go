@@ -29,6 +29,26 @@ func TestPinnedBetaReplacementIdentities(t *testing.T) {
 	}
 }
 
+func TestZRevisionUsesPhysicalDisplayIdentity(t *testing.T) {
+	for _, target := range betaReplacements {
+		if target.model != "z-series" {
+			continue
+		}
+		for _, old := range target.prior {
+			r := InstallReceipt{UID: "z", Model: "z-series", DisplayVariant: "ssd1325", PackageID: old.archive, State: "installed"}
+			if r.RevisedPackageID("z", "z-series", "ssd1325", "1.0.0") != target.current.archive ||
+				r.RevisedPackageID("z", "z-series", "", "1.0.0") != "" {
+				t.Fatalf("Z release and physical display receipt were not distinguished")
+			}
+			r.DisplayVariant = "ssd1309"
+			if r.RevisedPackageID("z", "z-series", "ssd1309", "1.0.0") != "" {
+				t.Fatalf("unknown Z display was eligible")
+			}
+		}
+		return
+	}
+	t.Fatal("missing Z beta release")
+}
 func TestRevisionPinsMatchReleasedImages(t *testing.T) {
 	root := os.Getenv("PICO_FIRMWARE_LIBRARY")
 	if root == "" {

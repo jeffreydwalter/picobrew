@@ -281,7 +281,9 @@ describe('Hub firmware packages', () => {
     const release = await screen.findByRole('option', {
       name: '1.0.0 · Release catalog (dddddddddddd)',
     })
-    const local = screen.getByRole('option', { name: '1.0.0 · Local upload (6c10f4f54668)' })
+    const local = screen.getByRole('option', {
+      name: '1.0.0 · Revised build · Local upload (6c10f4f54668)',
+    })
     expect(select.value).toBe(revised.id)
     await user.selectOptions(select, release)
     const blocked = screen.getByRole('button', { name: 'Already installed' }) as HTMLButtonElement

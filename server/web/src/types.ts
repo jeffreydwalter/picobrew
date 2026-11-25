@@ -378,7 +378,7 @@ export interface FirmwareRelease extends FirmwareCandidate {
 export interface FirmwareUpdates {
   checked?: string
   releases: FirmwareRelease[]
-  notices: { device_id: string; name: string; version: string }[]
+  notices: { device_id: string; name: string; version: string; revised?: boolean }[]
 }
 export interface FirmwareCatalog extends FirmwareSettings {
   commit: string

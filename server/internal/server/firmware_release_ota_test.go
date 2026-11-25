@@ -167,7 +167,7 @@ func TestFirmwareUpdatesAcrossPublicVersionReset(t *testing.T) {
 		want                     bool
 	}{
 		{"stable", "", "1.3.9", true},
-		{"stable", "", "1.0.0", true},
+		{"stable", "", "1.0.0", false}, // Same-number updates require an exact prior receipt and replacement release.
 		{"stable", "", "2.0.0", false},
 		{"stable", "", "1.4.0", false},
 		{"stable", "", "preview-090fe78", true},

@@ -14,6 +14,12 @@ type replacement struct {
 }
 
 func previousBuild(model, display, archive string) (prior, current releaseBuild, ok bool) {
+	// Z firmware reports its fitted SSD1325, while the shared Z release has no
+	// display suffix. Match the package only after the receipt's actual display
+	// has been compared with the live device by RevisedPackageID.
+	if model == "z-series" && display == "ssd1325" {
+		display = ""
+	}
 	for _, target := range betaReplacements {
 		if target.model == model && target.display == display {
 			for _, old := range target.prior {

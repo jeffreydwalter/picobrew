@@ -389,7 +389,7 @@ func addFirmwareSchemas(values schemaMap) {
 	releaseProps["source_commit"] = commit
 	releaseProps["archive_sha256"] = hash
 	values["FirmwareRelease"] = schemaObject(releaseProps, append(append([]string{}, required...), "kind", "source_commit", "archive_sha256")...)
-	values["FirmwareUpdates"] = schemaObject(schemaMap{"checked": schemaMap{"type": "string", "format": "date-time"}, "releases": schemaArray(schemaRef("FirmwareRelease")), "notices": schemaArray(schemaObject(schemaMap{"name": stringSchema(), "version": stringSchema(), "device_id": stringSchema()}, "name", "version", "device_id"))}, "releases", "notices")
+	values["FirmwareUpdates"] = schemaObject(schemaMap{"checked": schemaMap{"type": "string", "format": "date-time"}, "releases": schemaArray(schemaRef("FirmwareRelease")), "notices": schemaArray(schemaObject(schemaMap{"name": stringSchema(), "version": stringSchema(), "device_id": stringSchema(), "revised": boolSchema()}, "name", "version", "device_id"))}, "releases", "notices")
 	values["FirmwareCatalog"] = schemaObject(schemaMap{"repository": stringSchema(), "ref": stringSchema(), "commit": commit, "packages": schemaArray(schemaRef("FirmwareCandidate"))}, "repository", "ref", "commit", "packages")
 	values["MachineFirmware"] = schemaObject(schemaMap{
 		"device_id":                      stringSchema(),
