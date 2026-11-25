@@ -57,6 +57,7 @@ type runtimeDevice struct {
 	telemetryReconnect bool // Guarded by mu; set by a verified reconnect or uptime rollback.
 }
 type Server struct {
+	groupMu                   sync.Mutex
 	discovery                 lanDiscoveryState
 	pairings                  map[string]*machinePairing // guarded by deviceMu
 	newPairingClient          func(string) (registrationPairer, error)
@@ -272,6 +273,13 @@ func (s *Server) routes() http.Handler {
 			r.Post("/devices/pair", s.startMachinePairing)
 			r.Post("/devices/{id}/key", s.machineKey)
 			r.Post("/devices/{id}/website", s.machineWebsite)
+			r.Get("/brew-groups", s.brewGroups)
+			r.Post("/brew-groups", s.brewGroups)
+			r.Put("/brew-groups/{group}", s.brewGroups)
+			r.Delete("/brew-groups/{group}", s.brewGroups)
+			r.Get("/brew-invites", s.brewInvites)
+			r.Get("/devices/{id}/brew-invite", s.brewInvites)
+			r.Post("/devices/{id}/brew-invite/{invite}/respond", s.respondBrewInvite)
 			r.Get("/devices/{id}", s.getDevice)
 			r.Get("/devices/{id}/picoferms", s.brewerPicoFerms)
 			r.Put("/devices/{id}/picoferms", s.brewerPicoFerms)

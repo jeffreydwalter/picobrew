@@ -127,8 +127,11 @@ func (s *Server) refresh(ctx context.Context, d *runtimeDevice) {
 	if !s.registeredDevice(d) {
 		return
 	}
-	if _, err := s.verifiedStatus(ctx, d); err == nil {
+	if status, err := s.verifiedStatus(ctx, d); err == nil {
 		s.syncTelemetry(ctx, d, false)
+		if err := s.syncBrewGroup(ctx, d, status); err != nil && ctx.Err() == nil {
+			s.cfg.Logger.Debug("Group brewing deferred", "error", err)
+		}
 	}
 }
 
@@ -552,6 +555,10 @@ func (s *Server) deleteDevice(w http.ResponseWriter, r *http.Request) {
 	d.mu.RUnlock()
 	if busy {
 		s.fail(w, 409, "busy", "Finish the current operation before removing the machine")
+		return
+	}
+	if err := s.removeGroupMember(id); err != nil {
+		s.storeError(w, err)
 		return
 	}
 	telemetry := s.releaseTelemetry(r.Context(), d)
