@@ -365,6 +365,9 @@ bool Adapter::tick_wifi(std::uint32_t now){
             show_wifi_results(static_cast<std::int32_t>(count));
     }
     auto& wifi=core_.wifi;
+    if(core_.eeprom.data.use_ethernet&&ports_.wired_address){
+        core_.network=ports_.wired_address(ports_.context)?2:0;return true;
+    }
     // The OEM Checking state requires a vendor hostname to resolve. This
     // profile supplies a LAN service and qualifies the active station lease.
     if(wifi.state.id==WiFiStateId::Checking&&!wifi.state.requested.internet_expected){
@@ -432,7 +435,13 @@ void Adapter::observe_care(){
 bool Adapter::service_effect(const CoreAction& action,std::uint32_t& result){
     result=0;
     switch(action.effect){
-    case CoreEffect::SetNetwork:core_.network=action.argument&&ports_.lan_ready(ports_.context,action.argument)?action.argument:0;result=action.argument?core_.network!=0:1;return true;
+    case CoreEffect::EthernetConnect:return true; // MACRAW and DHCP advance outside the Core state machine.
+    case CoreEffect::EthernetAddress:result=ports_.wired_address?ports_.wired_address(ports_.context):0;return true;
+    case CoreEffect::SetNetwork:
+        if(core_.eeprom.data.use_ethernet&&ports_.wired_address){
+            core_.network=ports_.wired_address(ports_.context)?2:0;result=core_.network==action.argument;return true;
+        }
+        core_.network=action.argument&&ports_.lan_ready(ports_.context,action.argument)?action.argument:0;result=action.argument?core_.network!=0:1;return true;
     case CoreEffect::WifiConnect:{
         if(!action.credentials)return false;
         if(!ports_.save_network(ports_.context,action.credentials->ssid.data(),action.credentials->password.data())){
@@ -606,9 +615,37 @@ bool Adapter::show_pairing(){
 }
 bool Adapter::show_network(){
     auto& screen=head_.screens;screen.clear_data();
+    if(ports_.wired_address&&ports_.apply_interface){
+        if(!screen.menu_data.append(UiCommand::ConfigureEthernet,text("Ethernet","Ethernet","Ethernet")))return false;
+        if(core_.eeprom.data.use_ethernet){
+            return screen.menu_data.append(UiCommand::WiFiReconnect,text("Use Wi-Fi","Usar Wi-Fi","Utiliser Wi-Fi"))&&
+                screen.menu_data.append(UiCommand::Exit)&&screen.menu_screen(text("Network","Red","Reseau"))==HeadScreenResult::Ok;
+        }
+    }
     for(auto command:{UiCommand::WiFiScan,UiCommand::WiFiReconnect,UiCommand::WiFiDetails,UiCommand::Exit})
         if(!screen.menu_data.append(command))return false;
-    page_=Page::Original;return screen.menu_screen("Wi-Fi")==HeadScreenResult::Ok;
+    page_=Page::Original;return screen.menu_screen(ports_.wired_address?text("Network","Red","Reseau"):"Wi-Fi")==HeadScreenResult::Ok;
+}
+bool Adapter::show_ethernet(){
+    if(!ports_.wired_address||!ports_.apply_interface)return show_network();
+    auto& screen=head_.screens;screen.clear_data();
+    const auto address=ports_.wired_address(ports_.context);char ip[32]={};
+    if(address)::snprintf(ip,sizeof ip,"%u.%u.%u.%u",unsigned(address&255),unsigned(address>>8&255),unsigned(address>>16&255),unsigned(address>>24));
+    if(!core_.eeprom.data.use_ethernet&&!screen.menu_data.append(UiCommand::EthernetConnect,text("Use Ethernet","Usar Ethernet","Utiliser Ethernet")))return false;
+    return screen.menu_data.append(UiCommand::ConfigureNetworkAsBack,text("Back","Atras","Retour"))&&
+        screen.menu_screen(address?ip:core_.eeprom.data.use_ethernet?text("Waiting for Ethernet","Esperando Ethernet","Attente Ethernet"):"Ethernet")==HeadScreenResult::Ok;
+}
+bool Adapter::select_interface(bool wired){
+    if(!ports_.apply_interface)return show_network();
+    if(core_.core.state.id!=CoreStateId::Idle||core_.runtime.state.id!=RuntimeStateId::Standby||queued_||core_.core.commands.pending||core_.runtime_commands.pending)
+        return network_message(text("Machine busy","Maquina ocupada","Machine occupee"));
+    auto& value=core_.eeprom.data.use_ethernet;const auto previous=value;
+    if(bool(previous)!=wired){
+        value=wired;
+        if(!ports_.save_configuration(ports_.context)){value=previous;return network_message(text("Save failed","Error al guardar","Echec sauvegarde"));}
+        core_.network=0;ports_.apply_interface(ports_.context);
+    }
+    return wired?show_ethernet():show_network();
 }
 bool Adapter::network_message(const char* title){
     auto& screen=head_.screens;
@@ -737,6 +774,7 @@ bool Adapter::show_recipes(){
     page_=Page::Recipes;return screen.menu_screen(count?text("Local recipes","Recetas locales","Recettes locales"):text("No local recipes","Sin recetas","Aucune recette"))==HeadScreenResult::Ok;
 }
 bool Adapter::handle_head(HeadEventKind kind){
+    if(ports_.wired_address)head_.observed.ethernet_address=ports_.wired_address(ports_.context);
     // Background station scans are independent from the explicit picker.
     if(kind==HeadEventKind::Wifi&&head_.wifi_events.pending&&
        (head_.wifi_events.value.type==WifiEventType::ScanStarted||head_.wifi_events.value.type==WifiEventType::ScanCompleted)){
@@ -774,9 +812,15 @@ bool Adapter::handle_head(HeadEventKind kind){
             if(result.ok())result=load_recipe(recipe,false);
             if(!result.ok()){engine_->event("recipe-error",result.error?result.error:"load_failed");return show_recipes();}return true;
         }
+        if(event.command==UiCommand::ConfigureEthernet||event.command==UiCommand::EthernetConnect||
+           (event.command==UiCommand::WiFiReconnect&&core_.eeprom.data.use_ethernet)){
+            HeadUiEvent consumed;head_.ui_events.take(consumed);
+            if(!head_.services.alarm||!head_.services.alarm(head_.services.context,false))return false;
+            head_.ui.transient.active=false;head_.ui.transient.deadline=0;
+            return event.command==UiCommand::ConfigureEthernet?show_ethernet():select_interface(event.command==UiCommand::EthernetConnect);
+        }
         if(event.command!=UiCommand::WiFiSsidGetKey)page_=Page::Original;
-        if(event.command==UiCommand::Settings||event.command==UiCommand::ConfigureAzure||event.command==UiCommand::SetAzureEnabled||event.command==UiCommand::SetAzureDisabled||
-           event.command==UiCommand::ConfigureEthernet||event.command==UiCommand::EthernetConnect){
+        if(event.command==UiCommand::Settings||event.command==UiCommand::ConfigureAzure||event.command==UiCommand::SetAzureEnabled||event.command==UiCommand::SetAzureDisabled){
             HeadUiEvent consumed;head_.ui_events.take(consumed);
             if(!head_.services.alarm||!head_.services.alarm(head_.services.context,false))return false;
             head_.ui.transient.active=false;head_.ui.transient.deadline=0;return show_settings();}

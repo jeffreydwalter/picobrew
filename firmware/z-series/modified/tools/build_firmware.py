@@ -73,7 +73,7 @@ def main():
     sources=sorted((COMMON/'src').glob('*.cpp'))+[COMMON/'src/http_server.c']
     sources+=sorted((COMMON/'platform/esp32').glob('*.cpp'))+sorted((ROOT/'src').glob('*.cpp'))
     sources += sorted((COMMON/'platform/esp32/ota').glob('*.cpp'))
-    sources += [ROOT/'platform/esp32'/name for name in ('msp_bus.cpp','output_cutoff.cpp','factory_application.cpp')]
+    sources += [ROOT/'platform/esp32'/name for name in ('msp_bus.cpp','output_cutoff.cpp','factory_application.cpp','wired_network.cpp')]
     for source in sources:command+=['--extra-source',str(source)]
     subprocess.run(command,check=True)
     report=json.loads((output/'link/link-report.json').read_text())

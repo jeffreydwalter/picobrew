@@ -138,9 +138,21 @@ missing; an unreadable modified record is not overwritten by that migration.
 The checked startup preserves NVS on initialization failure. Runtime SPIFFS
 mounting never formats an unreadable partition.
 
-The modified API transport is Wi-Fi. Original W5500 Ethernet and remote cloud
-protocols remain in the OEM reconstruction; the modified settings menu does
-not advertise Ethernet/cloud configuration. Local history retains 4,224 samples
+The local website, authenticated API, and optional Hub telemetry share the
+selected network connection. On an idle Z, choose **Settings → Network →
+Ethernet → Use Ethernet** and reopen **Ethernet** to see the DHCP address.
+**Use Wi-Fi** switches back to the saved wireless settings. The brewer saves
+the selection in its original Ethernet preference. The released factory
+receiver requires Wi-Fi for firmware updates. Choose Wi-Fi before starting
+an update. Physical Ethernet operation still needs verification on a Z.
+
+The W5500 uses socket 0 in MACRAW mode with the original SPI bus and chip
+select. The firmware exchanges at most one frame per control pass; DHCP, DNS
+and TCP run through the same SDK stack as Wi-Fi. The interface retries after
+cable loss or a stalled chip command. The register implementation follows
+the [WIZnet W5500 datasheet](https://docs.wiznet.io/img/products/w5500/W5500_ds_v110e.pdf).
+
+Local history retains 4,224 samples
 across eight sessions, with named sensor/actuator schemas and explicit gaps,
 truncation and interrupted sessions. Optional Hub telemetry defaults off and
 uses bounded asynchronous networking.
