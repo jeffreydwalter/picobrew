@@ -184,6 +184,10 @@ typedef struct PicoAppState {
     char device_uid[33];
     uint8_t buzzer_enabled;
     uint32_t stepper_capabilities;
+    /* A physical or REST selection becomes a group source only after the
+     * ordinary recipe preparation succeeds. Resume and joined runs stay local. */
+    bool group_armed, group_joined, group_rinse;
+    uint32_t group_started_ms;
 } PicoAppState;
 
 /* SDK objects have their native SDK types and lifetimes. Application code

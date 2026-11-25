@@ -54,6 +54,32 @@ class LocalApi(unittest.TestCase):
     def setUp(self):
         LIB.test_reset(1)
 
+    def test_group_sources_and_guarded_starts(self):
+        url = "/api/v1/commands"
+        first = request("PUT", "/api/v1/recipes/house", recipe())[1]["revision"]
+        self.assertTrue(request("GET", "/api/v1")[1]["group_recipe_v1"])
+        self.assertTrue(LIB.test_load_recipe(b"house"))
+        self.assertNotIn("group_recipe_id", request("GET", "/api/v1/status")[1])
+        LIB.test_group_start(500, 0)
+        status = request("GET", "/api/v1/status")[1]
+        self.assertEqual((status["group_recipe_id"], status["group_revision"], status["group_age_ms"]), ("house", first, 500))
+        LIB.test_group_start(500, 1)
+        status = request("GET", "/api/v1/status")[1]
+        self.assertIn("group_rinse_started_ms", status)
+        self.assertNotIn("group_recipe_id", status)
+        LIB.test_group_start(120000, 0)
+        self.assertNotIn("group_recipe_id", request("GET", "/api/v1/status")[1])
+        request("PUT", "/api/v1/recipes/other", recipe())
+        command = {"command": "brew", "recipe_id": "house", "if_revision": first}
+        self.assertEqual(request("POST", url, command)[0], 409)
+        self.assertEqual(LIB.test_control_calls(), 0)
+        current = request("GET", "/api/v1/recipes/house")[1]["revision"]
+        self.assertEqual(request("POST", url, dict(command, if_revision=current))[0], 202)
+        self.assertTrue(LIB.test_group_joined())
+        for extra in ({"command": "rinse", "if_revision": current}, {"command": "stop", "group_join": True}, {"command": "encoder", "delta": 1, "if_revision": current}):
+            self.assertEqual(request("POST", url, extra)[0], 400)
+        self.assertEqual(request("POST", url, {"command": "rinse", "group_join": True})[0], 202)
+
     def test_ota_identity_busy_and_trial_gates(self):
         path = "/api/v1/ota"
         self.assertEqual(request("GET", path)[0], 409)

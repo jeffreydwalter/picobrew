@@ -207,7 +207,7 @@ static int discovery(PicoLocalApi *api, Writer *w)
 {
     text(w, "{"); identity(w);
     text(w, ",\"api_version\":1,\"firmware_version\":\"" PICO_STANDALONE_VERSION
-            "\",\"mode\":\"standalone\",\"release_channel\":\"stable\",\"pairing_v1\":true,\"recipe_capacity\":16,\"step_capacity\":15,"
+            "\",\"mode\":\"standalone\",\"release_channel\":\"stable\",\"pairing_v1\":true,\"group_recipe_v1\":true,\"recipe_capacity\":16,\"step_capacity\":15,"
             "\"recipe_conditional_write\":true,\"recipe_create_only\":true,\"zero_minute_steps\":true,\"restore_default_recipes\":true,"
             "\"commands\":[\"brew\",\"sous-vide\",\"cold-brew\",\"rinse\",\"first-rinse\","
             "\"deep-clean\",\"descale\",\"circulate\",\"drain-reservoir\",\"drain-filter\",\"rack-beer\",\"utilities\","
@@ -253,6 +253,17 @@ static int status(PicoLocalApi *api, Writer *w, bool public_view)
     format(w, ",\"uptime_ms\":%lu,\"ready\":%s,\"device_uid\":",
            (unsigned long)n->platform->millis(n->platform_context), ready ? "true" : "false");
     quote(w, a->state.device_uid);
+    if (a->state.group_started_ms) {
+        uint32_t age = n->platform->millis(n->platform_context) - a->state.group_started_ms;
+        if (age >= 120000u) a->state.group_started_ms = 0;
+        else if (a->state.group_rinse)
+            format(w, ",\"group_rinse_started_ms\":%lu", (unsigned long)a->state.group_started_ms);
+        else if (a->network.loaded_recipe_revision) {
+            format(w, ",\"group_age_ms\":%lu,\"group_revision\":%lu,\"group_recipe_id\":",
+                   (unsigned long)age, (unsigned long)a->network.loaded_recipe_revision);
+            quote(w, a->state.recipe.identifier);
+        }
+    }
     format(w, ",\"busy\":%s,\"stopped\":%s,\"stop_reason\":", pico_local_control_busy() ? "true" : "false",
            pico_local_control_stopped() ? "true" : "false");
     quote(w, pico_local_control_stop_reason()); text(w, ",\"command\":");
@@ -429,13 +440,15 @@ static int restore_recipes(PicoLocalApi *api, Writer *w, size_t length)
 static int command(PicoLocalApi *api, Writer *w, const char *body, size_t length)
 {
     Json j = {body, body + length, true}; unsigned seen = 0;
-    char name[32] = {0}, recipe_id[21] = {0}; int32_t delta = 0; bool click = false;
+    char name[32] = {0}, recipe_id[21] = {0}; uint32_t expected = 0; int32_t delta = 0; bool click = false, join = false;
     if (!token(&j, '{') || peek(&j, '}')) goto bad;
     do {
         char field[32]; unsigned bit;
         if (!key(&j, field)) goto bad;
         if (!strcmp(field, "command")) { bit = 1; if (!string(&j, name, sizeof name)) goto bad; }
         else if (!strcmp(field, "recipe_id")) { bit = 2; if (!string(&j, recipe_id, sizeof recipe_id)) goto bad; }
+        else if (!strcmp(field, "group_join")) { bit = 32; if (!boolean(&j, &join) || !join) goto bad; }
+        else if (!strcmp(field, "if_revision")) { bit = 16; if (!revision_number(&j, &expected)) goto bad; }
         else if (!strcmp(field, "delta")) { bit = 4; if (!integer(&j, -100, 100, &delta)) goto bad; }
         else if (!strcmp(field, "click")) { bit = 8; if (!boolean(&j, &click)) goto bad; }
         else goto bad;
@@ -443,21 +456,25 @@ static int command(PicoLocalApi *api, Writer *w, const char *body, size_t length
         seen |= bit;
     } while (comma_or_end(&j, '}'));
     if (!token(&j, '}') || !done(&j) || !(seen & 1)) goto bad;
+    if (join && strcmp(name, "rinse")) goto bad;
     PicoLocalControlResult result;
     if (!strcmp(name, "encoder")) {
-        if ((seen & 2) || !(seen & 12) || (!delta && !click)) goto bad;
+        if ((seen & 18) || !(seen & 12) || (!delta && !click)) goto bad;
         result = pico_local_control_encoder((int)delta, click);
     } else {
-        if ((seen & 12) || ((seen & 2) && strcmp(name, "brew"))) goto bad;
+        if ((seen & 12) || ((seen & 18) && strcmp(name, "brew"))) goto bad;
         if (!strcmp(name, "brew") && !pico_local_recipe_id_valid(recipe_id)) goto bad;
         if (!strcmp(name, "brew") && pico_local_control_is_ready() &&
             !pico_local_control_busy() && !pico_local_control_stopped()) {
-            PicoLocalRecipe selected;
+            PicoLocalRecipe selected; uint32_t revision;
             PicoLocalStoreResult stored = pico_local_recipe_get(&api->application->network,
-                                                                 recipe_id, &selected, NULL);
+                                                                 recipe_id, &selected, &revision);
             if (stored != PICO_LOCAL_STORE_OK) return storage_error(w, stored);
+            if (expected && expected != revision) return storage_error(w, PICO_LOCAL_STORE_CHANGED);
         }
         result = pico_local_control_command(name, recipe_id);
+        if ((expected || join) && result == PICO_LOCAL_CONTROL_OK)
+            api->application->state.group_joined = true;
     }
     if (result == PICO_LOCAL_CONTROL_INVALID) goto bad;
     if (result == PICO_LOCAL_CONTROL_BUSY) return error(w, 409, "busy", "Wait until the brewer is idle");

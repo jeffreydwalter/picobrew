@@ -250,6 +250,10 @@ capacity. The OpenAPI document describes the route-specific contracts.
 
 ## Recipes: sixteen records, fifteen steps each
 
+When discovery advertises `group_recipe_v1`, a Hub group can invite this brewer to brew a saved recipe or run a rinse. Accept or decline in the Hub. Accepting a recipe uses the ordinary `brew` command with the installed slot’s positive `if_revision`. The firmware checks the revision before queuing the command and returns 409 if the catalog changed. An accepted rinse uses `{"command":"rinse","group_join":true}`. Both retain the brewer’s normal physical preparation and stop checks.
+
+After a physical or API recipe start passes preparation, authenticated status includes `group_recipe_id`, `group_revision` and `group_age_ms` for up to two minutes. The Hub verifies the session against local history. An explicitly started rinse reports `group_rinse_started_ms` in the same device clock as `uptime_ms`. Recipe selection, recovery, the automatic rinse after a brew, and starts accepted from a group do not originate new invitations.
+
 When discovery advertises `recipe_conditional_write`, GET or PUT of a single recipe returns a positive `revision`. Send that value as `if_revision` in a PUT or DELETE JSON body to modify the version you read. A change to the saved recipe catalog, including deletion and recreation, returns HTTP 409 `recipe_changed`. Reopen the recipe to review changes. A PUT can also round-trip the returned `revision` field. Supply only one revision field and omit `create_only: true` when updating.
 
 Create a local recipe:
