@@ -49,9 +49,9 @@
       "_ebss": "0x20037fa8"
     }
   },
-  "elf_sha256": "52afb179ac839994c87906d742a8e43ee4a8d95eb21956166e2f3d3fe3f57c27",
-  "binary_sha256": "6bba8df4cc845f7e7c853391a2858b4e1aa2b63d058466e6514faae7f8efaa95",
-  "update_body_sha256": "c1bc1d251cc878dde67b5565ef0f889138983c8359c54ea01bbd6fde504aeaea",
+  "elf_sha256": "eb6ba0d2eb9598e15ff09decb53dab7f9e0db085607def91768200cf946f37a5",
+  "binary_sha256": "4dd458facba2698d988862e4d74d87cff70b8d62cf3ca95860559e18122f42dd",
+  "update_body_sha256": "a27af384a583cba33696c0baf49c3895691abb109e77ac3b2ce552015307d2c6",
   "update_body_bytes": 339626,
   "sdk_link_passed": true,
   "sdk_source_files": 53,
@@ -67,7 +67,7 @@
     "src/local_starter_recipes.inc": "5de924b9763ceb0dc9a260a9582b703596ed7ffe9652616462926377070bd36e",
     "src/local_store.c": "c2a86d298aa2d13864146a828cf58c88bfce3a7dc3b75200d801465ad797bf4c",
     "src/local_telemetry.c": "1ba2b8be7001eb405ef28885bbe2696fa14682b7c96416e5e4a8ec98ec359077",
-    "src/local_web_assets.c": "4e80c0654446b17006faaa2f1f64a38727868ac914d7c79c9227def89eceb60b",
+    "src/local_web_assets.c": "1ff4197d420c1c248afcd34c044ffef6213d1166e31881c7cc2f0bbba8eec5c3",
     "src/network/api.c": "a982d84fc498d5527bb3ffba63ed7abbf2bb6419437a40df529ed677d6a03c8c",
     "src/network/network.c": "c297a405d2f22f4e79001b6436487208db30bf475c08aca42739914aa51867e3",
     "src/network/network_internal.h": "437e7ec3d9ac98a3e5853900726077a95e06d64ccb1243c0ce2d09562fbd568f",
@@ -552,7 +552,7 @@
     "scope": "Lazy buffers reused within the retained 32768-byte native heap; allocator overhead and other runtime allocations are additional. Allocation failure is reported without changing brewing controls."
   },
   "hub_ota_protocol": 1,
-  "browser_manifest_sha256": "60c83d575e902b620a266088fbb6e7fb8a2aa6f5d40babd85e103c638915f955",
+  "browser_manifest_sha256": "0542e44f32d604aa46062ae739490e003dde9ea359f174eb01e539cfbc0a5f16",
   "browser_storage": {
     "schema_version": 1,
     "block_size": 4096,
@@ -604,12 +604,12 @@
         "payload": "history.js.gz",
         "content_type": "application/javascript; charset=utf-8",
         "content_encoding": "gzip",
-        "length": 7432,
+        "length": 7528,
         "max_size": 7680,
         "allocation_blocks": 2,
-        "sha256": "7b89c13ca4c8c1827aacc741d3e2aaaf2d753f8fb5821f459dc8fefc804f0852",
-        "source_length": 22405,
-        "source_sha256": "4e9b4b636443f3f5c4d44f389c03beece59871410f5b7ea0061709551ce3bf66"
+        "sha256": "086dea352149908d4dcf47f579b58f6b55633ab99a144dc0cdc257d4a7d71cbf",
+        "source_length": 22644,
+        "source_sha256": "0fe7b42b3441e8bbf43a10e459aa809649cd5d1be4c507d9eef4742725b2fd23"
       },
       {
         "source": "style.css",
@@ -633,7 +633,7 @@
     "web/favicon.ico": "63cb852c23c1b1bda83e133dcb7e070aabb3e594531196ddeab8e23d32baa4ea",
     "web/history.js": "fcf40ac457b3456ada69317a2dc5a378214a147e86ec4be05bc94ea50c9ac337",
     "web/index.html": "5ed8e18f9533ae69e26b35149d47c5a8f23f3ac81609e3a6cbd0b0f296c4982e",
-    "web/recipes.js": "8ce84401d7897802824d2538e57c8422525fc64b3e6f7e722df27360683d351f",
+    "web/recipes.js": "e2df8df9bcd7e62ca22d554313d8389215f5e418cb14992d883dbbfd7c19c98a",
     "web/style.css": "043d6abb83618bc4a26e005781433db0709dc629b8a58d3e97e1a25db60cdf3f"
   }
 }
