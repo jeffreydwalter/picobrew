@@ -24,11 +24,26 @@ type groupJournalWatch struct {
 	UID      string     `json:"uid"`
 }
 
+// Z records coffee and sous vide under the shared command "program", while
+// several utilities have no journal. Only link a distinctly identified run.
+func groupHistoryCommand(i brewInvite) string {
+	if i.Action != "z_program" {
+		return i.Action
+	}
+	switch i.ProgramID {
+	case 7:
+		return "picostill-manual"
+	case 26:
+		return "picostill-boil-point"
+	}
+	return ""
+}
+
 // Native firmware can accept a join before its next session is created. Track
 // one short-lived observation per registration, guarded by physical UID and
 // event ID. A different source or newer offer never inherits its journal link.
 func (s *Server) watchGroupHistory(ctx context.Context, d *runtimeDevice, v domain.DeviceView, i brewInvite, earliest time.Time) error {
-	if !v.Capabilities.HistoryPersistent {
+	if !v.Capabilities.HistoryPersistent || groupHistoryCommand(i) == "" {
 		return nil
 	}
 	_, err := s.db.Put("group-journal-watch", v.ID, groupJournalWatch{i, earliest, time.Now().Add(inviteLifetime), v.Status.DeviceUID}, -1)
@@ -70,7 +85,7 @@ func (s *Server) retryGroupHistory(ctx context.Context, d *runtimeDevice, v doma
 	}
 	var hit uint64
 	for _, r := range rows {
-		if !r.Available || r.ID == 0 || r.State != "recording" || r.Command != i.Action || r.DurationMS < 0 {
+		if !r.Available || r.ID == 0 || r.State != "recording" || r.Command != groupHistoryCommand(i) || r.DurationMS < 0 {
 			continue
 		}
 		if i.SourceDeviceID == v.ID && i.SourceHistoryID != 0 {

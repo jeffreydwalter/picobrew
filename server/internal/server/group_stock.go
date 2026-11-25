@@ -11,6 +11,9 @@ import (
 func (s *Server) stockGroupProgram(i brewInvite) (stockItem, error) {
 	var src groupRecipe
 	var item stockItem
+	if i.Action == "z_program" {
+		return item, errors.New(zGroupRequirement)
+	}
 	if i.GroupKitSelection.Present() {
 		return item, errors.New(kitGroupRequirement)
 	}

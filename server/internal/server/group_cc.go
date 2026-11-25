@@ -104,6 +104,9 @@ func (s *Server) syncCCGroup(ctx context.Context, d *runtimeDevice, v domain.Dev
 	if i.Action != "brew" && i.Action != "rinse" {
 		i.State = "unavailable"
 		i.Message = "This brewer supports group invitations for saved recipes and rinses."
+		if i.Action == "z_program" {
+			i.Message = zGroupRequirement
+		}
 		return s.saveInvite(*i)
 	}
 	if _, ok := d.adapter.(device.GuardedGroupStarter); !ok {

@@ -18,7 +18,7 @@ import (
 const inviteLifetime = 2 * time.Minute
 
 func validGroupAction(action string) bool {
-	return action == "brew" || action == "clean" || action == "rinse"
+	return action == "brew" || action == "clean" || action == "rinse" || action == "z_program"
 }
 func validEvent(e *device.GroupSource) bool {
 	if e == nil || len(e.ID) != 16 || strings.ToLower(e.ID) != e.ID || e.AgeMS == nil || time.Duration(*e.AgeMS)*time.Millisecond >= inviteLifetime || !validGroupAction(e.Action) {
@@ -27,11 +27,21 @@ func validEvent(e *device.GroupSource) bool {
 	if _, err := hex.DecodeString(e.ID); err != nil {
 		return false
 	}
+	if !e.GroupZProgram.ValidFor(e.Action) {
+		return false
+	}
 	if e.Action == "brew" {
 		return e.RecipeID != "" && e.Revision != 0
 	}
 	return e.RecipeID == "" && e.Revision == 0 && !e.GroupKitSelection.Present()
 }
+
+const zGroupRequirement = "This routine can be shared only between standalone Z modules with native group program support."
+
+func groupZProgramCapable(v domain.DeviceView) bool {
+	return v.Model == "z-series" && v.Capabilities != nil && v.Capabilities.Model == "z-series" && v.Capabilities.GroupBrewingV1 && v.Capabilities.GroupZProgramsV1
+}
+
 func groupEventID(parts ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:8])
@@ -130,6 +140,8 @@ func (s *Server) syncBrewGroup(ctx context.Context, d *runtimeDevice, status dom
 		invite.Message = "This firmware does not support group invitations."
 		if invite.GroupKitSelection.Present() {
 			invite.Message = kitGroupRequirement
+		} else if invite.Action == "z_program" {
+			invite.Message = zGroupRequirement
 		}
 		return s.saveInvite(*invite)
 	}
@@ -184,6 +196,26 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 	}
 	var src groupRecipe
 	var problem string
+	if e.Action == "z_program" {
+		if !groupZProgramCapable(view) {
+			return nil
+		}
+		// Keep an interrupted fan-out bound to precisely the same owner
+		// program and quantities, including after a Hub restart.
+		_, err := s.db.Put("group-z-program", key, e.GroupZProgram, 0)
+		if errors.Is(err, store.ErrConflict) {
+			var first device.GroupZProgram
+			if _, err = s.db.Get("group-z-program", key, &first); err != nil {
+				return err
+			}
+			if !reflect.DeepEqual(first, e.GroupZProgram) {
+				problem = "The source Z reported different program settings for the same invitation."
+			}
+			e.GroupZProgram = first
+		} else if err != nil {
+			return err
+		}
+	}
 	if e.Action == "brew" {
 		p, rev, err := wire.GroupRecipe(ctx, e.RecipeID)
 		if err != nil {
@@ -216,7 +248,14 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 			}
 		}
 	}
-	source := brewInvite{GroupKitSelection: src.GroupKitSelection, SourceHistoryID: e.HistoryID, GroupID: g.ID, GroupName: g.Name, GroupSessionID: key, SourceDeviceID: view.ID, SourceName: view.Name, SourceUID: view.Status.DeviceUID, SourceEvent: e.ID, Action: e.Action, RecipeName: src.Program.Name, RecipeID: src.LibraryID, RecipeRevision: src.Revision, ExpiresAt: started.Add(inviteLifetime)}
+	source := brewInvite{
+		GroupZProgram: e.GroupZProgram, ProgramName: e.GroupZProgram.Name(),
+		GroupKitSelection: src.GroupKitSelection, SourceHistoryID: e.HistoryID,
+		GroupID: g.ID, GroupName: g.Name, GroupSessionID: key,
+		SourceDeviceID: view.ID, SourceName: view.Name, SourceUID: view.Status.DeviceUID,
+		SourceEvent: e.ID, Action: e.Action, RecipeName: src.Program.Name,
+		RecipeID: src.LibraryID, RecipeRevision: src.Revision, ExpiresAt: started.Add(inviteLifetime),
+	}
 	for _, id := range g.DeviceIDs {
 		if id == view.ID || (view.Status.StockSerial != "" && id == stockMemberPrefix+view.Status.StockSerial) || started.Before(g.MemberSince[id]) {
 			continue
@@ -262,7 +301,7 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 }
 func (i *brewInvite) matchesOffer(live *device.GroupOffer) bool {
 	return live != nil && live.ID == i.ID && live.From == groupWireName(i.SourceName) && live.Action == i.Action && live.RecipeID == i.TargetSlot &&
-		live.Revision == i.SlotRevision && reflect.DeepEqual(live.GroupKitSelection, i.GroupKitSelection)
+		live.Revision == i.SlotRevision && reflect.DeepEqual(live.GroupKitSelection, i.GroupKitSelection) && reflect.DeepEqual(live.GroupZProgram, i.GroupZProgram)
 }
 
 func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v domain.DeviceView, w device.GroupBrewer, live *device.GroupOffer, i *brewInvite) error {
@@ -327,12 +366,17 @@ func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v d
 		i.Message = "The brewer did not confirm the invitation. Check its front panel."
 		return s.saveInvite(*i)
 	}
+	if i.Action == "z_program" && !groupZProgramCapable(v) {
+		i.State = "unavailable"
+		i.Message = zGroupRequirement
+		return s.saveInvite(*i)
+	}
 	if v.Status.Busy || v.Status.Stopped || !v.Status.Ready || live != nil && live.State == "pending" {
 		i.State = "unavailable"
 		i.Message = "The brewer is busy or unavailable."
 		return s.saveInvite(*i)
 	}
-	if !slices.Contains(v.Capabilities.Commands, i.Action) {
+	if i.Action != "z_program" && !slices.Contains(v.Capabilities.Commands, i.Action) {
 		i.State = "unavailable"
 		i.Message = "This brewer does not support the requested routine."
 		return s.saveInvite(*i)
@@ -365,7 +409,10 @@ func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v d
 	if err := s.saveInvite(*i); err != nil {
 		return err
 	}
-	offer := device.GroupOffer{GroupKitSelection: i.GroupKitSelection, Op: "offer", TTLMS: uint32(remaining), ID: i.ID, Action: i.Action, From: groupWireName(i.SourceName), RecipeID: i.TargetSlot, Revision: i.SlotRevision}
+	offer := device.GroupOffer{
+		Op: "offer", ID: i.ID, TTLMS: uint32(remaining), From: groupWireName(i.SourceName), Action: i.Action,
+		RecipeID: i.TargetSlot, Revision: i.SlotRevision, GroupZProgram: i.GroupZProgram, GroupKitSelection: i.GroupKitSelection,
+	}
 	if err := w.GroupRespond(ctx, offer); err != nil {
 		var problem *device.Error
 		if errors.As(err, &problem) && !problem.UnknownOutcome {

@@ -523,3 +523,74 @@ func TestGroupKitValidatesAuthoredRangesAndStoredSlot(t *testing.T) {
 		t.Fatal("missing stored kit was created for a one-brew dose")
 	}
 }
+
+func TestZOwnerProgramInvitesStayOnCompatibleModules(t *testing.T) {
+	s, h, c := newTestServer(t)
+	ctx := context.Background()
+	csrf := signIn(t, c, h.URL)
+	src, a := groupTestBrewer(t, s, "origin", "z-series")
+	peer, b := groupTestBrewer(t, s, "peer", "z-series")
+	old, ow := groupTestBrewer(t, s, "old", "z-series")
+	cc, cw := groupTestBrewer(t, s, "cc", "pico-c")
+	cw.caps.GroupBrewingV1 = false
+	cw.caps.GroupRecipeV1 = true
+	b.caps.GroupZProgramsV1 = true
+	g := brewGroup{ID: "coffee-group", Name: "Coffee", DeviceIDs: []string{"origin", "peer", "old", "cc", stockMemberPrefix + "ABC"}}
+	if _, err := s.db.Put(groupKind, g.ID, g, 0); err != nil {
+		t.Fatal(err)
+	}
+	age, ml, temp, intensity, secs := uint32(0), 5.7, 194.45, 7, 420
+	a.state.Source = &device.GroupSource{ID: "5000000000000001", AgeMS: &age, Action: "z_program", GroupZProgram: device.GroupZProgram{ProgramID: 23, WaterL: &ml, TemperatureF: &temp, Intensity: &intensity, TimeSeconds: &secs}}
+	sync := func(d *runtimeDevice) {
+		t.Helper()
+		if err := s.syncBrewGroup(ctx, d, *d.view.Status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sync(src)
+	if i, _ := s.memberInvite("peer"); i != nil {
+		t.Fatal("unsupported source generated an invite", i)
+	}
+	a.caps.GroupZProgramsV1 = true
+	for _, d := range []*runtimeDevice{src, peer, old, cc, src, peer} {
+		sync(d)
+	}
+	if len(a.calls) != 0 || len(ow.calls) != 0 || len(cw.calls) != 0 || len(b.calls) != 1 || b.st.Busy {
+		t.Fatal(a.calls, b.calls, ow.calls, cw.calls)
+	}
+	offer := b.calls[0]
+	if offer.Op != "offer" || offer.Action != "z_program" || !reflect.DeepEqual(offer.GroupZProgram, a.state.Source.GroupZProgram) || len(b.slots) != 0 {
+		t.Fatal(offer)
+	}
+	for _, id := range []string{"old", "cc", stockMemberPrefix + "ABC"} {
+		i, err := s.memberInvite(id)
+		if err != nil || i == nil || i.State != "unavailable" || i.Message != zGroupRequirement {
+			t.Fatal(id, i, err)
+		}
+	}
+	get := h.URL + "/api/v1/devices/peer/brew-invite"
+	for _, path := range []string{get, h.URL + "/api/v1/brew-invites"} {
+		code, raw := request(t, c, "GET", path, csrf, nil, nil)
+		if code != 200 || !strings.Contains(string(raw), `"program_name":"Custom coffee"`) || !strings.Contains(string(raw), `"water_l":5.7`) || !strings.Contains(string(raw), `"time_seconds":420`) {
+			t.Fatalf("%d %s", code, raw)
+		}
+	}
+	answer := get + "/" + offer.ID + "/respond"
+	changed := 60
+	b.state.Invite.TimeSeconds = &changed
+	if code, _ := request(t, c, "POST", answer, csrf, map[string]bool{"accept": true}, nil); code != 409 || len(b.calls) != 1 {
+		t.Fatal("wrong source coffee settings accepted", code)
+	}
+	b.state.Invite.TimeSeconds = &secs
+	b.caps.GroupZProgramsV1 = false
+	if code, _ := request(t, c, "POST", answer, csrf, map[string]bool{"accept": true}, nil); code != 409 || len(b.calls) != 1 {
+		t.Fatal("missing native capability accepted", code)
+	}
+	b.caps.GroupZProgramsV1 = true
+	if code, raw := request(t, c, "POST", answer, csrf, map[string]bool{"accept": true}, nil); code != 200 || len(b.calls) != 2 || b.calls[1].Op != "accept" {
+		t.Fatalf("%d %s %+v", code, raw, b.calls)
+	}
+	if name := groupHistoryCommand(brewInvite{Action: "z_program", GroupZProgram: device.GroupZProgram{ProgramID: 23}}); name != "" {
+		t.Fatal("misidentified generic coffee history", name)
+	}
+}

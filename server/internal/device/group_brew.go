@@ -18,7 +18,44 @@ type GroupKitSelection struct {
 
 func (s GroupKitSelection) Present() bool { return s.SelectedABV != nil || s.SelectedIBU != nil }
 
+// Z owner-program IDs correspond to the normal stock group-session chooser.
+// Factory tests, the demonstration and Manual Brew are excluded. Rinse and
+// Clean use their existing cross-family actions.
+var groupZProgramNames = map[int]string{
+	2: "Drain", 3: "Rack beer", 4: "Circulate", 5: "Sous vide without keg",
+	6: "Sous vide with keg", 7: "PicoStill manual", 20: "Cold brew coffee",
+	21: "Hybrid coffee", 22: "Hot coffee", 23: "Custom coffee",
+	26: "PicoStill boil point", 27: "Chill",
+}
+
+type GroupZProgram struct {
+	ProgramID    int      `json:"program_id,omitempty"`
+	WaterL       *float64 `json:"water_l,omitempty"`
+	TemperatureF *float64 `json:"temperature_f,omitempty"`
+	Intensity    *int     `json:"intensity,omitempty"`
+	TimeSeconds  *int     `json:"time_seconds,omitempty"`
+}
+
+func (p GroupZProgram) Name() string { return groupZProgramNames[p.ProgramID] }
+
+func (p GroupZProgram) ValidFor(action string) bool {
+	if action != "z_program" {
+		return p == (GroupZProgram{})
+	}
+	if p.Name() == "" {
+		return false
+	}
+	if p.ProgramID < 20 || p.ProgramID > 23 {
+		return p.WaterL == nil && p.TemperatureF == nil && p.Intensity == nil && p.TimeSeconds == nil
+	}
+	return p.WaterL != nil && *p.WaterL >= 3.78541-1e-9 && *p.WaterL <= 15.898722+1e-9 &&
+		p.TemperatureF != nil && *p.TemperatureF >= 100 && *p.TemperatureF <= 200 &&
+		p.Intensity != nil && *p.Intensity >= 1 && *p.Intensity <= 15 &&
+		p.TimeSeconds != nil && *p.TimeSeconds >= 60 && *p.TimeSeconds <= 5400 && *p.TimeSeconds%60 == 0
+}
+
 type GroupSource struct {
+	GroupZProgram
 	GroupKitSelection
 	HistoryID uint64  `json:"history_id,omitempty"`
 	ID        string  `json:"id"`
@@ -28,6 +65,7 @@ type GroupSource struct {
 	Revision  uint32  `json:"revision,omitempty"`
 }
 type GroupOffer struct {
+	GroupZProgram
 	GroupKitSelection
 	TTLMS    uint32 `json:"ttl_ms,omitempty"`
 	Op       string `json:"op,omitempty"`
@@ -43,34 +81,43 @@ type GroupState struct {
 	Invite *GroupOffer  `json:"invite"`
 }
 
-// An explicit null or malformed index must never turn a one-brew setting
-// into a baseline brew. Older firmware omits the fields altogether.
+// A malformed extension must never become an invitation to run the defaults.
+// Older firmware omits the fields entirely.
 func (s *GroupState) UnmarshalJSON(data []byte) error {
-	type selection struct {
-		Action string          `json:"action"`
-		ABV    json.RawMessage `json:"selected_abv"`
-		IBU    json.RawMessage `json:"selected_ibu"`
-	}
-	var fields struct{ Source, Invite *selection }
-	if err := json.Unmarshal(data, &fields); err != nil {
+	type state GroupState
+	var value state
+	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	for _, frame := range []*selection{fields.Source, fields.Invite} {
-		if frame == nil {
-			continue
-		}
-		for _, value := range []json.RawMessage{frame.ABV, frame.IBU} {
-			if value == nil {
-				continue
-			}
-			var index *int
-			if frame.Action != "brew" || json.Unmarshal(value, &index) != nil || index == nil || *index < 0 || *index > 10 {
-				return errors.New("invalid group brew kit setting")
-			}
-		}
+	var raw struct{ Source, Invite map[string]json.RawMessage }
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
 	}
-	type state GroupState
-	return json.Unmarshal(data, (*state)(s))
+	check := func(fields map[string]json.RawMessage, action string, kit GroupKitSelection, program GroupZProgram) bool {
+		for _, key := range []string{"selected_abv", "selected_ibu", "program_id", "water_l", "temperature_f", "intensity", "time_seconds"} {
+			if string(fields[key]) == "null" {
+				return false
+			}
+		}
+		for _, index := range []*int{kit.SelectedABV, kit.SelectedIBU} {
+			if index != nil && (action != "brew" || *index < 0 || *index > 10) {
+				return false
+			}
+		}
+		if action == "z_program" && (fields["recipe_id"] != nil || fields["revision"] != nil) {
+			return false
+		}
+		_, hasID := fields["program_id"]
+		return hasID == (action == "z_program") && program.ValidFor(action)
+	}
+	if src := value.Source; src != nil && !check(raw.Source, src.Action, src.GroupKitSelection, src.GroupZProgram) {
+		return errors.New("invalid group source program settings")
+	}
+	if i := value.Invite; i != nil && !check(raw.Invite, i.Action, i.GroupKitSelection, i.GroupZProgram) {
+		return errors.New("invalid group invitation settings")
+	}
+	*s = GroupState(value)
+	return nil
 }
 
 type GroupBrewer interface {
@@ -88,6 +135,9 @@ func (p *pico) GroupState(ctx context.Context) (v GroupState, err error) {
 	return
 }
 func (p *pico) GroupRespond(ctx context.Context, v GroupOffer) error {
+	if !v.GroupZProgram.ValidFor(v.Action) || v.Action == "z_program" && (v.Op != "offer" || v.GroupKitSelection.Present() || v.RecipeID != "" || v.Revision != 0) {
+		return invalid("Invalid Z group program settings")
+	}
 	if err := p.lock(ctx); err != nil {
 		return err
 	}
