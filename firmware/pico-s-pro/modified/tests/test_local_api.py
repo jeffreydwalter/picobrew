@@ -76,6 +76,7 @@ class LocalApi(unittest.TestCase):
         current = request("GET", "/api/v1/recipes/house")[1]["revision"]
         self.assertEqual(request("POST", url, dict(command, if_revision=current))[0], 202)
         self.assertTrue(LIB.test_group_joined())
+        self.assertTrue(request("GET", "/api/v1/status")[1]["group_joined"])
         for extra in ({"command": "rinse", "if_revision": current}, {"command": "stop", "group_join": True}, {"command": "encoder", "delta": 1, "if_revision": current}):
             self.assertEqual(request("POST", url, extra)[0], 400)
         self.assertEqual(request("POST", url, {"command": "rinse", "group_join": True})[0], 409)

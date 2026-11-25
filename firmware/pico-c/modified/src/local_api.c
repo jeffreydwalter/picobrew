@@ -253,6 +253,7 @@ static int status(PicoLocalApi *api, Writer *w, bool public_view)
     format(w, ",\"uptime_ms\":%lu,\"ready\":%s,\"device_uid\":",
            (unsigned long)n->platform->millis(n->platform_context), ready ? "true" : "false");
     quote(w, a->state.device_uid);
+    if (a->state.group_joined) text(w, ",\"group_joined\":true");
     if (a->state.group_started_ms) {
         uint32_t age = n->platform->millis(n->platform_context) - a->state.group_started_ms;
         if (age >= 120000u) a->state.group_started_ms = 0;
