@@ -85,7 +85,7 @@ def main():
     symbols=subprocess.check_output([str(binary/'xtensa-lx106-elf-nm'),'-C','-n',str(elf)],text=True)
     functions='\n'.join(line for line in symbols.splitlines()if len(line.split())>=3 and line.split()[1]in('T','t','W','w'))
     required=[' call_user_start',' user_init',' setup',' loop','picoferm::standalone::Controller::poll()',
-              'picoferm::standalone::BoundedAcquisition::poll(', 'picobrew::standalone::Engine::poll()',
+              'picoferm::standalone::BoundedAcquisition::poll(', 'picobrew::standalone::Engine::poll(bool)',
               'picobrew::standalone::Provisioning::feed(', 'picobrew::standalone::esp8266::HttpListener::receive(',
               'picobrew::standalone::esp8266::SpiffsStorage::begin()', 'picobrew::standalone::esp8266::AsyncTelemetry::send(',
               'picoferm::standalone::LocalControls::poll_button()', 'picoferm::standalone::LocalControls::poll_leds(', 'pico_http_server_poll']

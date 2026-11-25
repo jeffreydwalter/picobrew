@@ -198,6 +198,7 @@ Result Engine::record_care(CareEvent change) {
     impl_->care_flags = flags; impl_->brews_since_clean = brews; impl_->care_generation = generation;
     return Result();
 }
+void Engine::poll() { poll(true); }
 void Engine::poll(bool network) {
     if (!impl_ || !impl_->initialized) return;
     if (impl_->refresh().ok()) impl_->history_poll();

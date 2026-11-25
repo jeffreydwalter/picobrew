@@ -28,7 +28,8 @@ public:
     // mutation/session creation fails explicitly and preserves existing files.
     Result begin();
     // The recorder continues to run when a battery device switches off its radio.
-    void poll(bool network = true);
+    void poll();
+    void poll(bool network);
     bool forwarding_enabled() const;
     bool forwarding_active() const;
     void schedule_forwarding_now();
