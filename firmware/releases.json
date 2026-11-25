@@ -53,10 +53,10 @@
       "model_family": "z-series",
       "firmware_version": "1.0.0",
       "kind": "reference",
-      "source_commit": "699fde0e4344eb2528bf6a9ca377a4c1955d56f7",
-      "archive_sha256": "abf18250e290c0c191a797c4410c27ac528585b2235397964b6395ace3bec6de",
-      "binary_sha256": "c6294d78c5357d42ffc65463ec35e1577597d0c6aaac47b208edbd129940215a",
-      "binary_bytes": 1699248,
+      "source_commit": "4983d280809fdb5ff8aa0569703afddfb01ca1b6",
+      "archive_sha256": "bbad1c60f8ef997b4e57506ec3946884d0f658229600fea566397922bdb1b36c",
+      "binary_sha256": "f338c59ab84298bf4498575409b5308bbb242e0acce377e18da16765eb0081bb",
+      "binary_bytes": 1703184,
       "ota_protocol": "esp32-factory-v1"
     },
     {
