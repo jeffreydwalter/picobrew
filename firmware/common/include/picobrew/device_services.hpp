@@ -104,6 +104,7 @@ struct Snapshot {
     char recipe_name[32] = {};
     char step_name[32] = {};
     bool filter_known = false, filter_inserted = false;
+    bool can_pause = false, can_resume = false;
     std::int32_t encoder_position = 0, encoder_min = 0, encoder_max = 0;
     Sensor sensors[SensorCapacity];
     std::size_t sensor_count = 0;

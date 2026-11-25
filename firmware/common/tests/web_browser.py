@@ -279,9 +279,15 @@ def main():
                         expect(pause_button).to_be_disabled()
                         expect(resume_button).to_be_disabled()
                         status['state']='Running'
+                        expect(pause_button).to_be_disabled()
+                        expect(resume_button).to_be_disabled()
+                        status.update(can_pause=True,can_resume=False)
                         expect(pause_button).to_be_enabled()
+                        expect(resume_button).to_be_disabled()
+                        status.update(can_pause=False,can_resume=True)
                         expect(resume_button).to_be_enabled()
-                        status['state']='Stopping'
+                        expect(pause_button).to_be_disabled()
+                        status.update(state='Stopping',can_pause=False,can_resume=False)
                         expect(pause_button).to_be_disabled()
                         expect(resume_button).to_be_disabled()
                     else:

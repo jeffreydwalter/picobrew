@@ -22,6 +22,8 @@ export interface DeviceStatus {
   ready: boolean
   device_uid: string
   stock_serial?: string
+  can_pause?: boolean
+  can_resume?: boolean
   busy: boolean
   stopped: boolean
   command: string

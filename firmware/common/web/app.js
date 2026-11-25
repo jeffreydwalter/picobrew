@@ -166,10 +166,9 @@ function updateControls() {
   $('clearStop').hidden = !stopped;
   $('clearStop').disabled = !ready || busy;
   $('sessionButtons').hidden=!allowedCommand('pause')&&!allowedCommand('resume');
-  const runningSession=state.info.model==='z-series' ? state.status?.state==='Running' : busy;
   for(const command of ['pause','resume']) {
     $(command+'Session').hidden=!allowedCommand(command);
-    $(command+'Session').disabled=!ready || !runningSession || stopped;
+    $(command+'Session').disabled=!ready || stopped || state.status?.['can_'+command]!==true;
   }
   $('recoveryPanel').hidden=!state.connected || !interrupted;
   $('resumeInterrupted').hidden=!allowedCommand('resume-interrupted') || recovery?.valid!==true;

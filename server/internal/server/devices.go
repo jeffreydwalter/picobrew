@@ -780,6 +780,15 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		switch in.Command.Command {
+		case "pause", "resume":
+			available := status.CanPause
+			if in.Command.Command == "resume" {
+				available = status.CanResume
+			}
+			if !status.Ready || status.Stopped || available == nil || !*available {
+				s.fail(w, 409, "session_control_unavailable", "Use the current options on the brewer's front panel")
+				return
+			}
 		case "restart", "restore-starter-recipes":
 			if status.Busy || status.Stopped || !status.Ready || (in.Command.Command == "restart" && status.Phase != 4) {
 				s.fail(w, 409, "machine_not_idle", "Return to the main menu and unlock the idle brewer first")

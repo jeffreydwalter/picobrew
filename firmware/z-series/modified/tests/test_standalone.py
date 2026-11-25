@@ -50,6 +50,7 @@ class StandaloneTests(unittest.TestCase):
     def test_corrupt_checkpoint_rejects_start_and_explicit_discard_repairs_both_banks(self):self.run_case('recovery-corrupt')
     def test_checkpoint_failure_cuts_outputs_and_stop_or_completion_clears_recovery(self):self.run_case('recovery-end')
     def test_sensor_short_reply_and_invalid_bytes_cut_outputs_before_return(self):self.run_case('sensor-fault')
+    def test_dedicated_controls_match_live_pause_and_interlocks(self):self.run_case('session-controls')
     def test_buffered_coffee_uses_native_history_without_beer_recovery(self):self.run_case('coffee-buffer')
     def test_recipe_menu_and_retired_manual_command(self):self.run_case('recipe-menu')
     def test_remote_recipe_start_wakes_native_standby(self):self.run_case('standby-start')

@@ -245,6 +245,8 @@ for (const width of [1280, 390]) {
         if (path === '/api/v1/devices') {
           if (device.online && device.status) device.last_seen = new Date().toISOString()
           result = [device]
+        } else if (path.endsWith('/brew-invite')) {
+          result = { invite: null }
         } else if (path.endsWith('/display')) {
           expect(brewing).toBe(true)
           result = {
@@ -415,7 +417,15 @@ for (const width of [1280, 390]) {
         await expect(page.getByRole('button', { name: 'Resume session' })).toBeDisabled()
         status.state = 'Running'
         await page.reload()
+        await expect(page.getByRole('button', { name: 'Pause session' })).toBeDisabled()
+        await expect(page.getByRole('button', { name: 'Resume session' })).toBeDisabled()
+        Object.assign(status, { can_pause: true, can_resume: false })
+        await page.reload()
         await expect(page.getByRole('button', { name: 'Pause session' })).toBeEnabled()
+        await expect(page.getByRole('button', { name: 'Resume session' })).toBeDisabled()
+        Object.assign(status, { can_pause: false, can_resume: true })
+        await page.reload()
+        await expect(page.getByRole('button', { name: 'Pause session' })).toBeDisabled()
         await expect(page.getByRole('button', { name: 'Resume session' })).toBeEnabled()
         await expect(page.getByRole('button', { name: 'Open program' })).toHaveCount(0)
         const activeLock = page.getByRole('button', { name: 'Stop and lock outputs', exact: true })

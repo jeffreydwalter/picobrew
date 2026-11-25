@@ -93,6 +93,8 @@ private:
     bool queue_program(std::uint32_t);
     bool wake_standby();
     bool clear_stop();
+    bool can_control_session(oem::RuntimeCommandId) const;
+    oem::RuntimeCommandId session_input_ = oem::RuntimeCommandId::None;
     bool show_settings();
     bool show_about();
     bool show_pairing();

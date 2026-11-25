@@ -24,6 +24,8 @@ type Maintenance struct {
 	Due       []string `json:"due"`
 }
 type Status struct {
+	CanPause            *bool   `json:"can_pause,omitempty"`
+	CanResume           *bool   `json:"can_resume,omitempty"`
 	GroupJoined         bool    `json:"group_joined,omitempty"`
 	GroupRinseStartedMS *uint32 `json:"group_rinse_started_ms,omitempty"`
 	GroupAgeMS          *uint32 `json:"group_age_ms,omitempty"`
