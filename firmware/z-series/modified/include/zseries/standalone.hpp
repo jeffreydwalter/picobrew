@@ -52,7 +52,7 @@ public:
     bool service_effect(const oem::CoreAction&, std::uint32_t&);
 private:
     bool wireless_ = false;
-    enum class Page { Home, Recipes, Original, Scanning, Networks, Pairing, Group };
+    enum class Page { Home, Recipes, Original, Scanning, Networks, Pairing, Group, KitStrength };
     oem::CoreApplication& core_;
     oem::HeadApplication& head_;
     Ports ports_;
@@ -87,6 +87,11 @@ private:
     api::Result display(api::Display&);
     api::Result read_display(std::uint32_t, std::size_t, std::uint8_t*, std::size_t);
     bool handle_head(oem::HeadEventKind);
+    api::Result select_saved_recipe(std::size_t index);
+    std::size_t kit_index_ = 0;
+    std::uint32_t kit_revision_ = 0, selected_revision_ = 0;
+    static bool kit_adjustable(const api::Recipe&,bool abv);
+
     bool handle_ui(const oem::HeadUiAction&);
     bool start_effect(const oem::CoreAction&, std::uint32_t&, std::uint32_t program_id);
     bool offline_policy(std::uint32_t);
@@ -119,6 +124,7 @@ private:
         char action[16] = {};
         char recipe_id[21] = {};
         std::uint32_t revision = 0;
+        std::int8_t selected_abv = -1, selected_ibu = -1;
     };
     struct GroupInvitation {
         char id[17] = {}, from[21] = {};
@@ -135,6 +141,7 @@ private:
     std::uint32_t joined_program_ = 0;
     bool invite_filter_missing_ = false;
     char invite_name_[32] = {};
+    static api::Result apply_group_strength(const GroupProgram&,api::Recipe&);
     bool group_screen() const;
     bool group_ready() const;
     bool show_invite();

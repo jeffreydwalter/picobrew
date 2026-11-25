@@ -307,7 +307,7 @@ api::Result Adapter::load_recipe(const api::Recipe& recipe,bool start){
     if(recovery_.present()&&!recovery_active_)return {409,"recovery_pending","Resume or discard the interrupted brew first"};
     if(build(core_.program,recipe,core_.auxiliary.pressure_pa,core_.temperatures.estimated_boil_celsius)!=ProgramBuildResult::Ok)
         return {400,"invalid_recipe","The current native recipe environment rejected this recipe"};
-    selected_recipe_=recipe;owned_recipe_=true;page_=Page::Original;
+    selected_recipe_=recipe;selected_revision_=engine_->recipe_revision();owned_recipe_=true;page_=Page::Original;
     if(start){if(!queue_program(static_cast<std::uint32_t>(ZProgramId::Buffered)))return busy();}
     else core_.publication.ready();
     return {202};
@@ -890,6 +890,38 @@ bool Adapter::show_recipes(){
     HeadUiEvent back;back.command=static_cast<UiCommand>(LocalHome);screen.menu_data.append(back,text("Back","Atras","Retour"));
     page_=Page::Recipes;return screen.menu_screen(count?text("Local recipes","Recetas locales","Recettes locales"):text("No local recipes","Sin recetas","Aucune recette"))==HeadScreenResult::Ok;
 }
+bool Adapter::kit_adjustable(const api::Recipe& recipe,bool abv){
+    const auto target=abv?recipe.pak.abv:recipe.pak.ibu;
+    if(!recipe.pak.recipe_id||target<1||target>9)return false;
+    for(unsigned i=0;i<recipe.step_count;++i){
+        const auto& step=recipe.steps[i];
+        if(!step.pak.action&&step.pak.minimum>=0&&step.pak.maximum>=0&&
+           (abv?step.location==2:step.location>=3&&step.location<=6))return true;
+    }
+    return false;
+}
+api::Result Adapter::select_saved_recipe(std::size_t index){
+    api::Recipe recipe;
+    const auto read=engine_->recipe_get(recipe_ids_[index].data(),recipe);
+    if(!read.ok())return read;
+    const bool mash=kit_adjustable(recipe,true),hops=kit_adjustable(recipe,false);
+    if(!mash&&!hops)return load_recipe(recipe,false);
+    // Use the recovered strength and bitterness controls; the program stays on
+    // the brewer. Commit the operator's choices only to the new brew.
+    auto& reference=head_.ui.state.recipe;
+    reference=RecipeReference{};reference.id=recipe.pak.recipe_id;reference.kind=RecipeKind::PicoPak;
+    std::strcpy(reference.name.data(),recipe.name);reference.name_length=std::strlen(recipe.name);
+    reference.parameters.abv=mash?recipe.pak.abv:-1;
+    reference.parameters.ibu=hops?recipe.pak.ibu:-1;
+    auto& numeric=head_.numeric.state;
+    numeric.abv_pending=false;numeric.ibu_pending=false;numeric.parameters=ProgramParameters{};
+    numeric.parameters.abv=mash?recipe.pak.selected_abv:-1;
+    numeric.parameters.ibu=hops?recipe.pak.selected_ibu:-1;
+    kit_index_=index;kit_revision_=engine_->recipe_revision();
+    owned_recipe_=false;page_=Page::KitStrength;
+    if(!head_.ui_action(HeadUiAction(HeadUiEffect::RecipeStrengthScreen)))return unavailable();
+    return {};
+}
 bool Adapter::handle_head(HeadEventKind kind){
     if(ports_.wired_address)head_.observed.ethernet_address=ports_.wired_address(ports_.context);
     // Background station scans are independent from the explicit picker.
@@ -898,6 +930,24 @@ bool Adapter::handle_head(HeadEventKind kind){
         CoreWifiEvent event;head_.wifi_events.take(event);return true;
     }
     if(kind==HeadEventKind::UiCommand&&head_.ui_events.pending){const auto event=head_.ui_events.value;const auto id=static_cast<std::uint32_t>(event.command);
+        if(event.command==UiCommand::PicoPakRecipeLoadTweaked||(page_==Page::KitStrength&&event.command==UiCommand::Exit)){
+            HeadUiEvent consumed;head_.ui_events.take(consumed);
+            if(page_!=Page::KitStrength)return true;
+            if(!head_.services.alarm||!head_.services.alarm(head_.services.context,false))return false;
+            head_.ui.transient.active=false;head_.ui.transient.deadline=0;
+            if(event.command==UiCommand::Exit)return show_recipes();
+            api::Recipe recipe;const auto& ref=head_.ui.state.recipe;
+            if(kit_revision_!=engine_->recipe_revision()||!engine_->recipe_get(recipe_ids_[kit_index_].data(),recipe).ok()||
+               event.recipe.kind!=RecipeKind::PicoPak||event.recipe.id!=recipe.pak.recipe_id)return show_recipes();
+            auto apply=[](std::int8_t& saved,int target,int selected){
+                if(target>=0&&(saved>=0||selected!=target))saved=static_cast<std::int8_t>(selected);
+            };
+            apply(recipe.pak.selected_abv,ref.parameters.abv,head_.numeric.state.parameters.abv);
+            apply(recipe.pak.selected_ibu,ref.parameters.ibu,head_.numeric.state.parameters.ibu);
+            const auto result=load_recipe(recipe,false);
+            if(result.ok())return true;
+            engine_->event("recipe-error",result.error);return show_recipes();
+        }
         if(id==GroupDecline||id==GroupAccept){
             HeadUiEvent consumed;head_.ui_events.take(consumed);
             if(event.index==invite_ticket_&&group_screen())
@@ -925,8 +975,7 @@ bool Adapter::handle_head(HeadEventKind kind){
                 const auto result=id==LocalResume?resume_interrupted(true):discard_interrupted();
                 if(!result.ok()){engine_->event("recovery-error",result.error);return show_home();}return true;}
             if(event.index>=recipe_ids_.size()||!engine_)return false;
-            api::Recipe recipe;auto result=engine_->recipe_get(recipe_ids_[event.index].data(),recipe);
-            if(result.ok())result=load_recipe(recipe,false);
+            const auto result=select_saved_recipe(event.index);
             if(!result.ok()){engine_->event("recipe-error",result.error?result.error:"load_failed");return show_recipes();}return true;
         }
         if(event.command==UiCommand::ConfigureEthernet||event.command==UiCommand::EthernetConnect||
@@ -936,6 +985,8 @@ bool Adapter::handle_head(HeadEventKind kind){
             head_.ui.transient.active=false;head_.ui.transient.deadline=0;
             return event.command==UiCommand::ConfigureEthernet?show_ethernet():select_interface(event.command==UiCommand::EthernetConnect);
         }
+        if(page_==Page::KitStrength&&(event.command==UiCommand::PicoPakRecipeTweakAbv||event.command==UiCommand::PicoPakRecipeTweakIbu))
+            return original_head_.handle_event(original_head_.context,kind);
         if(event.command!=UiCommand::WiFiSsidGetKey)page_=Page::Original;
         if(event.command==UiCommand::Settings||event.command==UiCommand::ConfigureAzure||event.command==UiCommand::SetAzureEnabled||event.command==UiCommand::SetAzureDisabled){
             HeadUiEvent consumed;head_.ui_events.take(consumed);
