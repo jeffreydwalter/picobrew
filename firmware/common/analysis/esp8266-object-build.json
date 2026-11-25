@@ -18,21 +18,21 @@
   "sources": [
     {
       "source": "src/api.cpp",
-      "source_sha256": "4b0bdd738244094bf08f4ae273d89a6fa6aab545845d1ac20f4ce56267879a56",
-      "object_sha256": "4b577d707a13ede7881bd4a2ee7b94246551ea86d40d840f83ec99036742b257",
-      "object_bytes": 72552
+      "source_sha256": "802ee7898f79e0e8c6deaeb32ae73c4d715f3123fded582310cef93980a70c56",
+      "object_sha256": "550aba05276936c835fbf9b7e5d34179bacd9f0cf15a7c4ccc006f8793bced8c",
+      "object_bytes": 75392
     },
     {
       "source": "src/engine.cpp",
-      "source_sha256": "1602b69d95f48b5efdaf680219cbaea4b9f4d3e4b3f26ace7aa951afe68d2a13",
-      "object_sha256": "3d15be21f5eb46a4b0dee2ee495f7cd96b99190a038ce88fb25af5dbae3337e1",
-      "object_bytes": 59388
+      "source_sha256": "166a25e70ffc9b42bba9b99ac610fcc534b03e0e3cb3bd652ba6cd64285ae526",
+      "object_sha256": "849e051a3643a3d865bf9b3c34eb130ebe163fbb1c087925799d9ae5911b8a03",
+      "object_bytes": 61876
     },
     {
       "source": "src/history.cpp",
       "source_sha256": "b66d329d4a860a3e0dc5f44e3a9eef8e76795f360fefbcdb31eaf091ce308d71",
-      "object_sha256": "598badae83721c4cee5d5914221c22ed36db0659a3066d9a79b58ddaccba9300",
-      "object_bytes": 30236
+      "object_sha256": "c8e7717eb14e8ba30d4a1c296d9073f7727b7b5723ca32a5f9241c608dbed397",
+      "object_bytes": 30208
     },
     {
       "source": "src/history_records.cpp",
@@ -49,14 +49,14 @@
     {
       "source": "src/telemetry.cpp",
       "source_sha256": "331a628f461d0060df520e29f23079696ed3a09402afb9c4c68a107d4224fa70",
-      "object_sha256": "bf580900b615e97211ddfe80008e5bff589be9579b075e927ea9e1e623a544cb",
-      "object_bytes": 26600
+      "object_sha256": "4e7fe6fd437c7957cf047cbfffe7b51ea8186f70b4aa194969b41d0a26c50ca5",
+      "object_bytes": 26604
     },
     {
       "source": "src/values.cpp",
-      "source_sha256": "79ede747e2e5d83240bd9a5757155933f6a30905dc5e14da0651488cbc5cc02e",
-      "object_sha256": "147e9b59d91bb47d72fbb853c4162ca039269ad45a4dc7fab8e907f7ef60fb30",
-      "object_bytes": 54308
+      "source_sha256": "640a186e1055f2bf68b5aa31534b77e5ee663c3f77334692ddd4d14dba9412d3",
+      "object_sha256": "905fabf3a04e68e98b256331d38c5ec589eedd122976c0ecc36ce9175bd21992",
+      "object_bytes": 64292
     },
     {
       "source": "src/http_server.c",
@@ -66,13 +66,13 @@
     }
   ],
   "headers": {
-    "include/picobrew/device_services.hpp": "49998af805dd5e978b02a4a7e3deae26f10a53900d69e65ab07d9eee7ea3bc27",
-    "include/picobrew/standalone_engine.hpp": "9bccc549eac16b45414842bc117d872cfea59c3386ecc5c5d3aed472d49b628d",
+    "include/picobrew/device_services.hpp": "45553fae4ff48bcc8ea969804c1b51f3d771ff5ad686915ca101aec7ff4f3d01",
+    "include/picobrew/standalone_engine.hpp": "df62856674adb8e3b725403f0db25c91dc89ec0dbc865e54a55b22d0e0b0103b",
     "include/picobrew/http_server.h": "0a301db4544a62250f9ba64e6e1947f8aaa3ed16be1fcd7c14322b380f03cb38",
-    "src/engine_internal.hpp": "8efefd83ab0a22e89588abb699d1e33b0132a2ac093470a371820b6e776768b9",
+    "src/engine_internal.hpp": "2d3f37aebc1ba249c4d986a2e1b484b1ec35f2efbce690618d612bb161eb16b2",
     "src/json.hpp": "5ee0a5b00b92a6f5c3070fc0b29114fb707cc686380f0ab6abf28589c65c6654",
     "src/records.hpp": "19dc25a561479648e6bae02d8157f6e6d47678acd313d4a37d9c7350ecd5c6bd",
-    "src/recipe_record.hpp": "328420cc4f5b02e782bcd6953bc1ade4cf9dbc17afc161b1ed5d478d14e0ff18"
+    "src/recipe_record.hpp": "56f1184b773dfe54bfa0f28fab0aaa343579ce2c002ec08bade0a6c062b4264d"
   },
   "build_script_sha256": "f315133c1c60ecfafb6c5f8f9bf808d6523e986c3a555cf38b304aa66dcc7226",
   "dependency_pin_sha256": "a7aa18e676018bb342605d2a952594058635004c15f1772884c715918d2d2592",
@@ -81,5 +81,5 @@
   "scope": "The portable engine and unchanged S/Pro HTTP transport compile with the pinned target compiler. SDK/platform drivers, assets and complete application linkage are recorded by each machine profile.",
   "compiler": "xtensa-lx106-elf-g++ (crosstool-NG 1.20.0) 4.8.2",
   "compiler_sha256": "9090ec97ab7bc6d9cd3a1cb47b5899e05ecce8f83a7300efb868e491367bb5ec",
-  "archive_sha256": "d6e880c2d82644f29c27dc26a13a90dfa0a77a96aaf27633d3fbcbf21a5a46df"
+  "archive_sha256": "d63389ac643fb75e9b3ece57260a25c7d0bb2723311e4531690199693b957f9d"
 }

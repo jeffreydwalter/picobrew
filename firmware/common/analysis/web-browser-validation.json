@@ -3,7 +3,7 @@
     {
       "model": "picoferm",
       "viewport": 1280,
-      "requests": 19,
+      "requests": 20,
       "commands": [
         {
           "command": "calibrate",
@@ -35,7 +35,7 @@
     {
       "model": "picostill",
       "viewport": 1280,
-      "requests": 21,
+      "requests": 22,
       "commands": [
         {
           "command": "set-pump",
@@ -59,7 +59,7 @@
     {
       "model": "picostill",
       "viewport": 390,
-      "requests": 22,
+      "requests": 23,
       "commands": [
         {
           "command": "set-pump",
@@ -83,7 +83,7 @@
     {
       "model": "z-series",
       "viewport": 1280,
-      "requests": 75,
+      "requests": 104,
       "commands": [
         {
           "command": "resume-interrupted",
@@ -98,7 +98,7 @@
     {
       "model": "z-series",
       "viewport": 390,
-      "requests": 74,
+      "requests": 102,
       "commands": [
         {
           "command": "resume-interrupted",
@@ -118,21 +118,21 @@
     "tests/test_web.py": "1176e70d6e055655e952230acb48066e4e67a3f337ad719f048260529cbb05ba",
     "tests/web.test.cjs": "94a6f45aa30b6b10f1e54b7702c42eda830ee3d1bd4aeec88e4bfd0de93e94cb",
     "tests/web_assets.cpp": "1052ca438b07cfea385c64034a9aaf59205185b2f55272846c87a430d487aaa3",
-    "tests/web_browser.py": "069b527f45420a6342730d5319e5caab0e566ccdec44866b4b534a8f57a34e09",
-    "web/api-explorer.js": "1284b4fd8a26693769e28af5936d4ad91e946736915ca15aa2ea631dcc26870e",
-    "web/app.js": "04629d581bbcd0a442c45654a8609e870dda7a3caec341b716a7607d8d507e36",
+    "tests/web_browser.py": "ebd81961ad0f2c9a8b2c304ea88dad6fd94a8f55ea8fa1aaf32e747eb2bc9f0b",
+    "web/api-explorer.js": "88796684ca9ed279be086aa9bf9b56e0085e23bac20fbd83a9b08fefe7a505da",
+    "web/app.js": "d110fdbb428177a1bd765cfd36a22997fc80176130a5d816174ad1011793bb86",
     "web/device.js": "a633fdf46e806c5fb8d4b529d1e025273b650e0da1b047fc092375c4cc4043d1",
-    "web/history.js": "e085af47e049bbbc52112906a6c1501e512ebaafc60e92e0229384b5d72adeec",
-    "web/index.html": "bd7eec8908cd67397f1f54a2bca751b6ed6d50bc7e769bf05059260db8a63eb8",
+    "web/history.js": "0a0c1473e58d64e71f796037ca4ce0135d1e69f1bcabc255c66f83cae86d29a3",
+    "web/index.html": "de3f3dafcc3d58f5e5b160dcc737dbe94c01bc3ccb781bdd49f60cbc2ecb2287",
     "web/style.css": "5fa21cc1293a37a1530024da8d49bc6683000c45e15d16cad456800fff628af9",
     "web/favicon.ico": "63cb852c23c1b1bda83e133dcb7e070aabb3e594531196ddeab8e23d32baa4ea"
   },
-  "browser": "Google Chrome for Testing 159.0.8154.6 (Headless Shell)",
+  "browser": "Google Chrome 158.0.8127.37",
   "native_asset_stream": "Every compressed byte for all seven descriptors read through bounded callbacks and matched to deterministic gzip assets",
   "protocol_cases": 8,
   "recovery_checks": "Both viewport sizes: preparation checkpoint visibility, no automatic command, explicit resume cancellation/confirmation, invalid available:false checkpoint discard, new-program inhibition, Stop while not ready and no recovery-panel overflow.",
   "history_cadence_export": "Each of six browser cases downloads selected older session1 at60000ms while the newest inventory session2 is300000ms; JSON retains the older interval and named sensor schema.",
   "maintenance_and_controls": "Each model displays its own care guidance and manual. PicoStill fan 2 blocks disabling or speeds under 61% while pumping. PicoFerm displays its configured sampling interval. Z program names and identifiers are checked before saving.",
   "z_controls": "Both viewport sizes check that native Starting and Stopping disable pause/resume, Running enables them, and a new exported Program Maker file records an explicitly selected unit. Resume also requires the brewer to report ready with the filter inserted.",
-  "z_recipe_import": "Desktop and mobile import both the native recipe and the API envelope, preserve a zero drain, discard the source brewer revision when creating a copy, and reject ambiguous or invalid files without altering the open recipe."
+  "z_recipe_import": "Desktop and mobile import both the native recipe and the API envelope, preserve a zero drain, discard the source brewer revision when creating a copy, and reject ambiguous or invalid files without altering the open recipe. Desktop and mobile also verify original PicoPak settings, rejection of conflicting recipe formats, explicit conversion for standard editing and the one-brew group invitation controls."
 }

@@ -16,21 +16,21 @@
   "sources": [
     {
       "source": "src/api.cpp",
-      "source_sha256": "4b0bdd738244094bf08f4ae273d89a6fa6aab545845d1ac20f4ce56267879a56",
-      "object_sha256": "b0b5aa682fef66a7484c8c5da5670abd49b149eb626166f9304864709365f494",
-      "object_bytes": 74264
+      "source_sha256": "802ee7898f79e0e8c6deaeb32ae73c4d715f3123fded582310cef93980a70c56",
+      "object_sha256": "f88a99407ab84f46706f827acdbc6584839034d803733f290c8181a5e9796b6a",
+      "object_bytes": 77080
     },
     {
       "source": "src/engine.cpp",
-      "source_sha256": "1602b69d95f48b5efdaf680219cbaea4b9f4d3e4b3f26ace7aa951afe68d2a13",
-      "object_sha256": "9fc641e8a9e23463e0774e974e8ca93145c180370d463b81938a2e6aa01693d5",
-      "object_bytes": 60332
+      "source_sha256": "166a25e70ffc9b42bba9b99ac610fcc534b03e0e3cb3bd652ba6cd64285ae526",
+      "object_sha256": "71781b9d00af0f0282e043baecd2114fca48e0b21d2f72fdabdd68079a059f88",
+      "object_bytes": 62664
     },
     {
       "source": "src/history.cpp",
       "source_sha256": "b66d329d4a860a3e0dc5f44e3a9eef8e76795f360fefbcdb31eaf091ce308d71",
-      "object_sha256": "6487ff6b0356e6304b898b6c5d27341c879a78c86b2aea69388e201db7834b3d",
-      "object_bytes": 30588
+      "object_sha256": "e049750fb37727a1c11139905a38eaf21a7998eb4523d577be5345e64ec386c9",
+      "object_bytes": 30592
     },
     {
       "source": "src/history_records.cpp",
@@ -47,14 +47,14 @@
     {
       "source": "src/telemetry.cpp",
       "source_sha256": "331a628f461d0060df520e29f23079696ed3a09402afb9c4c68a107d4224fa70",
-      "object_sha256": "c472a331b8943ca058ae726d63cc8e8abba8a178f8e09a0c0be451d6af7382b0",
-      "object_bytes": 26116
+      "object_sha256": "795f479c74f2aa465b778195abe14304e682ef9c075412d06a92b25ca6d81da7",
+      "object_bytes": 26124
     },
     {
       "source": "src/values.cpp",
-      "source_sha256": "79ede747e2e5d83240bd9a5757155933f6a30905dc5e14da0651488cbc5cc02e",
-      "object_sha256": "1f6e8ea34eabfda587e79f58b541b38cf042247a91da063b2eb993e3d23cd04b",
-      "object_bytes": 53828
+      "source_sha256": "640a186e1055f2bf68b5aa31534b77e5ee663c3f77334692ddd4d14dba9412d3",
+      "object_sha256": "7cb548bbca214b1c43089306a7eb4845c5fbdc59230cd7247e46128ca333b9ae",
+      "object_bytes": 63496
     },
     {
       "source": "src/http_server.c",
@@ -64,13 +64,13 @@
     }
   ],
   "headers": {
-    "include/picobrew/device_services.hpp": "49998af805dd5e978b02a4a7e3deae26f10a53900d69e65ab07d9eee7ea3bc27",
-    "include/picobrew/standalone_engine.hpp": "9bccc549eac16b45414842bc117d872cfea59c3386ecc5c5d3aed472d49b628d",
+    "include/picobrew/device_services.hpp": "45553fae4ff48bcc8ea969804c1b51f3d771ff5ad686915ca101aec7ff4f3d01",
+    "include/picobrew/standalone_engine.hpp": "df62856674adb8e3b725403f0db25c91dc89ec0dbc865e54a55b22d0e0b0103b",
     "include/picobrew/http_server.h": "0a301db4544a62250f9ba64e6e1947f8aaa3ed16be1fcd7c14322b380f03cb38",
-    "src/engine_internal.hpp": "8efefd83ab0a22e89588abb699d1e33b0132a2ac093470a371820b6e776768b9",
+    "src/engine_internal.hpp": "2d3f37aebc1ba249c4d986a2e1b484b1ec35f2efbce690618d612bb161eb16b2",
     "src/json.hpp": "5ee0a5b00b92a6f5c3070fc0b29114fb707cc686380f0ab6abf28589c65c6654",
     "src/records.hpp": "19dc25a561479648e6bae02d8157f6e6d47678acd313d4a37d9c7350ecd5c6bd",
-    "src/recipe_record.hpp": "328420cc4f5b02e782bcd6953bc1ade4cf9dbc17afc161b1ed5d478d14e0ff18"
+    "src/recipe_record.hpp": "56f1184b773dfe54bfa0f28fab0aaa343579ce2c002ec08bade0a6c062b4264d"
   },
   "build_script_sha256": "f315133c1c60ecfafb6c5f8f9bf808d6523e986c3a555cf38b304aa66dcc7226",
   "dependency_pin_sha256": "7921d28b17b9a032d8aaa5b10cd461ba8b745ca1650cb8076dd1c4bcba296881",
@@ -79,5 +79,5 @@
   "scope": "The portable engine and unchanged S/Pro HTTP transport compile with the pinned target compiler. SDK/platform drivers, assets and complete application linkage are recorded by each machine profile.",
   "compiler": "xtensa-esp32-elf-g++ (crosstool-NG crosstool-ng-1.22.0-80-g6c4433a) 5.2.0",
   "compiler_sha256": "bb03e959cca43b70fd7622c019342c05b619cdba1aed397c2117cfba80db058a",
-  "archive_sha256": "094975c610443a5f246ff3594fc41f65b6d435972ba391529dae630cfb1e8b42"
+  "archive_sha256": "f8affd79310b3407815c4f997caf3cc8e8a193f9fcf29b0161ad2404d92d6adf"
 }

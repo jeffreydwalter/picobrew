@@ -64,10 +64,10 @@
       "model_family": "picostill",
       "firmware_version": "1.0.0",
       "kind": "reference",
-      "source_commit": "f36a8a91d0aa430cfa116e0fe8451f14fbcd90ef",
-      "archive_sha256": "72763294a4519947c0f4ca18bbcae708ca8968da7019eb7c26fe658864bcee97",
-      "binary_sha256": "6423d7b35011434c9e0415122e6cc70062147709a669247b766f4f7b4d5c7c54",
-      "binary_bytes": 823680,
+      "source_commit": "ebedeb2f891a180c3ed5fec2451e2a7c72026bd5",
+      "archive_sha256": "19cdce85563823db30c9f695749b9ace162964057434655fe9416cd071574a0a",
+      "binary_sha256": "40924632ce750f801dd234c77e3b499980a871471db3490f20948bf696df9396",
+      "binary_bytes": 835648,
       "ota_protocol": "esp32-factory-v1"
     },
     {
@@ -75,10 +75,10 @@
       "model_family": "picoferm",
       "firmware_version": "1.0.0",
       "kind": "picoferm-ab",
-      "source_commit": "cb6ed40991bd29747aec0d97826a7239da4ea07c",
-      "archive_sha256": "d167f9471ab0635efa3030014b6f31af97c73865ab10540cb7fb3c6dfe984934",
-      "binary_sha256": "08720ca7f1c6ada02fa08613a28ba7308d3cfacaaaa2994e3da1e77d706a99ff",
-      "binary_bytes": 403536,
+      "source_commit": "ebedeb2f891a180c3ed5fec2451e2a7c72026bd5",
+      "archive_sha256": "9998732a275c306cb8e06073ca8c742fb7f6cc2868fc1d6de726ad2c7861f822",
+      "binary_sha256": "d301bf6d8e1caab158adedce2ec6fddd2e0c152ed5639f83a063422ec4e767b5",
+      "binary_bytes": 400080,
       "ota_protocol": "esp8266-ab-v1"
     }
   ]
