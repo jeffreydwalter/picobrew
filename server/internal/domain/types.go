@@ -102,6 +102,7 @@ type FieldMetadata struct {
 	Kind  string `json:"kind"`
 }
 type Capabilities struct {
+	GroupBrewingV1          bool                     `json:"group_brewing_v1,omitempty"`
 	ReleaseChannel          string                   `json:"release_channel,omitempty"`
 	EventsPersistent        *bool                    `json:"events_persistent,omitempty"`
 	SystemRestart           bool                     `json:"system_restart,omitempty"`
@@ -398,6 +399,11 @@ type Conditioning struct {
 	Stages         []ConditioningStage `json:"stages"`
 }
 type Brew struct {
+	GroupID             string `json:"group_id,omitempty"`
+	GroupName           string `json:"group_name,omitempty"`
+	GroupSessionID      string `json:"group_session_id,omitempty"`
+	GroupSourceDeviceID string `json:"group_source_device_id,omitempty"`
+
 	PicoFermID            string                   `json:"picoferm_id,omitempty"`
 	PicoFermName          string                   `json:"picoferm_name,omitempty"`
 	PicoFermRecordingID   string                   `json:"picoferm_recording_id,omitempty"`

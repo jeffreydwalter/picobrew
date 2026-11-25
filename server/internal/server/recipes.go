@@ -299,7 +299,7 @@ func (s *Server) deploy(w http.ResponseWriter, r *http.Request) {
 		s.deviceError(w, e)
 		return
 	}
-	deployment := map[string]any{"device_id": view.ID, "recipe_id": v.ID, "revision": v.Revision, "native": native, "at": time.Now().UTC(), "state": "prepared"}
+	deployment := map[string]any{"device_id": view.ID, "device_uid": status.DeviceUID, "recipe_id": v.ID, "revision": v.Revision, "native": native, "at": time.Now().UTC(), "state": "prepared"}
 	var found bool
 	for _, previous := range existing {
 		if previous.ID != native.ID {
