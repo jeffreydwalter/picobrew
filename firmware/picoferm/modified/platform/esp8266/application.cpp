@@ -45,15 +45,15 @@ public:
     void text(const char* scope,const char* key,const char* value) override{
         // Only recovered LED/button lifecycle messages use this port. Physical
         // provisioning responses have their own input-free message boundary.
-        char line[128];::snprintf(line,sizeof(line),"%.12s %.24s: %.72s",scope?scope:"",key?key:"",value?value:"");Serial.println(line);
+        char line[128];::snprintf_P(line,sizeof(line),PSTR("%.12s %.24s: %.72s"),scope?scope:"",key?key:"",value?value:"");Serial.println(line);
     }
-    void integer(const char* scope,const char* key,std::uint32_t value) override{char bytes[16];::snprintf(bytes,sizeof(bytes),"%lu",static_cast<unsigned long>(value));text(scope,key,bytes);}
+    void integer(const char* scope,const char* key,std::uint32_t value) override{char bytes[16];::snprintf_P(bytes,sizeof(bytes),PSTR("%lu"),static_cast<unsigned long>(value));text(scope,key,bytes);}
     void number(const char* scope,const char* key,float value) override{char bytes[48];::dtostrf(value,0,3,bytes);text(scope,key,bytes);}
     void boolean(const char* scope,const char* key,bool value) override{text(scope,key,value?"true":"false");}
     void digital_write(unsigned pin,bool value) override{::digitalWrite(pin,value?HIGH:LOW);}
     std::uint32_t digital_read(unsigned pin) override{return ::digitalRead(pin);}
     void persist(const std::uint8_t*,std::size_t) override{
-        forbidden_write=true;Serial.println("ERROR: OEM EEPROM writes are unavailable in standalone mode");
+        forbidden_write=true;Serial.println(F("ERROR: OEM EEPROM writes are unavailable in standalone mode"));
     }
 };
 class CheckedSensors {
@@ -86,19 +86,19 @@ public:
         provision_(storage_.binding(),this,[](void* p){auto& self=*static_cast<Application*>(p);return !self.setup_complete_||self.controller_.idle();}),
         controls_(diagnostics_,hardware_,*this,*this),http_(){controller_.bind(engine_);}
     void begin(){
-        Serial.begin(115200);Serial.println("PicoFerm standalone " PICOFERM_VERSION);
+        Serial.begin(115200);Serial.println(F("PicoFerm standalone " PICOFERM_VERSION));
         // Read the packed OEM record without sanitize(), put(), commit() or
         // boot-time migration. Modified records live only in /pb/ SPIFFS.
         oem::PersistentData original;original.bytes.fill(0xff);EEPROM.begin(oem::PersistentData::size);
         if(EEPROM.length()>=oem::PersistentData::size)for(std::size_t i=0;i<original.bytes.size();++i)original.bytes[i]=EEPROM.read(i);
         controls_.initialize(original.bytes[0x63]);
-        const bool mounted=storage_.begin();if(!mounted)Serial.println("ERROR: standalone filesystem is not mounted; no formatting was attempted");
+        const bool mounted=storage_.begin();if(!mounted)Serial.println(F("ERROR: standalone filesystem is not mounted; no formatting was attempted"));
         report(provision_.load());
         if(original.word(original.cookie_position)==0xdeadbeefu&&original.word(original.version_position)==1){
             api::NetworkCredentials imported;std::memcpy(imported.ssid,original.bytes.data(),32);std::memcpy(imported.password,original.bytes.data()+32,64);
             if(imported.ssid[0]){const auto result=provision_.import_network(imported);if(result.status!=409)report(result);}
         }
-        std::uint8_t mac[6];WiFi.macAddress(mac);char uid[33];::snprintf(uid,sizeof(uid),"%02x%02x%02x%02x%02x%02x",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+        std::uint8_t mac[6];WiFi.macAddress(mac);char uid[33];::snprintf_P(uid,sizeof(uid),PSTR("%02x%02x%02x%02x%02x%02x"),mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
         controller_.identity(uid);const auto controller_ready=controller_.begin(original.bytes.data(),original.bytes.size()); report(controller_ready);
         engine_.set_telemetry_io(telemetry_.binding());const auto engine_ready=engine_.begin(); report(engine_ready);
 #ifdef PICOFERM_AB
@@ -117,7 +117,7 @@ public:
         WiFi.hostname("picoferm");apply_network();
         provision_.take_key_changed();provision_.take_network_changed();
         radio_.hold(millis());
-        setup_complete_=true;Serial.println("UART: status | key <64 lowercase hex> | wifi <SSID><TAB><password>");
+        setup_complete_=true;Serial.println(F("UART: status | key <64 lowercase hex> | wifi <SSID><TAB><password>"));
     }
     void poll(){
         controller_.poll();
@@ -161,7 +161,7 @@ public:
             return;
         }
         const bool connected=WiFi.status()==WL_CONNECTED;
-        if(connected&&!connected_){char address[48];const IPAddress ip=WiFi.localIP();::snprintf(address,sizeof(address),"Local browser: http://%u.%u.%u.%u",ip[0],ip[1],ip[2],ip[3]);Serial.println(address);}
+        if(connected&&!connected_){char address[48];const IPAddress ip=WiFi.localIP();::snprintf_P(address,sizeof(address),PSTR("Local browser: http://%u.%u.%u.%u"),ip[0],ip[1],ip[2],ip[3]);Serial.println(address);}
         if(!connected&&connected_)pico_http_server_disconnect(&http_);
         connected_=connected;
         if(!listener_.listening()&&connected)listener_.begin(80);
@@ -229,7 +229,13 @@ private:
     LocalControls controls_;PicoHttpServer http_;
     bool setup_complete_=false,connected_=false;
     api::Clock clock(){api::Clock result;result.context=this;result.millis=[](void*)->std::uint32_t{return ::millis();};return result;}
-    void report(const api::Result& result){if(result.message)Serial.println(result.message);else if(!result.ok())Serial.println(result.error?result.error:"ERROR: initialization failed");}
+    void report(const api::Result& result){
+        if(result.message) Serial.println(result.message);
+        else if(!result.ok()){
+            if(result.error) Serial.println(result.error);
+            else Serial.println(F("ERROR: initialization failed"));
+        }
+    }
     void apply_key(){pico_http_server_set_key(&http_,provision_.key(),provision_.key_configured()?64:0);}
     void apply_network(){
         WiFi.disconnect();

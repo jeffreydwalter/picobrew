@@ -22,6 +22,13 @@ The bootstrap and both applications use the repository's pinned Arduino ESP8266 
 
 ## Installing over Wi-Fi
 
+Early 1.0.0 builds and the battery-saving 1.0.0 build have different image digests.
+The updater in the early builds rejects another image with the same version before
+writing the inactive bank. Owners of those builds can wait for a later numbered
+release or use the USB stock recovery and setup flows with their verified original
+backup. Restoring that backup also restores its original settings and filesystem.
+Archive any wanted recordings in the Hub first.
+
 1. The authenticated Hub reads `GET /api/v1/firmware/ota`, verifies the PicoFerm UID, confirmed running image and bootstrap fingerprint, and chooses the opposite bank from the package.
 2. When the machine is idle, `POST /enter` reserves it for the update. The current application stays in memory and reports recovery mode. `POST /begin` validates the target identity, version, size and SHA-256. The reply includes a 16-character session ID and the next offset.
 3. `POST /chunk` accepts up to 1,024 bytes of hex-encoded data per call, with four-byte-aligned offset and length. The receiver erases only the inactive bank's sectors and verifies every write by readback. Repeating an identical chunk returns the current offset. A conflicting or out-of-order chunk fails. The client can reconnect to the same running session, or start over at offset zero following a power cycle. `POST /abort` and a two-minute inactive session return the machine to normal operation.
