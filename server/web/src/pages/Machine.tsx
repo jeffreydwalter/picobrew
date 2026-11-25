@@ -579,7 +579,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
                       !allowed(name) ||
                       !live.busy ||
                       live.stopped ||
-                      (device.model === 'z-series' && live.state?.toLowerCase() !== 'running') ||
+                      (name === 'pause' ? live.can_pause : live.can_resume) !== true ||
                       !!pending
                     }
                     onClick={() => void command(name, { confirm: true })}

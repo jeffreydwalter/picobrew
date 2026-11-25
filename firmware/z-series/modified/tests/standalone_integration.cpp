@@ -342,6 +342,48 @@ void running_hold(World& w,bool heated=true){
     w.core.heater.state.target_celsius=heated?66.5:0;w.core.heater.state.started=heated;
     w.core.core.state.id=CoreStateId::Running;w.adapter.poll();
 }
+void dedicated_session_controls(){
+    World w;auto& runtime=w.core.runtime;
+    auto availability=[&](bool pause,bool resume){
+        const auto json=w.request(PICO_HTTP_GET,"/api/v1/status",nullptr,200);
+        assert(json.find(pause?"\"can_pause\":true":"\"can_pause\":false")!=std::string::npos);
+        assert(json.find(resume?"\"can_resume\":true":"\"can_resume\":false")!=std::string::npos);
+    };
+    availability(false,false);
+    running_hold(w);
+    availability(true,false);
+    assert(w.command("resume").status==409);
+    assert(w.command("pause").status==202);
+    assert(w.command("pause").status==409);
+    // A fill/setup prompt can arrive after HTTP accepts but before Runtime acts.
+    runtime.state.screen=9;
+    assert(w.adapter.service_stage(CoreTickStage::Runtime,w.now));
+    assert(!runtime.state.paused);
+    availability(false,false);
+    runtime.state.screen=0;
+    assert(w.command("pause").status==202);
+    assert(w.adapter.service_stage(CoreTickStage::Runtime,w.now));
+    for(unsigned i=0;i<60&&runtime.state.instruction.opcode!=OpCode::WaitUser;++i)
+        assert(w.adapter.service_stage(CoreTickStage::Runtime,++w.now));
+    assert(runtime.state.instruction.opcode==OpCode::WaitUser&&runtime.state.pause_reason==unsigned(PauseReason::User));
+    availability(false,true);
+    assert(w.command("pause").status==409);
+    for(auto reason:{PauseReason::StepFilter,PauseReason::PicoStillError,PauseReason::StillT2Overtemp}){
+        runtime.state.pause_reason=unsigned(reason);
+        availability(false,false);assert(w.command("resume").status==409);
+    }
+    runtime.state.pause_reason=unsigned(PauseReason::User);w.core.msp_state.errors=4;
+    assert(w.command("resume").status==409&&w.core.msp_state.errors==4);
+    w.core.msp_state.errors=0;
+    RuntimeCommand other;other.id=RuntimeCommandId::Stop;
+    assert(w.core.runtime_commands.put(other));
+    assert(w.command("resume").status==409&&w.core.runtime_commands.value.id==RuntimeCommandId::Stop);
+    w.core.runtime_commands.pending=false;
+    assert(w.command("resume").status==202);
+    assert(w.command("resume").status==409);
+    assert(w.adapter.service_stage(CoreTickStage::Runtime,++w.now));
+    assert(runtime.state.instruction.opcode!=OpCode::WaitUser);
+}
 void recovery_restart(){World before;running_hold(before);
     auto persisted=before.files;World after(&persisted);api::Snapshot snapshot;assert(after.adapter.snapshot(snapshot).ok());
     assert(snapshot.recovery.supported&&snapshot.recovery.valid&&snapshot.recovery.available);
@@ -895,7 +937,7 @@ int main(int argc,char** argv){assert(argc==2);const std::string test=argv[1];
     else if(test=="maker")maker_program();else if(test=="recipe")owned_recipe();else if(test=="storage")storage_preflight();else if(test=="unheated")no_target();
     else if(test=="stop")stop_guard();else if(test=="input")input_order();else if(test=="offline")offline_and_reservation();
     else if(test=="settings")settings_and_display();else if(test=="status")status_fields();
-    else if(test=="recovery")recovery_restart();else if(test=="recovery-pause")recovery_unheated_and_pause();
+    else if(test=="session-controls")dedicated_session_controls();else if(test=="recovery")recovery_restart();else if(test=="recovery-pause")recovery_unheated_and_pause();
     else if(test=="recovery-corrupt")recovery_corruption_and_discard();else if(test=="recovery-end")recovery_failure_and_terminal_state();
     else if(test=="sensor-fault")sensor_fault_cutoff();else if(test=="coffee-buffer")buffered_coffee();
     else if(test=="recipe-menu")recipe_menu_and_retired_manual_command();else if(test=="standby-start")standby_remote_start();else if(test=="step-indices")recipe_step_indices();

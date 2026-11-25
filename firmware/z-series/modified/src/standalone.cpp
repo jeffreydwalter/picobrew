@@ -228,6 +228,7 @@ bool Adapter::stop(const char* reason){
     if(joined_program_||invite_state_==InviteState::Pending)finish_invite(InviteState::Unavailable);
     joined_program_=0;
     group_source_id_[0]=0;
+    session_input_=RuntimeCommandId::None;
     queued_=false;encoder_click_=false;core_.core.commands.pending=false;core_.runtime_commands.pending=false;
     core_.core.state.runtime_start_pending=false;core_.core.state.rinse_pending=false;
     if(begun_){RuntimeCommand stop;stop.id=RuntimeCommandId::Stop;core_.post_runtime(stop);}
@@ -288,6 +289,33 @@ bool Adapter::queue_program(std::uint32_t id){
     CoreCommand command;command.id=CoreCommandId::StartProgram;command.program_id=id;
     return core_.post(command);
 }
+// Dedicated browser buttons must never answer a setup prompt, skip a test, or
+// clear a controller fault. Those screens retain their native dial choices.
+bool Adapter::can_control_session(RuntimeCommandId command) const {
+    const auto& runtime=core_.runtime;
+    const auto& state=runtime.state;
+    if(still_session_&&((core_.still.commands.pending&&core_.still.commands.value.id==StillCommandId::Start)||
+       (core_.still.state.id==PicoStillStateId::Starting&&!still_active_)))return false;
+    if(!begun_||stopped()||core_.core.state.id!=CoreStateId::Running||state.id!=RuntimeStateId::Running||
+       core_.system_error||core_.msp_state.id!=Z_MSP_APP_RUNNING||core_.msp_state.errors||
+       (runtime.filter_required&&core_.safeties.filter_missing)||runtime.pause_reason(RuntimeCommandId::None)||
+       state.screen||session_input_!=RuntimeCommandId::None||core_.core.commands.pending||core_.runtime_commands.pending)return false;
+    if(command==RuntimeCommandId::Pause){
+        // The OEM defers inputs during valve travel; avoid queuing a command for
+        // a later step. Input widgets retain their own physical confirmations.
+        switch(state.instruction.opcode){
+        case OpCode::WaitUser:case OpCode::MspValve:case OpCode::GetDelay:
+        case OpCode::GetStepParams:case OpCode::GetTemp:case OpCode::GetTime:return false;
+        default:return !state.paused;
+        }
+    }
+    if(command!=RuntimeCommandId::Resume||state.instruction.opcode!=OpCode::WaitUser||
+       core_.core.state.session_type==SessionType::Circulate||!state.pause_reason||
+       state.pause_reason>=PauseReasonCount)return false;
+    // The original running menu omits Resume for these three pause reasons.
+    const auto reason=static_cast<PauseReason>(state.pause_reason);
+    return reason!=PauseReason::StepFilter&&reason!=PauseReason::PicoStillError&&reason!=PauseReason::StillT2Overtemp;
+}
 api::Result Adapter::execute(const api::Command& input){
     if(!std::strcmp(input.name,"stop"))return stop("requested")?api::Result(202):unavailable();
     if(!std::strcmp(input.name,"clear-stop"))return clear_stop()?api::Result(202):busy();
@@ -310,9 +338,9 @@ api::Result Adapter::execute(const api::Command& input){
     }
     if(stopped())return {409,"stopped","Clear the latched stop at the idle home screen first"};
     if(!std::strcmp(input.name,"pause")||!std::strcmp(input.name,"resume")){
-        if(core_.core.state.id!=CoreStateId::Running)return busy();
-        CoreCommand command;command.id=!std::strcmp(input.name,"pause")?CoreCommandId::Pause:CoreCommandId::Resume;
-        return core_.post(command)?api::Result(202):busy();
+        const auto command=!std::strcmp(input.name,"pause")?RuntimeCommandId::Pause:RuntimeCommandId::Resume;
+        if(!can_control_session(command))return {409,"session_control_unavailable","Use the current options on the brewer's front panel"};
+        session_input_=command;return {202};
     }
     if(!idle())return busy();
     if(core_.system_error||core_.msp_state.errors||core_.msp_state.id!=Z_MSP_APP_RUNNING)return unavailable();
@@ -436,6 +464,11 @@ bool Adapter::service_stage(CoreTickStage stage,std::uint32_t now){
     }
     case CoreTickStage::PicoStill:if(begun_)tick_still(now);return true;
     case CoreTickStage::Runtime:
+        if(session_input_!=RuntimeCommandId::None){
+            RuntimeCommand command;command.id=session_input_;session_input_=RuntimeCommandId::None;
+            if(can_control_session(command.id))core_.runtime_commands.put(command);
+            else if(engine_)engine_->event("session-control","The brewer's options changed before the command ran");
+        }
         // The native StillStart opcode posts an accessory command before the
         // next pump/valve instruction. Await the remote controller's ACK.
         if(still_session_ && !stopped() &&
@@ -915,6 +948,7 @@ bool Adapter::native_state_http(const PicoHttpRequest& request,PicoHttpResponse&
 api::Result Adapter::snapshot(api::Snapshot& out){
     out={};out.uptime_ms=ports_.millis?ports_.millis(ports_.context):0;
     out.ready=begun_&&!core_.system_error&&core_.msp_state.id==Z_MSP_APP_RUNNING&&!core_.msp_state.errors&&core_.core.state.id!=CoreStateId::Off&&core_.core.state.id!=CoreStateId::Booting&&core_.core.state.id!=CoreStateId::Error;
+    out.can_pause=can_control_session(RuntimeCommandId::Pause);out.can_resume=can_control_session(RuntimeCommandId::Resume);
     out.busy=!idle();out.stopped=stopped();out.stop_reason=stop_reason_;out.state=to_string(core_.core.state.id);
     out.device_state=static_cast<std::uint32_t>(core_.core.state.id);out.phase=static_cast<std::uint32_t>(core_.runtime.state.instruction.opcode);
     out.controller_status=static_cast<std::uint32_t>(core_.runtime.state.id);out.compartment=core_.runtime.requested_valve;

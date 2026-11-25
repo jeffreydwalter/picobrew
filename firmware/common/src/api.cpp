@@ -71,7 +71,12 @@ unsigned Engine::Impl::status_json(Writer& writer, bool update) {
     writer.text("{"); identity_json(writer, identity); writer.text(",\"device_uid\":"); writer.quote(identity.device_uid);
     writer.format(",\"uptime_ms\":%lu,\"ready\":%s,\"busy\":%s,\"stopped\":%s,\"stop_reason\":",
         static_cast<unsigned long>(s.uptime_ms), s.ready ? "true" : "false", s.busy ? "true" : "false", s.stopped ? "true" : "false");
-    writer.quote(s.stop_reason); writer.text(",\"command\":"); writer.quote(s.command); writer.text(",\"state\":"); writer.quote(s.state);
+    writer.quote(s.stop_reason);
+    if (capabilities.dedicated_pause_resume) {
+        writer.text(",\"can_pause\":"); writer.boolean(s.can_pause);
+        writer.text(",\"can_resume\":"); writer.boolean(s.can_resume);
+    }
+    writer.text(",\"command\":"); writer.quote(s.command); writer.text(",\"state\":"); writer.quote(s.state);
     writer.format(",\"device_state\":%lu,\"phase\":%lu,\"controller_status\":%lu,\"compartment\":%lu,\"wort_f\":",
         static_cast<unsigned long>(s.device_state), static_cast<unsigned long>(s.phase), static_cast<unsigned long>(s.controller_status), static_cast<unsigned long>(s.compartment));
     reading(writer, s.wort_f); writer.text(",\"thermoblock_f\":"); reading(writer, s.thermoblock_f);
