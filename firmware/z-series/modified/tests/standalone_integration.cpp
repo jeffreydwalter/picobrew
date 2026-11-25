@@ -31,6 +31,7 @@ struct World {
     std::size_t response_offset=0;
     unsigned still_chunk=53;
     bool stock_socket=false, stock_mac=true, stock_active=false, stock_bad=false, stock_busy=false;
+    bool stock_online=true,stock_fan1=false,ignore_fan_command=false;
     unsigned stock_start=0,stock_end=0,stock_fan=0;
     std::string stock_version="#0.0.35#";
     std::string stock_response(const std::string& request) {
@@ -41,8 +42,13 @@ struct World {
         else if(path=="/runningprogram")body=stock_active||stock_busy?"#PicoManual#":"#None#";
         else if(path=="/hardwareError")body="#None#";
         else if(path=="/start"){++stock_start;stock_active=true;body="#T#";}
-        else if(path=="/end"){++stock_end;stock_active=false;body="#T#";}
-        else if(path=="/fanon"){++stock_fan;body="#T#";}
+        else if(path=="/end"){++stock_end;stock_active=false;stock_busy=true;body="#T#";}
+        else if(path=="/fanon" || path=="/fanoff"){
+            ++stock_fan;
+            if(!ignore_fan_command)stock_fan1=path=="/fanon";
+            body="#T#";
+        }
+        else if(path=="/fanstate")body=stock_fan1?"#T#":"#F#";
         else if(path=="/data")body=stock_bad?"#nan,77,77,77,12.30,1,1,1,None#":
             (stock_active?"#77.00,86.00,95.00,68.00,12.30,1,1,1,None#":"#77.00,86.00,95.00,68.00,12.30,0,0,0,None#");
         else assert(false);
@@ -53,7 +59,7 @@ struct World {
         io.begin=[](void* p,const char* host,std::uint16_t port){auto& w=self(p);w.still_request.clear();w.response_offset=0;
             w.stock_socket=!std::strcmp(host,"192.168.1.11");
             if(w.stock_socket)w.still_response.clear();
-            return (w.stock_socket||!std::strcmp(host,"still.local"))&&port==80;};
+            return ((w.stock_socket && w.stock_online)||!std::strcmp(host,"still.local"))&&port==80;};
         io.poll_connect=[](void*){return 1;};
         io.send=[](void* p,const std::uint8_t* data,std::size_t size){auto& w=self(p);
             unsigned count=static_cast<unsigned>(std::min<std::size_t>(size,w.still_chunk));w.still_request.append(reinterpret_cast<const char*>(data),count);return int(count);};
@@ -1057,8 +1063,35 @@ void stock_still_session() {
     assert(std::fabs(w.core.still_samples.current.temperature[2]-35.0)<1e-6);
     assert(std::fabs(w.core.still_samples.current.pressure-12.30)<1e-6);
     issue_still(w,StillCommandId::FanOn);advance(w);assert(w.stock_fan==1);
+    issue_still(w,StillCommandId::FanOff);advance(w);
+    assert(w.stock_fan==2 && !w.stock_fan1 && w.core.still.state.id==PicoStillStateId::Running);
+    assert(w.request(PICO_HTTP_GET,pairing_path,nullptr,200).find("\"fan_2_running\":true")!=std::string::npos);
     w.stock_bad=true;w.now+=1600;advance(w);
     assert(w.adapter.stopped() && !w.core.heater.state.enabled && !w.core.msp_state.pumps && w.stock_end==1);
+    for(unsigned fail=0;fail<3;++fail){
+        World fault(&w.files);
+        prepare(fault);issue_still(fault,StillCommandId::Start);advance(fault);
+        assert(fault.stock_active);
+        if(fail==0){ // Fan 1 stays off even though /fanon returned success and fan 2 is on.
+            fault.ignore_fan_command=true;
+            issue_still(fault,StillCommandId::FanOn);
+        }else{
+            // Failure before opening a stop socket, or after opening it when the address changed.
+            fault.stock_online=fail!=1;
+            fault.stock_mac=fail!=2;
+            issue_still(fault,StillCommandId::Reconnect);
+        }
+        advance(fault);
+        assert(fault.adapter.stopped() && !fault.core.heater.state.enabled && !fault.core.msp_state.pumps);
+        const std::string stopWarning="PicoStill stop unconfirmed. If running, press its button.";
+        const auto state=fault.request(PICO_HTTP_GET,pairing_path,nullptr,200);
+        if(fail==0){
+            assert(fault.stock_end==1 && !fault.stock_active && state.find(stopWarning)==std::string::npos);
+        }else{
+            assert(!fault.stock_end && fault.stock_active && state.find(stopWarning)!=std::string::npos);
+            assert(stopWarning==fault.core.still.state.error.data());
+        }
+    }
 }
 void still_pairing(){
     World w;assert(w.command("picostill-manual").status==409);

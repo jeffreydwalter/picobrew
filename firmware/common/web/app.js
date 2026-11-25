@@ -146,7 +146,7 @@ function renderStillLink() {
   if(sample) {
     const temperatures=['Inlet','Outlet','Pot','Ambient'].map((label,i)=>label+' '+temperature(sample.temperature_c[i]*9/5+32));
     $('stillSample').textContent=[...temperatures,'Pressure '+sample.pressure_psi+' psi',
-      'Pump '+(sample.pump_running?'on':'off'),'Cooling fan '+(sample.fan_2_running?'on':'off')].join(' · ');
+      'Pump '+(sample.pump_running?'on':'off'),'Cooling fan (fan 2) '+(sample.fan_2_running?'on':'off')].join(' · ');
   }
 }
 async function readStillLink() {

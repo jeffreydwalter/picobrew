@@ -190,7 +190,7 @@ int StillPeer::receive(std::uint32_t now, const char *&body, std::size_t &size) 
     return size == expected ? 1 : size < expected ? 0 : -1;
 }
 bool StillPeer::open_stock(StockRead request, const StillAddress& address) {
-    static const char* const paths[] = {"/version", "/runningprogram", "/hardwareError", "/start", "/data", "/end"};
+    static const char* const paths[] = {"/version", "/runningprogram", "/hardwareError", "/start", "/data", "/end", "/fanstate"};
     const char* path = request == SetFan ? (op == FanOn ? "/fanon" : "/fanoff") : paths[request];
     ++connection_;
     stock_read_ = request;
@@ -282,6 +282,13 @@ int StillPeer::stock_result(std::uint32_t now, const StillAddress& address, api:
         break;
     case SetFan:
         if (std::strcmp(body, "#T#"))
+            return -1;
+        next = FanState;
+        break;
+    case FanState:
+        // /fanstate reads fan 1, which /fanon and /fanoff operate. The /data
+        // CSV instead reports fan 2, the independently controlled pump fan.
+        if (std::strcmp(body, op == FanOn ? "#T#" : "#F#"))
             return -1;
         next = ReadData;
         break;

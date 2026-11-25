@@ -110,10 +110,13 @@ The stock PicoStill has no accessory-side network timeout. If the link is
 lost during operation, the Z cuts its heater and pumps and attempts a stop.
 Check the accessory and press its physical button if it is still running. A
 stock Still has one controller and should be operated by one brewer at a time.
+After the program ends, the stock PicoStill normally restarts after about
+20 seconds. Wait for it to reconnect before starting another run. While its
+completion light is steady green, a button press also restarts it.
 
 The Z holds its heater and pump outputs off through setup and waits for the
 accessory to acknowledge starting its native controller. It receives the
-four temperatures in Celsius, pressure in psi, pump state, cooling fan state
+four temperatures in Celsius, pressure in psi, pump state, cooling fan (fan 2) state
 and controller activity. These readings feed the recovered controller’s
 native sample windows and statistics. The Z’s **PicoStill** setting in
 **Settings** controls recording the brewer session in local history. The

@@ -161,7 +161,7 @@
             <p id="stillSample" hidden></p>
             <form id="stillLinkForm">
               <div class="settings-row" id="stillModeRow" hidden><label for="stillMode">PicoStill firmware</label><select id="stillMode"><option value="standalone">Standalone</option><option value="stock">Original 0.0.35</option></select></div>
-              <p id="stillStockHelp" hidden>Connect the stock PicoStill to the same LAN using its own Wi-Fi setup. Enter its LAN IPv4 address and the 12 characters after PicoStill_ in its Wi-Fi name. If the connection drops during use, check the PicoStill and press its button to stop it.</p>
+              <p id="stillStockHelp" hidden>Connect the stock PicoStill to the same LAN using its own Wi-Fi setup. Enter its LAN IPv4 address and the 12 characters after PicoStill_ in its Wi-Fi name. If the connection drops, check the PicoStill and press its button if it is still running. After a run, allow about 20 seconds for its automatic restart and wait for it to reconnect before starting again.</p>
               <div class="settings-row"><label for="stillHost">PicoStill host</label><input id="stillHost" maxlength="63" required placeholder="IP address or local hostname"></div>
               <div class="settings-row" id="stillPortRow"><label for="stillPort">HTTP port</label><input id="stillPort" type="number" min="1" max="65535" value="80" required></div>
               <div class="settings-row"><label for="stillUID">PicoStill device UID</label><input id="stillUID" maxlength="12" pattern="[a-fA-F0-9]{12}" required></div>

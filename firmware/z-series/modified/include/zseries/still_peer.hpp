@@ -28,7 +28,7 @@ class StillPeer {
     Op op = None;
 
   private:
-    enum StockRead { Version, Program, Health, StartProgram, ReadData, EndProgram, SetFan };
+    enum StockRead { Version, Program, Health, StartProgram, ReadData, EndProgram, FanState, SetFan };
     StockRead stock_read_ = Version;
     bool open_stock(StockRead, const StillAddress&);
     int receive(std::uint32_t now, const char *&body, std::size_t &size);

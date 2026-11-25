@@ -13,6 +13,7 @@ using api::detail::Writer;
 namespace {
 constexpr char RecordName[] = "stillpair";
 constexpr unsigned RecordSize = 1 + 64 + 13 + 65 + 2;
+constexpr char StockStopUnconfirmed[] = "PicoStill stop unconfirmed. If running, press its button.";
 bool still_program(unsigned id) {
     return id == unsigned(ZProgramId::PicoStillManual) || id == unsigned(ZProgramId::PicoStillBoilPoint);
 }
@@ -235,20 +236,25 @@ void Adapter::close_still(bool fault) {
     hold_still_outputs();
     still_session_ = still_active_ = false;
     still_peer_.close();
+    bool stop_unconfirmed = false;
+    if (fault)
+        still_error_ = "PicoStill connection or sensor interlock failed";
     if (still_lease_[0] || still_peer_.stock_start_sent) {
-        if (!start_still_request(StillPeer::Stop, ports_.millis(ports_.context)) && still_address_.stock)
-            still_error_ = "Check the PicoStill and stop it at its button";
+        if (!start_still_request(StillPeer::Stop, ports_.millis(ports_.context)) && still_address_.stock) {
+            stop_unconfirmed = true;
+            still_error_ = StockStopUnconfirmed;
+        }
     }
     stock_claimed_ = false;
     still_peer_.stock_active = false;
     still_peer_.stock_start_sent = false;
     still_lease_[0] = 0;
     core_.still.commands.pending = false;
-    if (fault) {
-        still_error_ = "PicoStill connection or sensor interlock failed";
+    if (fault || stop_unconfirmed) {
         api::detail::copy(core_.still.state.error.data(), core_.still.state.error.size(), still_error_);
         still_state(PicoStillStateId::Error);
-        stop("picostill-link");
+        if (fault)
+            stop("picostill-link");
     } else
         still_state(PicoStillStateId::Idle);
 }
@@ -299,8 +305,11 @@ void Adapter::tick_still(std::uint32_t now) {
             return;
         }
         if (op == StillPeer::Stop) {
-            if (target.stock && !ok)
-                still_error_ = "The stock PicoStill did not confirm stop. Check it and press its button.";
+            if (target.stock && !ok) {
+                still_error_ = StockStopUnconfirmed;
+                api::detail::copy(core_.still.state.error.data(), core_.still.state.error.size(), still_error_);
+                still_state(PicoStillStateId::Error);
+            }
             return;
         }
         const bool needs_sample = still_active_ || op == StillPeer::Start;

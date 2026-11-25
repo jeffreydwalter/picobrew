@@ -120,8 +120,7 @@ when executing either command. Existing live-session `pause`/`resume` commands
 remain separate. Discard removes the checkpoint only after an explicit user
 action; clients do not add a device `confirm` argument when none is advertised.
 
-The common engine owns a persistent 16-record recipe catalogue with 15 steps
-per recipe. The existing S/Pro schema and bounds apply: IDs 1..20 ASCII
+The common engine stores 16 recipes with up to 15 steps in the shared recipe format. Z modules that report `z_program_step_capacity` also accept native Z Program Maker recipes up to that advertised limit. The existing S/Pro schema and bounds apply: IDs 1..20 ASCII
 alphanumerics/underscore/hyphen, names 1..31 printable ASCII, step names 1..21,
 locations 1..6, target 0 or 60..212 F, active minutes 0..599 and drain minutes
 0..120. An adapter must additionally validate the native conversion. Locations
