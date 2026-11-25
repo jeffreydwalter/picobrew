@@ -631,21 +631,21 @@ void original_native_state(){
     std::strcpy(req.path,"/api/v1/status");
     assert(!w.adapter.native_state_http(req,res,arena,sizeof arena));
     std::strcpy(req.path,"/api/v1/z/state");req.method=PICO_HTTP_GET;
-    auto request=[&](unsigned cap=1200){assert(w.adapter.native_state_http(req,res,arena,cap));return res.status;};
-    assert(request()==503);req.auth_configured=true;assert(request()==401);req.authenticated=true;
-    req.method=PICO_HTTP_POST;assert(request()==405);req.method=PICO_HTTP_GET;
+    auto request=[&](unsigned cap){assert(w.adapter.native_state_http(req,res,arena,cap));return res.status;};
+    assert(request(sizeof arena)==503);req.auth_configured=true;assert(request(sizeof arena)==401);req.authenticated=true;
+    req.method=PICO_HTTP_POST;assert(request(sizeof arena)==405);req.method=PICO_HTTP_GET;
     w.core.network=1;w.core.wifi.state.rssi=-61;w.core.msp_state.valve_position=6;w.core.msp_state.pumps=0x30;
     w.core.runtime.state.flags=1;w.core.runtime.state.pause_reason=2;w.core.runtime.state.elapsed_seconds=67;
-    w.core.runtime.state.step_name="Hop one";assert(request()==200&&res.body_length==std::strlen(arena));
+    w.core.runtime.state.step_name="Hop one";assert(request(sizeof arena)==200&&res.body_length==std::strlen(arena));
     std::string out(arena);
     for(const char* field:{"\"UsePicoPakMode\":1","\"Location\":3","\"ValvePosition\":6","\"KegPumpOn\":1","\"DrainPumpOn\":1",
                            "\"PauseReason\":2","\"rssi\":-61","\"SecondsEllapsed\":67","\"StepName\":\"Hop one\""})assert(out.find(field)!=std::string::npos);
     assert(request(30)==503);
     std::string oversized(128,'x');w.core.runtime.state.step_name=oversized.c_str();
-    assert(request()==503);w.core.runtime.state.step_name=nullptr;
-    assert(request()==200&&std::string(arena).find("\"StepName\":null")!=std::string::npos);
-    w.core.runtime.state.pause_reason=18;assert(request()==503);
-    w.core.runtime.state.pause_reason=0;w.core.network=2;assert(request()==200);
+    assert(request(sizeof arena)==503);w.core.runtime.state.step_name=nullptr;
+    assert(request(sizeof arena)==200&&std::string(arena).find("\"StepName\":null")!=std::string::npos);
+    w.core.runtime.state.pause_reason=18;assert(request(sizeof arena)==503);
+    w.core.runtime.state.pause_reason=0;w.core.network=2;assert(request(sizeof arena)==200);
     assert(std::strstr(arena,"\"rssi\":0"));
 }
 void rejected_resume_retains_checkpoint(){World before;running_hold(before);World after(&before.files);
