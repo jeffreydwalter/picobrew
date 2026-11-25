@@ -121,6 +121,15 @@ func validateRecipe(recipe domain.MachineRecipe) error {
 		}
 		return nil
 	}
+	if recipe.ZCloud != nil {
+		if !recipeID.MatchString(recipe.ID) {
+			return invalid("invalid Z cloud recipe ID")
+		}
+		if err := recipe.ValidateZCloud(); err != nil {
+			return invalid(err.Error())
+		}
+		return nil
+	}
 	if recipe.ZProgram != nil {
 		if !recipeID.MatchString(recipe.ID) || len(recipe.Steps) != 0 || recipe.Name != recipe.ZProgram.Name {
 			return invalid("check the Z program identity and schedule")

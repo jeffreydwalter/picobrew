@@ -69,12 +69,20 @@ func validateNativeLibrary(r domain.Recipe) error {
 		return errors.New("native program requires a valid ID and the same name as its library record")
 	}
 	if p.ZPak != nil {
-		if p.ZProgram != nil || r.Kind != "native-program" || r.SourceModel != "pico" {
+		if p.ZCloud != nil || p.ZProgram != nil || r.Kind != "native-program" || r.SourceModel != "pico" {
 			return errors.New("original PicoPak metadata requires a matching Pico library program")
 		}
 		if err := p.ZPak.Validate(p.Steps); err != nil {
 			return err
 		}
+	}
+	if p.ZCloud != nil {
+		if r.SourceModel != "z" || r.Kind != "native-program" {
+			return errors.New("original Z schedules require the Z source model")
+		}
+		device := *p
+		device.Name = p.ZCloudDeviceName()
+		return device.ValidateZCloud()
 	}
 	if p.ZProgram != nil {
 		if r.Kind != "native-program" || r.SourceModel != "z" || len(p.Steps) != 0 || p.ZProgram.Name != p.Name {
@@ -150,6 +158,28 @@ func adaptNative(r domain.Recipe, profile, builtIn domain.Profile, batchLiters f
 		}
 		program.ZPak = nil
 		copy.NativeProgram = &program
+	}
+	if p := copy.NativeProgram; p.ZCloud != nil {
+		if profile.ID != "z" || !profile.ControlSupported || !builtIn.ControlSupported {
+			plan.DeploymentBlockers = []string{"This schedule requires a standalone Z with original Z schedule support."}
+			return plan, nil
+		}
+		device := *p
+		device.Name = p.ZCloudDeviceName()
+		if _, err := NativeJSON(device); err != nil {
+			return plan, err
+		}
+		if len(p.Steps) > profile.MaxSteps {
+			return plan, errors.New("schedule exceeds the Z profile step limit")
+		}
+		for _, s := range p.Steps {
+			if s.Location != 6 && s.TargetF > 0 && float64(s.TargetF-32)/1.8 > profile.MaxTargetC {
+				return plan, fmt.Errorf("step %q exceeds the Z profile temperature limit", s.Name)
+			}
+		}
+		plan.MachineRecipe = &device
+		plan.CanDeploy = true
+		return plan, nil
 	}
 	if z := copy.NativeProgram.ZProgram; z != nil {
 		if profile.ID != "z" || !profile.ControlSupported || !builtIn.ControlSupported {

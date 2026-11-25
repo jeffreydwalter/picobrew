@@ -294,6 +294,9 @@ func (s *simulator) writeRecipe(ctx context.Context, recipe domain.MachineRecipe
 	if recipe.ZPak != nil {
 		return unsupportedCapability("z_picopak_v1")
 	}
+	if recipe.ZCloud != nil {
+		return unsupportedCapability("z_cloud_program_v1")
+	}
 	if recipe.ZProgram != nil {
 		return unsupportedCapability("z_program_maker")
 	}

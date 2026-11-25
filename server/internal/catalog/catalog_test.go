@@ -68,7 +68,7 @@ func TestPinnedArchiveIntegrityAndCopyCoverage(t *testing.T) {
 			}
 		}
 	}
-	if copyable != 5206 || deployable != 3694 || originalRecords != 10666 {
+	if copyable != 5206 || deployable != 3733 || originalRecords != 10666 {
 		t.Fatalf("coverage changed: %d copyable, %d deployable, %d originals", copyable, deployable, originalRecords)
 	}
 	if !reflect.DeepEqual(kinds, map[string]int{"recipe": 1316, "native-program": 3897, "maintenance": 3}) {

@@ -45,6 +45,7 @@ struct Capabilities {
     bool zero_minute_steps = false;
     bool dedicated_pause_resume = false;
     bool z_program_maker = false;
+    bool z_cloud_program_v1 = false;
     bool z_state_v1 = false;
     bool group_brewing_v1 = false;
     bool picostill_brewer_link_v1 = false;
@@ -137,6 +138,8 @@ struct Recipe {
     char name[32] = {};
     RecipeStep steps[RecipeStepCapacity];
     std::uint8_t step_count = 0;
+    // A nonzero charge selects the archived Z cloud grammar (locations 0–6).
+    std::uint16_t z_cloud_water_ml = 0;
     bool z_program = false, is_beer = true, use_pico_pak = false;
     bool has_metric = false, is_metric = false;
 };

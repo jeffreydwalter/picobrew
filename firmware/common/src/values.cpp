@@ -33,9 +33,10 @@ bool valid_text(const char* value, std::size_t capacity) {
     }
     return false;
 }
-bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker) {
+bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker, bool z_cloud) {
     if (!valid_id(recipe.id) || !valid_text(recipe.name, sizeof(recipe.name)) ||
         !recipe.step_count || recipe.step_count > RecipeStepCapacity) return false;
+    if (recipe.z_cloud_water_ml && (!z_cloud || recipe.z_program || recipe.z_cloud_water_ml > 16163)) return false;
     if (recipe.z_program && (!z_program_maker || !valid_text(recipe.name, 21))) return false;
     for (unsigned i = 0; i < recipe.step_count; ++i) {
         const RecipeStep& s = recipe.steps[i];
@@ -49,8 +50,12 @@ bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker)
                        !z.has_time || z.drain_seconds > 7200) return false;
             continue;
         }
-        if (!valid_text(s.name, sizeof(s.name)) || s.location < 1 || s.location > 6 ||
-            (s.target_f && (s.target_f < 60 || s.target_f > 212)) ||
+        // An active sub-60 F source step requires an acknowledged chiller
+        // connection. The Z has no way to refrigerate the wort by itself.
+        if (recipe.z_cloud_water_ml && s.location != 6 && s.target_f && s.target_f < 60 &&
+            (!i || recipe.steps[i-1].location != 6)) return false;
+        if (!valid_text(s.name, sizeof(s.name)) || (!recipe.z_cloud_water_ml && s.location < 1) || s.location > 6 ||
+            (s.target_f && (s.target_f < (recipe.z_cloud_water_ml ? 32 : 60) || s.target_f > 212)) ||
             s.minutes > 599 || (!s.minutes && !zero_minutes) || s.drain_minutes > 120) return false;
     }
     return true;
@@ -132,6 +137,24 @@ bool parse_z_step(Json& json, RecipeStep& step) {
     return seen == (Name | Type | Time | Location | Temp | Drain);
 }
 
+bool parse_z_cloud(Json& json, Recipe& recipe) {
+    if (!json.token('{') || json.peek('}')) return false;
+    unsigned seen = 0;
+    do {
+        char key[40];
+        if (!json.key(key)) return false;
+        if (!std::strcmp(key, "start_water_ml") && !(seen & 1)) {
+            std::int64_t amount;
+            if (!json.integer(1, 16163, amount)) return false;
+            recipe.z_cloud_water_ml = static_cast<std::uint16_t>(amount);
+            seen |= 1;
+        } else if (!std::strcmp(key, "is_beer") && !(seen & 2)) {
+            if (!json.boolean(recipe.is_beer)) return false;
+            seen |= 2;
+        } else return false;
+    } while (json.next('}'));
+    return json.token('}') && seen == 3;
+}
 bool parse_z_program(Json& json, Recipe& recipe) {
     if (!json.token('{') || json.peek('}')) return false;
     unsigned seen = 0;
@@ -201,7 +224,10 @@ bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only,
             revision = static_cast<std::uint32_t>(number);
         } else if (!std::strcmp(key, "name")) {
             bit = 2; if (!json.string(recipe.name, sizeof(recipe.name))) return false;
+        } else if (!std::strcmp(key, "z_cloud")) {
+            bit = 64; if ((seen & 16) || !parse_z_cloud(json, recipe)) return false;
         } else if (!std::strcmp(key, "z_program")) {
+            if (seen & 64) return false;
             bit = 16; if ((seen & 6) || !parse_z_program(json, recipe)) return false;
         } else if (!std::strcmp(key, "steps")) {
             bit = 4;
@@ -216,7 +242,7 @@ bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only,
                     if (!std::strcmp(name, "name")) {
                         field = 1; if (!json.string(step.name, sizeof(step.name))) return false;
                     } else if (!std::strcmp(name, "location")) {
-                        field = 2; if (!json.integer(1, 6, number)) return false; step.location = number;
+                        field = 2; if (!json.integer(0, 6, number)) return false; step.location = number;
                     } else if (!std::strcmp(name, "target_f")) {
                         field = 4; if (!json.integer(0, 212, number)) return false; step.target_f = number;
                     } else if (!std::strcmp(name, "minutes")) {
@@ -281,6 +307,10 @@ void recipe_json(Writer& writer, const Recipe& recipe, std::uint32_t revision) {
     writer.format("{\"revision\":%lu,\"id\":", static_cast<unsigned long>(revision)); writer.quote(recipe.id);
     if (recipe.z_program) {
         writer.text(",\"z_program\":"); z_program_json(writer, recipe); writer.text("}"); return;
+    }
+    if (recipe.z_cloud_water_ml) {
+        writer.format(",\"z_cloud\":{\"start_water_ml\":%u,\"is_beer\":", recipe.z_cloud_water_ml);
+        writer.boolean(recipe.is_beer); writer.text("}");
     }
     writer.text(",\"name\":"); writer.quote(recipe.name);
     writer.text(",\"steps\":[");

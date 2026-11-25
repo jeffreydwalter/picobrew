@@ -5,8 +5,11 @@
 #include "json.hpp"
 
 namespace picobrew { namespace standalone { namespace detail {
-bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker);
+bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker, bool z_cloud);
 constexpr std::size_t LegacyRecipeBytes = 54 + RecipeStepCapacity * 28;
+// The cloud extension retains the complete legacy step layout and adds the
+// starting keg charge (milliliters, little endian) and native beer setup flag.
+constexpr std::size_t CloudRecipeBytes = LegacyRecipeBytes + 3;
 constexpr std::size_t ZRecipeBytes = 55 + RecipeStepCapacity * 38;
 
 inline std::size_t write_recipe_record(std::uint8_t* bytes, const Recipe& recipe) {
@@ -40,10 +43,16 @@ inline std::size_t write_recipe_record(std::uint8_t* bytes, const Recipe& recipe
             p[27] = step.drain_minutes >> 8;
         }
     }
+    if (recipe.z_cloud_water_ml) {
+        bytes[LegacyRecipeBytes] = recipe.z_cloud_water_ml;
+        bytes[LegacyRecipeBytes + 1] = recipe.z_cloud_water_ml >> 8;
+        bytes[LegacyRecipeBytes + 2] = recipe.is_beer;
+        return CloudRecipeBytes;
+    }
     return recipe.z_program ? ZRecipeBytes : LegacyRecipeBytes;
 }
 inline bool read_recipe_record(Recipe& recipe, const std::uint8_t* bytes, std::size_t size) {
-    if (size != ZRecipeBytes && size != LegacyRecipeBytes) return false;
+    if (size != ZRecipeBytes && size != LegacyRecipeBytes && size != CloudRecipeBytes) return false;
     recipe.z_program = size == ZRecipeBytes;
     std::memcpy(recipe.id, bytes, 21);
     std::memcpy(recipe.name, bytes + 21, 32);
@@ -52,6 +61,13 @@ inline bool read_recipe_record(Recipe& recipe, const std::uint8_t* bytes, std::s
     unsigned flags = recipe.z_program ? bytes[54] : 1;
     if (flags & ~15u) return false;
     recipe.is_beer = flags & 1;
+    recipe.z_cloud_water_ml = 0;
+    if (size == CloudRecipeBytes) {
+        const auto* fields = bytes + LegacyRecipeBytes;
+        recipe.z_cloud_water_ml = fields[0] | (unsigned(fields[1]) << 8);
+        if (!recipe.z_cloud_water_ml || fields[2] > 1) return false;
+        recipe.is_beer = fields[2] != 0;
+    }
     recipe.use_pico_pak = flags & 2;
     recipe.has_metric = flags & 4;
     recipe.is_metric = flags & 8;
