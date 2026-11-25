@@ -53,6 +53,10 @@
         </div>
         <div id="sensorReadings" class="metrics sensor-readings"></div>
         <div id="actuatorReadings" class="metrics actuator-readings"></div>
+        <article id="groupInvite" class="card" hidden aria-labelledby="groupHeading">
+          <h2 id="groupHeading">Group invitation</h2><p id="groupDetail"></p>
+          <div class="button-group"><button id="joinGroup" class="button primary">Accept and start</button><button id="declineGroup" class="button">Decline</button></div>
+        </article>
         <article id="recoveryPanel" class="card" aria-labelledby="recoveryHeading" hidden>
           <p class="eyebrow">INTERRUPTED BREW</p><h2 id="recoveryHeading">Review the saved checkpoint.</h2>
           <p id="recoveryDetail"></p><p id="recoveryTime" class="hint"></p>
@@ -135,6 +139,7 @@
           <section id="stillLinkSection" class="settings-section" aria-labelledby="stillLinkHeading" hidden>
             <div class="settings-section-heading"><h2 id="stillLinkHeading">PicoStill</h2><p class="muted">Choose a registered accessory in the Hub’s brewer preferences, or enter its connection here.</p></div>
             <p id="stillLinkStatus" role="status" aria-live="polite"></p>
+            <p id="stillSample" hidden></p>
             <form id="stillLinkForm">
               <div class="settings-row"><label for="stillHost">PicoStill host</label><input id="stillHost" maxlength="63" required placeholder="IP address or local hostname"></div>
               <div class="settings-row"><label for="stillPort">HTTP port</label><input id="stillPort" type="number" min="1" max="65535" value="80" required></div>

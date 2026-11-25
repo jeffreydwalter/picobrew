@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useHub, useResource } from '../context'
 import { api, errorMessage } from '../lib/api'
 import type { Device } from '../types'
@@ -12,21 +12,24 @@ type LinkState = {
   host: string
   port: number
   session_logging: boolean
+  sample?: {
+    temperature_c: number[]
+    pressure_psi: number
+    pump_running: boolean
+    fan_2_running: boolean
+    program_running: boolean
+  }
   error?: string
 }
 
 export function PicoStillLink({ brewer }: { brewer: Device }) {
   const { devices } = useHub()
   const path = '/devices/' + encodeURIComponent(brewer.id) + '/picostill'
-  const [verifying, setVerifying] = useState(false)
-  const resource = useResource<LinkState>(brewer.online ? path : null, verifying ? 2500 : 0)
+  const resource = useResource<LinkState>(brewer.online ? path : null, 3000)
   const [chosen, setChosen] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const link = resource.data
-  useEffect(() => {
-    if (link) setVerifying(link.checking)
-  }, [link])
   const stills = devices.filter(
     (d) =>
       d.adapter === 'pico-standalone' &&
@@ -40,7 +43,6 @@ export function PicoStillLink({ brewer }: { brewer: Device }) {
     try {
       const next = await api<LinkState>(path, { method, body })
       resource.setData(next)
-      setVerifying(next.checking)
       setChosen('')
     } catch (e) {
       setError(errorMessage(e))
@@ -63,6 +65,19 @@ export function PicoStillLink({ brewer }: { brewer: Device }) {
       </div>
       <div className="settings-fields">
         <ErrorBanner message={error || resource.error || link?.error || ''} />
+        {brewer.online && !resource.error && link?.sample && (
+          <p>
+            {link.sample.temperature_c
+              .map(
+                (value, i) =>
+                  ['Inlet', 'Outlet', 'Pot', 'Ambient'][i] + ' ' + value.toFixed(1) + ' °C'
+              )
+              .join(' · ')}
+            {' · Pressure ' + link.sample.pressure_psi.toFixed(2) + ' psi'}
+            {' · Pump ' + (link.sample.pump_running ? 'on' : 'off')}
+            {' · Cooling fan ' + (link.sample.fan_2_running ? 'on' : 'off')}
+          </p>
+        )}
         <Field label="PicoStill">
           <select value={chosen} onChange={(e) => setChosen(e.target.value)}>
             <option value="">Choose an accessory</option>

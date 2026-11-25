@@ -10,14 +10,24 @@ import (
 
 // PicoStillLink contains only fields safe to return to the browser.
 type PicoStillLink struct {
-	Paired         bool   `json:"paired"`
-	Verified       bool   `json:"verified"`
-	Checking       bool   `json:"checking"`
-	Host           string `json:"host"`
-	Port           uint16 `json:"port"`
-	UID            string `json:"uid"`
-	SessionLogging bool   `json:"session_logging"`
-	Error          string `json:"error,omitempty"`
+	Sample         *PicoStillSample `json:"sample,omitempty"`
+	Paired         bool             `json:"paired"`
+	Verified       bool             `json:"verified"`
+	Checking       bool             `json:"checking"`
+	Host           string           `json:"host"`
+	Port           uint16           `json:"port"`
+	UID            string           `json:"uid"`
+	SessionLogging bool             `json:"session_logging"`
+	Error          string           `json:"error,omitempty"`
+}
+
+type PicoStillSample struct {
+	TemperatureC      []float64 `json:"temperature_c"`
+	PressurePSI       float64   `json:"pressure_psi"`
+	PumpRunning       bool      `json:"pump_running"`
+	CoolingFanRunning bool      `json:"fan_2_running"`
+	ProgramRunning    bool      `json:"program_running"`
+	ReceivedAgeMS     uint32    `json:"received_age_ms"`
 }
 
 type PicoStillBrewer interface {
@@ -37,6 +47,9 @@ func (p *pico) stillRequest(ctx context.Context, method string, body any) (PicoS
 	}
 	defer p.unlock()
 	err := p.request(ctx, method, "/api/v1/picostill", body, &result, 200, 202)
+	if sample := result.Sample; sample != nil && (!result.Paired || len(sample.TemperatureC) != 4 || sample.ReceivedAgeMS >= 6500) {
+		result.Sample = nil
+	}
 	return result, err
 }
 

@@ -97,7 +97,25 @@ function connected(value) {
   updateControls();
 }
 
-let stillLink=null, stillPending=false;
+let groupInvite=null, groupResponding=false, groupChecked=0;
+function displayGroup(invite) {
+  groupInvite=invite?.state==='pending' ? invite : null;
+  $('groupInvite').hidden=!groupInvite;
+  if(!groupInvite)return;
+  const recipe=state.recipes.find(r=>r.id===invite.recipe_id);
+  const program=invite.action==='brew' ? (recipe?.name || invite.recipe_id) : (programLabels[invite.action] || invite.action);
+  $('groupDetail').textContent=invite.from+' invited this brewer to start '+program+'.';
+  $('joinGroup').disabled=groupResponding;
+  $('declineGroup').disabled=groupResponding;
+}
+async function respondGroup(op) {
+  if(!groupInvite || groupResponding || !state.connected)return;
+  groupResponding=true;displayGroup(groupInvite);
+  try {const reply=await api('/group-brew','POST',{op,id:groupInvite.id});displayGroup(reply.invite);}
+  catch(error){notify(error.message,true);displayGroup(null);}
+  finally {groupResponding=false;groupChecked=0;}
+}
+let stillLink=null, stillPending=false, stillChecked=0;
 function renderStillLink() {
   const idle=state.connected && state.status?.ready && !state.status?.busy && !stillPending && !stillLink?.checking;
   $('stillPair').disabled=!idle || !stillLink;
@@ -108,9 +126,17 @@ function renderStillLink() {
   $('stillLogging').checked=!!stillLink?.session_logging;
   $('stillLinkStatus').textContent=stillLink?.checking ? 'Verifying the PicoStill connection…' :
     stillLink?.error || (stillLink?.paired ? 'Paired with '+stillLink.host+'.' : 'No paired PicoStill.');
+  const sample=stillLink?.sample;
+  $('stillSample').hidden=!sample;
+  if(sample) {
+    const temperatures=['Inlet','Outlet','Pot','Ambient'].map((label,i)=>label+' '+temperature(sample.temperature_c[i]*9/5+32));
+    $('stillSample').textContent=[...temperatures,'Pressure '+sample.pressure_psi+' psi',
+      'Pump '+(sample.pump_running?'on':'off'),'Cooling fan '+(sample.fan_2_running?'on':'off')].join(' · ');
+  }
 }
 async function readStillLink() {
-  try {stillLink=await api('/picostill');renderStillLink()} catch(error){$('stillLinkStatus').textContent=error.message;}
+  stillChecked=Date.now();
+  try {stillLink=await api('/picostill');renderStillLink()} catch(error){stillLink=null;renderStillLink();$('stillLinkStatus').textContent=error.message;}
 }
 async function changeStillLink(method,body) {
   if(stillPending)return;
@@ -584,7 +610,11 @@ async function poll() {
     if(!document.hidden) {
       renderStatus(await api('/status'));connected(true);
       if(state.tab==='overview' && hasFeature('front_panel')) {try{renderDisplay(await PicoDevice.readDisplay(api));}catch(error){$('displayHint').textContent=error.message;}}
-      if(state.tab==='settings' && !$('stillLinkSection').hidden && stillLink?.checking && !stillPending)await readStillLink();
+      if(state.tab==='overview' && state.info.group_brewing_v1 && !groupResponding && Date.now()-groupChecked>=4000){
+        groupChecked=Date.now();
+        try{displayGroup((await api('/group-brew')).invite);}catch(_){displayGroup(null);}
+      }
+      if(state.tab==='settings' && !$('stillLinkSection').hidden && !stillPending && Date.now()-stillChecked>=2500)await readStillLink();
       if(state.tab==='settings' && state.info.telemetry_forwarding && Date.now()-state.telemetryAt>=5000)await refreshTelemetry();
     }
   } catch(error) {
@@ -615,7 +645,7 @@ async function connect(key) {
 }
 
 function disconnect() {
-  stillLink=null;$('stillLinkForm').reset();
+  displayGroup(null);groupChecked=0;stillLink=null;$('stillLinkForm').reset();
   state.generation++;state.key='';state.status=null;clearTimeout(pollTimer);connected(false);
   state.telemetry=null;$('telemetryStatus').textContent='Connect to see Hub connection status.';
   $('hubDestination').textContent='No Hub connection loaded.';
@@ -750,6 +780,8 @@ $('stillLinkForm').addEventListener('submit',event=>{
   void changeStillLink('PUT',body);
 });
 $('stillUnpair').addEventListener('click',()=>void changeStillLink('DELETE'));
+$('joinGroup').addEventListener('click',()=>void respondGroup('accept'));
+$('declineGroup').addEventListener('click',()=>void respondGroup('decline'));
 $('stillLogging').addEventListener('change',event=>void changeStillLink('PATCH',{session_logging:event.target.checked}));
 $('settingsForm').addEventListener('submit',async event=>{
   event.preventDefault();try{const available={temperature_unit:$('temperatureUnit').value,language:$('language').value,detailed_status:$('detailedStatus').checked,auto_cycle:$('autoCycle').checked};const keys=state.info.settings_fields || ['temperature_unit','language','detailed_status'];const patch=Object.fromEntries(keys.filter(key=>key in available).map(key=>[key,available[key]]));const settings=await api('/settings','PATCH',patch);renderSettings(settings);if(state.status)renderStatus(state.status);notify('Preferences saved on the Pico.');}catch(error){notify(error.message,true);}

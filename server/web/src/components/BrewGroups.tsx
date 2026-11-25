@@ -179,7 +179,12 @@ function BrewGroupEditor({
           </Field>
           <fieldset className="brew-group-members">
             <legend>Machines</legend>
-            {devices.map((d) => {
+            {[
+              ...devices,
+              ...(group?.device_ids || [])
+                .filter((id) => !devices.some((d) => d.id === id))
+                .map((id) => ({ id, name: id, online: false })),
+            ].map((d) => {
               const other = groups.find((g) => g.id !== group?.id && g.device_ids.includes(d.id))
               return (
                 <label key={d.id} className="checkbox-row">
@@ -238,11 +243,14 @@ export function BrewInvitations({ devices, deviceID }: { devices: Device[]; devi
     setError('')
     setPending(invite.id + invite.target_device_id)
     try {
-      await api(`/devices/${invite.target_device_id}/brew-invite/${invite.id}/respond`, {
-        method: 'POST',
-        body: { accept },
-      })
-      notify(accept ? 'Group invitation accepted.' : 'Group invitation declined.')
+      const result = await api<Invite>(
+        `/devices/${invite.target_device_id}/brew-invite/${invite.id}/respond`,
+        {
+          method: 'POST',
+          body: { accept },
+        }
+      )
+      notify(result.message || inviteStates[result.state] || 'Checking invitation status.')
     } catch (e) {
       setError(errorMessage(e))
     } finally {
