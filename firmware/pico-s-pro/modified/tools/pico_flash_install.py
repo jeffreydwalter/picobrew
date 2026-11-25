@@ -60,8 +60,8 @@ UID_BLOCK = 106
 PROFILE_UID_SHA256 = "7290674610eca1cf26581779a71c7f41a9c2fc367eb7189d0e93918319964bc7"
 ORIGINAL_SIZE = 162792
 ORIGINAL_SHA256 = "e18c240fa1cf35222674bf3b4fa992a306c6e63b0b99be8793604f199085d702"
-CANDIDATE_SIZE = 169808
-CANDIDATE_SHA256 = "4c60e2e90bf257872759a30be3cf1af4f74882e54e4f8792eff1b259bbb83a1f"
+CANDIDATE_SIZE = 170376
+CANDIDATE_SHA256 = "afcc36c42e06a3119e8acbf5af677640b4a38723fb20eae319d3b6bdf77e95f2"
 # Earlier 1.0.0 builds, taken from the v1.0.0 tag. The printed version
 # matches the new menu build, so the USB installer uses per-model hashes.
 STABLE_1_0_0_APPLICATIONS = {
@@ -77,6 +77,14 @@ PREVIOUS_STABLE_APPLICATIONS = {
     "pico-pro": (169312, "fe522d90285ab2d48fd3f28b55887192c7661f06a0a2a3037e8c1e2f59dc8a95"),
     "pico-c-ssd1325": (167400, "66af92c03c9f94d6388ae141b596252a8992ee3847919af87d2247c4bfffa112"),
     "pico-c-ssd1309": (167296, "736fdc386e0c9ffd7a4f5bff371cc059f71bd5aceb1a5a77065ea4813809b5e1"),
+}
+
+# Pre-group 1.0.0 applications remain valid sources for USB maintenance.
+PRE_GROUP_APPLICATIONS = {
+    "pico-s": (169792, "4dd458facba2698d988862e4d74d87cff70b8d62cf3ca95860559e18122f42dd"),
+    "pico-pro": (169808, "4c60e2e90bf257872759a30be3cf1af4f74882e54e4f8792eff1b259bbb83a1f"),
+    "pico-c-ssd1325": (167848, "9dbd988506d43f2c1d227638de003bc498a0aa9c11c90de58fa4c8606c45b1bd"),
+    "pico-c-ssd1309": (167768, "d424f2bc9f6a7836a2b84d74dbd1d5bcddd83daac18f7b46f6249e0110c2a669"),
 }
 
 # Pre-release applications can be recognized as USB migration sources.
@@ -182,8 +190,8 @@ C_STOCK = {
     "pico-c-ssd1309": (155864, "6f2dedfcd7ab10b5a421b05dc4ee792cd44753d7e302fd8ee645ca4f6556c226"),
 }
 C_STANDALONE = {
-    "pico-c-ssd1325": (167848, "9dbd988506d43f2c1d227638de003bc498a0aa9c11c90de58fa4c8606c45b1bd"),
-    "pico-c-ssd1309": (167768, "d424f2bc9f6a7836a2b84d74dbd1d5bcddd83daac18f7b46f6249e0110c2a669"),
+    "pico-c-ssd1325": (168424, "b396463b25fb4b84b3e8334355031b88dfae5cd91dc0a54e6201d830ae133744"),
+    "pico-c-ssd1309": (168344, "d817dd7ed2efc716f1aa36f1801a024a8d57f77831427f502c3699931a4aab71"),
 }
 C_WEB_MANIFEST_SHA256 = "2583ac79cf47c31e258b5d2aa8b8087440c4d7597ff4bd905395838acee34ae9"
 UID_NAME = "/sys/uid.txt"
@@ -393,7 +401,7 @@ def candidate_identity(model):
     if model == "pico-pro":
         return CANDIDATE_SIZE, CANDIDATE_SHA256
     if model == "pico-s":
-        return 169792, "4dd458facba2698d988862e4d74d87cff70b8d62cf3ca95860559e18122f42dd"
+        return 170368, "3d3017701f625e3341490a002103ebc613d8c8be91c66a01163fc25a9c1b7665"
     if model in C_STANDALONE:
         return C_STANDALONE[model]
     raise InstallError("Unknown target model")
@@ -480,10 +488,10 @@ def _approved_current_applications(mode, model="pico-pro"):
                                (RELEASED_1_0_1_SIZE, RELEASED_1_0_1_SHA256),
                                (RELEASED_1_1_0_SIZE, RELEASED_1_1_0_SHA256)))
         identities.extend(LEGACY_APPLICATIONS[model])
-        identities.extend((STABLE_1_0_0_APPLICATIONS[model], PREVIOUS_STABLE_APPLICATIONS[model]))
+        identities.extend((STABLE_1_0_0_APPLICATIONS[model], PREVIOUS_STABLE_APPLICATIONS[model], PRE_GROUP_APPLICATIONS[model]))
         identities.append(candidate_identity(model))
     if mode == "install-recovery":
-        identities = [STABLE_1_0_0_APPLICATIONS[model], PREVIOUS_STABLE_APPLICATIONS[model], candidate_identity(model)]
+        identities = [STABLE_1_0_0_APPLICATIONS[model], PREVIOUS_STABLE_APPLICATIONS[model], PRE_GROUP_APPLICATIONS[model], candidate_identity(model)]
     return tuple({"size_bytes": size, "sha256": digest} for size, digest in identities)
 
 
