@@ -58,7 +58,7 @@ On Z, the local website, API and Hub connection run on the network interface sel
 
 In **Brewery → Group machines**, select the individual brewers that will brew together. A Z stack can join as separate modules. When a member starts a compatible recipe or routine, the Hub offers it only to the other selected members. Each participant confirms independently. The Hub checks the actual recipe and target capabilities and links the separate journal entries so you can compare brews.
 
-A compatible Z can accept from its physical dial, its local website or the Hub. A Pico S, Pro or C can originate a group recipe or rinse from its dial and accept an invitation in the Hub. For a configured Zymatic menu, acceptance stages the recipe and the operator starts it on the dial. Each machine retains its own preparation prompts and interlocks. [Z Group Brewing](../firmware/z-series/modified/README.md#group-brewing)
+A compatible Z can accept from its physical dial, its local website or the Hub. Z modules also share their coffee, sous vide, PicoStill and utility programs when both modules advertise support. Coffee opens on the receiving dial with the original parameters for review. Each PicoStill operation uses the receiving Z’s own linked accessory. A Pico S, Pro or C can originate a group recipe or rinse from its dial and accept an invitation in the Hub. For a configured Zymatic menu, acceptance stages the recipe and the operator starts it on the dial. Each machine retains its own preparation prompts and interlocks. [Z Group Brewing](../firmware/z-series/modified/README.md#group-brewing)
 
 ## Recipe checks and manufacturer care
 

@@ -64,11 +64,14 @@ Advertised commands include `brew`, `sous-vide` (with keg), `sous-vide-no-keg`, 
 
 ## Group Brewing
 
-The Hub can group individual Z modules with compatible brewers. Starting a saved
-recipe, Rinse or Clean on a member creates an invitation that the Hub can deliver
-to other members. Each receiving Z shows the sender and the staged recipe or
-routine on its OLED. Turn the dial to **Accept and start** or press **Decline**.
-The authenticated web interface can also answer the invitation.
+In the Hub, group the individual brewers you want to use together. A saved brew,
+rinse or clean can invite compatible members. Z modules with the extended group
+capability can also share drain, rack, circulate, chill, both sous vide programs,
+all four coffee programs and paired PicoStill operations. Each receiving Z shows
+the sender and program on its OLED. Answer on that dial, its local website or the
+Hub. For coffee, acceptance opens the native parameter screen with the sender’s
+water, temperature, intensity and duration. Choose **Start** there to begin.
+Each Z running a PicoStill operation needs its own ready, linked accessory.
 
 A saved recipe runs through the normal Z compiler, including native Program Maker
 steps. The invitation is tied to the staged catalog revision. An active operation,
