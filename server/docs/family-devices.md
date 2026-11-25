@@ -10,7 +10,7 @@ and leaves an uncertain command for the owner to review.
 | --- | --- |
 | C/S/Pro | Existing monochrome front panel, dial, local recipes, advertised native programs, stop latch, preferences and retained history. C keeps its explicit display geometry and separate firmware package checks. |
 | Generic Z-series | Actual 128 × 64 grayscale panel, dial, local canonical recipes, native programs and advertised pause/resume. Named temperature, pressure and actuator readings remain available. The identity does not establish a Z1/Z2 mapping. |
-| Zymatic | Both standalone profiles offer Ethernet monitoring, recipe sync and one USB-provisioned offline recipe. The extended profile adds remote dial inputs and retained history. Stock 1.1.14 can fetch recipes and report sessions to the Hub. [Zymatic profiles](../../firmware/zymatic/modified/application.md) |
+| Zymatic | Both standalone profiles offer Ethernet monitoring, Wi-Fi monitoring from the Home menu and programmed pauses, recipe sync and one USB-provisioned offline recipe. The extended profile adds remote dial inputs and retained history. Stock 1.1.14 can fetch recipes and report sessions to the Hub. [Zymatic profiles](../../firmware/zymatic/modified/application.md) |
 | PicoStill | Start, essential-oils, cleaning and stop commands. While a program runs, the pump and fan controls show the reported settings for the selected output. The page also displays reported temperatures and pressure. No recipe catalog, heater controls or front-panel view is invented. |
 | PicoFerm | Start or stop recording fermentation, take a reading, set the interval while idle, or calibrate pressure. A manual reading can retry a sensor fault. The page shows temperature, native pressure and battery, without brew or heater controls. |
 
@@ -29,12 +29,16 @@ including Fahrenheit temperatures and the normalized PicoStill kPa channel.
 
 ## Z recipes and front panel
 
-Hardware identity `z-series` uses the existing generic Z planning profile for
-canonical recipes. Every step requires an explicitly assigned direct valve
-from 1 through 6, and the device's 15-step and temperature/duration bounds still
-apply. Archived native `z` and `zymatic` programs are blocked from direct
-deployment: their 0–5 routing and location-6 pause grammar require an explicit
-conversion. A profile alias cannot silently convert that routing.
+Choose **Send** to save a program on a connected standalone Z. The Hub checks the program against the individual module’s capabilities and reads it back. Select **Brew Recipe** on the dial, or start the saved recipe from the website or Hub when ready. The module stores up to 16 programs of up to 15 steps each.
+
+| Recipe in the Hub | What the Z runs |
+| --- | --- |
+| Ingredient recipe | The Hub builds a program for the Z from the measured ingredients and schedule. Its steps select the keg, mash basket or a specific hop compartment. An unheated step switches heating off. |
+| Z Program Maker file | The brewer reads the original Celsius targets, hold and drain times in seconds, setup options and pauses. The PicoPak mode setting selects the adjunct routing. |
+| Archived Z cloud schedule | The brewer uses the source starting-water quantity, temperatures, times and pause markers. A zero temperature keeps the previous heat setting. The Hub archive includes 39 such schedules. |
+| Original PicoPak program | Use a physical PicoPak and the Z PicoPak Adapter. The native controller prompts for the adapter and water. For kits with authored timing ranges, selected strength and bitterness change mash and hop contact times. |
+
+The two archived program formats contain machine instructions. Brewing from loose ingredients also requires the ingredient bill and loading instructions. A compatible stock **0.0.119** Z accepts a Program Maker JSON export through its own website as its single working program. Stock Program Maker cannot import the cloud or original PicoPak formats. [Native Z recipe formats](../../firmware/z-series/modified/oem-parity.md#what-a-z-recipe-specifies) · [Stock Program Maker export limits](beer-crafter.md#machine-programs)
 
 The Hub assembles the four Z display pages under one adapter lock, pins their
 revision and rejects inconsistent dimensions, offsets or data. A revision change

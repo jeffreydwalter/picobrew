@@ -1,4 +1,5 @@
 import { CareNotice, MachineCare } from '../components/MachineCare'
+import { BrewInvitations } from '../components/BrewGroups'
 import { MachineManagement } from '../components/MachineManagement'
 import { useEffect, useState } from 'react'
 import {
@@ -46,7 +47,11 @@ import { SensorHistory } from '../components/SensorHistory'
 import { LinkedPicoFerms } from '../components/PicoFermAssociation'
 const programNames: Record<string, string> = {
   'sous-vide': 'Sous vide',
+  'sous-vide-no-keg': 'Sous vide without keg',
   'cold-brew': 'Cold brew',
+  coffee: 'Coffee menu',
+  'picostill-manual': 'PicoStill manual',
+  'picostill-boil-point': 'PicoStill boiling point',
   manual: 'Manual brew',
   rinse: 'Rinse',
   'first-rinse': 'First rinse',
@@ -172,7 +177,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
   const [editing, setEditing] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [testingConnection, setTestingConnection] = useState(false)
-  const [removeRecipe, setRemoveRecipe] = useState(false)
+  const [removeRecipe, setRemoveRecipe] = useState<MachineRecipe | null>(null)
   const [editRecipe, setEditRecipe] = useState<MachineRecipe | null>(null)
   const [transferRecipes, setTransferRecipes] = useState(false)
   const [error, setError] = useState('')
@@ -287,6 +292,8 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
   const status = device.status
   const commands = device.capabilities?.commands || []
   const programs = Object.keys(programNames).filter((name) => commands.includes(name))
+  const programLabel = (name: string) =>
+    name === 'sous-vide' && commands.includes('sous-vide-no-keg') ? 'Sous vide with keg' : programNames[name] || name
   const program = programs.includes(chosenProgram) ? chosenProgram : programs[0] || ''
   const hasRecipes = supports(device.capabilities, 'recipes')
   const hasPrograms = hasRecipes || programs.length > 0
@@ -369,6 +376,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
         }
       />
       {device.error && <ErrorBanner message={device.error} />}
+      <BrewInvitations devices={[device]} deviceID={device.id} />
       <CareNotice maintenance={device.online ? device.status?.maintenance : undefined} />
       {device.model_error && (
         <div className="connection-advisory" role="status">
@@ -522,7 +530,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
                       .filter(Boolean)
                       .join(' ')
                   : live?.busy
-                    ? live.recipe_name || programNames[live.command] || live.command
+                    ? live.recipe_name || programLabel(live.command)
                     : undefined
             }
           />
@@ -571,7 +579,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
                       !allowed(name) ||
                       !live.busy ||
                       live.stopped ||
-                      (device.model === 'z-series' && live.state?.toLowerCase() !== 'running') ||
+                      (name === 'pause' ? live.can_pause : live.can_resume) !== true ||
                       !!pending
                     }
                     onClick={() => void command(name, { confirm: true })}
@@ -714,7 +722,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
                           !!status?.stopped ||
                           !!pending
                         }
-                        onClick={() => setRemoveRecipe(true)}
+                        onClick={() => setRemoveRecipe(recipes.find((recipe) => recipe.id === recipeID) || null)}
                       >
                         <Trash2 size={13} />
                         Remove selected copy
@@ -729,7 +737,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
                     <select value={program} onChange={(event) => setProgram(event.target.value)}>
                       {programs.map((command) => (
                         <option key={command} value={command}>
-                          {programNames[command]}
+                          {programLabel(command)}
                         </option>
                       ))}
                     </select>
@@ -741,7 +749,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
                       !allowed(program) || !live.ready || !!pending || !!status?.busy || interrupted
                     }
                     onClick={() =>
-                      requestStart({ command: program, label: programNames[program] || program })
+                      requestStart({ command: program, label: programLabel(program) })
                     }
                   >
                     Open program
@@ -950,21 +958,22 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
           label="Remove machine copy"
           danger
           busy={pending === 'remove-recipe'}
-          onClose={() => setRemoveRecipe(false)}
+          onClose={() => setRemoveRecipe(null)}
           onConfirm={async () => {
             setPending('remove-recipe')
             setError('')
             try {
-              await api(`/devices/${id}/recipes/${encodeURIComponent(recipeID)}`, {
+              await api(`/devices/${id}/recipes/${encodeURIComponent(removeRecipe.id)}`, {
                 method: 'DELETE',
+                body: { expected: removeRecipe },
               })
               setRecipeID('')
               native.reload()
-              setRemoveRecipe(false)
+              setRemoveRecipe(null)
               hub.notify('Saved machine recipe removed.')
             } catch (error) {
               setError(errorMessage(error))
-              setRemoveRecipe(false)
+              setRemoveRecipe(null)
             } finally {
               setPending('')
             }

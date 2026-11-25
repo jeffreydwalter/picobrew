@@ -42,4 +42,4 @@ def qualify_install_layout(image, model):
         raise ValueError("Choose an individual Z-series module; stack size does not identify firmware")
     if qualify_stock(image, model) != "0.0.119":
         raise ValueError("Generic Z-series setup requires the verified 0.0.119 application")
-    esp_stock_partitions.qualify_install_layout(image)
+    esp_stock_partitions.qualify_install_layout(image, preserve_z_eeprom=True)

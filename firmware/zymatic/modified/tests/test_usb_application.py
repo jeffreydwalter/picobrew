@@ -8,11 +8,13 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import zymatic_build as build
 import compact_build
 import usb_layout
+import wifi_build
 import usb_application
 import usb_avr as avr
 import usb_stock as stock
@@ -116,7 +118,7 @@ class ApplicationTest(unittest.TestCase):
         key = usb_application.read_key(self.key, create=True)
         uid = "ba" * 16
         for release in usb_layout.known_releases():
-            if release in (compact_build, build):
+            if release in (wifi_build.COMPACT, wifi_build.EXTENDED):
                 continue
             with self.subTest(version=release.VERSION):
                 prior, metadata = release.build_application(self.original, key, uid, "brew.lan")
@@ -147,10 +149,29 @@ class ApplicationTest(unittest.TestCase):
                 flash = prior.ljust(avr.FLASH, b"\xff")
                 self.assertEqual(usb_layout.identify(flash), metadata)
                 target, current = usb_application.install_pages(flash, self.original, metadata, self.key, None, limit=limit)
-                expected, _ = release.build_application(self.original, key, uid, "brew.lan")
+                expected, _ = usb_layout.best_fit(limit).build_application(self.original, key, uid, "brew.lan")
                 self.assertNotEqual(prior, expected)
                 self.assertEqual(target[:len(expected)], expected)
                 self.assertEqual(usb_layout.identify(target), current)
+
+    def test_wifi_images_verify_controls_and_private_fields_independently_of_crc(self):
+        recipe = {"name": "Port test", "steps": [
+            {"name": "Unheated circulation", "target_f": 0, "minutes": 10, "drain_minutes": 1, "location": 0}]}
+        for release in (wifi_build.COMPACT, wifi_build.EXTENDED):
+            with self.subTest(profile=release.PROFILE):
+                image, info = release.build_application(self.original, bytes(range(31, -1, -1)), "ef"*16,
+                                                        "hub.example:49152", recipe)
+                self.assertEqual(release.recognize_private_application(image), info)
+                for _, address, _, expected in build.hub_port_patches(49152):
+                    self.assertEqual(image[address:address+len(expected)], expected)
+                _, layout = release.template()
+                for address in (4, layout["symbols"]["provision_host"] + len("hub.example:49152") + 1,
+                                layout["symbols"]["provision_legacy_sum"], next(build.hub_port_patches(49152))[1]):
+                    changed = bytearray(image)
+                    changed[address] ^= 1
+                    changed[-4:] = zlib.crc32(changed[:-4]).to_bytes(4, "little")
+                    self.assertIsNone(release.recognize_private_application(changed))
+                self.assertIsNone(release.recognize_private_application(image[:-1]))
 
     def test_profiles_report_same_version_and_different_capabilities(self):
         for limit, profile in ((0x1e000, "compact"), (0x1f000, "compact"),
@@ -160,8 +181,9 @@ class ApplicationTest(unittest.TestCase):
                 image, metadata = release.build_application(self.original, bytes(range(32)), "ab" * 16)
                 self.assertEqual((metadata["firmware_version"], metadata["build_profile"]), ("1.0.0", profile))
                 self.assertLessEqual(len(image), limit)
-                self.assertIn(b'"firmware_version":"1.0.0"', image)
-                self.assertEqual(b'"commands":["encoder"]' in image, profile == "extended")
+                # The extended API compresses its JSON strings. The AVR HTTP tests
+                # execute the actual response, including version and controls.
+                self.assertEqual(release.VERSION, build.VERSION)
                 self.assertEqual(usb_layout.identify(image), metadata)
                 for address in (0x8428, 0x844c, 0xa444, 0xa468):
                     self.assertEqual(image[address:address + 2], build.immediate(0xe000, 24, 0))

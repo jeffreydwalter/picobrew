@@ -36,10 +36,21 @@ It saves the host and port in flash and posts readings there after reboot. Check
 **Settings → Hub connection** on its local site for the destination and delivery status.
 The Hub can also recover a changed receiver address. [Pairing and reconnecting](../../../server/docs/device-connections.md)
 
-This always-awake standalone profile keeps the LAN interface available. It does
-not use the OEM cloud exchange, deep-sleep schedule or automatic recording
-resume. Its power consumption and battery runtime therefore require physical
-measurement; OEM battery-life expectations do not transfer to this profile.
+Before pairing, the Wi-Fi listener stays available for discovery. With a saved readings
+receiver, PicoFerm switches off the ESP8266 radio between reporting windows. It wakes at
+the next sampling interval or after five minutes, whichever comes first, and allows up to
+30 seconds for reconnection, delivery and history sync. A failed delivery leaves the saved
+address in place. During a recording the device stores samples in its normal persistent
+history, and the Hub imports retained samples on reconnection.
+
+Briefly press the PicoFerm button to bring Wi-Fi back for two minutes. Power-on and
+configuration changes also open a two-minute management window. Starting an update
+keeps Wi-Fi on through the transfer and boot confirmation. Disabling live readings keeps
+the listener available continuously. The existing long press still starts or stops recording.
+
+This uses the pinned SDK’s modem sleep. The CPU, physical button, sampling clock and
+local recording continue running. The OEM application uses reset-on-wake deep sleep.
+Battery runtime on this firmware still needs measurement on a physical PicoFerm.
 
 A paired Hub can open the device website with a single-use ticket that expires
 after 30 seconds. Direct visits can show public status or accept a saved

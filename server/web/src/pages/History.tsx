@@ -296,6 +296,19 @@ function BrewPage({ id, analyze }: { id: string; analyze: boolean }) {
           onSaved={resource.reload}
         />
       )}
+      {brew.group_session_id && (
+        <section className="panel">
+          <SectionHeading title={brew.group_name || 'Group brew'} />
+          <div className="brew-group-comparison">
+            {hub.brews.filter(item => item.group_session_id === brew.group_session_id).map(item => (
+              <button key={item.id} className="button secondary" aria-current={item.id === brew.id ? 'page' : undefined}
+                onClick={() => hub.navigate('/history/' + encodeURIComponent(item.id))}>
+                {item.device_name} · {duration(item.duration_ms)} · {item.state}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       {brew.picoferm_id && (
         <div className="inline-actions">
           <span>PicoFerm · {brew.picoferm_name || 'Assigned monitor'}</span>

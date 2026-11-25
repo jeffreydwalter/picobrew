@@ -415,6 +415,12 @@ void pico_recipe_heat_flush_compartments(PicoRecipeRuntime *r, bool steam, doubl
 /* Original 0x2000deec. */
 void pico_recipe_rinse(PicoRecipeRuntime *r)
 {
+#if PICO_STANDALONE
+    /* Only explicit stand-alone rinses are group starts. The automatic
+     * post-brew rinse and cancelled preparation never invite another brewer. */
+    bool group = r->state->group_armed;
+    r->state->group_armed = false;
+#endif
     if (pico_local_cancelled())
         return;
     static const uint32_t instructions[] = {21, 22};
@@ -432,6 +438,12 @@ void pico_recipe_rinse(PicoRecipeRuntime *r)
     show(r, PICO_RECIPE_INSTRUCTION_HEADER, 23, title);
     r->ops->report_state(r->context);
     uint32_t started = clock_ms(r);
+#if PICO_STANDALONE
+    if (group) {
+        r->state->group_rinse = true;
+        r->state->group_started_ms = started;
+    }
+#endif
     pico_actuator_drain_on(a);
     move_to(r, first);
     while (clock_ms(r) - started < 60000) {

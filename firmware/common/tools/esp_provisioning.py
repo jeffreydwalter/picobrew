@@ -95,7 +95,35 @@ def _read_migration_image(image):
     return contents
 
 
-def migrate_z_files(source, empty, key, *, paired):
+def _stage_board_seed(initial, seed):
+    """Create one read-only 120-byte OEM settings file alongside the optional device key."""
+    if seed is None or seed == b"\xff" * 120:
+        return initial
+    if (len(seed) != 120 or int.from_bytes(seed[:4], "little") != 0 or max(seed[4:8]) > 1 or
+            int.from_bytes(seed[8:12], "little") > 2 or b"\0" not in seed[12:44] or b"\0" not in seed[44:108] or
+            any(int.from_bytes(seed[n:n+4], "little") > limit for n, limit in ((108,2),(112,2),(116,1)))):
+        raise ValueError("Unrecognized Z board settings in the original EEPROM partition")
+    contents = _read_migration_image(initial)
+    name = "/pb/zboard.seed"
+    if name in contents["files"]:
+        raise ValueError("The Z board settings seed already exists")
+    dest = bytearray(initial)
+    # initial is either the verified empty filesystem or its single device-key variant.
+    free = [n for n in range(1,16) if struct.unpack_from("<H",dest,2*(n-1))[0] == 0xffff]
+    header, data = free[:2]
+    owner = 2
+    struct.pack_into("<H", dest, 2*(header-1), owner|0x8000)
+    struct.pack_into("<H", dest, 2*(data-1), owner)
+    struct.pack_into("<HHBxxxIB32s", dest, 256*header, owner|0x8000, 0, 0xf8, len(seed), 1, name.encode())
+    struct.pack_into("<IH", dest, 256*header+45, 0, data)
+    struct.pack_into("<HHB", dest, 256*data, owner, 0, 0xfc)
+    dest[256*data+5:256*data+5+len(seed)] = seed
+    result = bytes(dest)
+    spiffs_format.inspect_image(result,"esp32-z-recovery",{**contents["files"],name:seed})
+    return result
+
+
+def migrate_z_files(source, empty, key, *, paired, board_seed=None):
     """Repack all live ESP32 files, including transactional backups and metadata.
 
     SPIFFS stores absolute page numbers in index pages. Relocate every live page
@@ -107,7 +135,7 @@ def migrate_z_files(source, empty, key, *, paired):
         raise ValueError("The target filesystem is not the pinned, empty Z layout")
     if not source or source == b"\xff" * len(source):
         if paired: raise ValueError("The paired Z filesystem is missing")
-        return stage(empty, profile, key) if key else empty
+        return _stage_board_seed(stage(empty, profile, key) if key else empty, board_seed)
     old = _read_migration_image(source)
     files, meta = old["files"].copy(), old["metadata"].copy()
     existing_key = files.get("/pb/api.key", files.get("/pb/api.key.bak"))
@@ -118,6 +146,9 @@ def migrate_z_files(source, empty, key, *, paired):
     if existing_key is None and "/pb/api.key.tmp" in files:
         raise ValueError("An unfinished API key transaction requires review")
     initial = stage(empty, profile, key) if key and existing_key is None else empty
+    if board_seed is not None and "/pb/zboard.seed" in files:
+        raise ValueError("An existing Z board settings seed conflicts with the stock EEPROM")
+    initial = _stage_board_seed(initial, board_seed)
     dest = bytearray(initial)
     reserved = _read_migration_image(initial)
     files.update(reserved["files"])

@@ -18,21 +18,21 @@
   "sources": [
     {
       "source": "src/api.cpp",
-      "source_sha256": "1d339af8cd34bdb871ad716592da246dcb737a6050deb07b76eacb15bcacf193",
-      "object_sha256": "fc0261c58ee2a21f00d4fa5a581319b2373d090a6accb7203ba7e55f5e828cbe",
-      "object_bytes": 65900
+      "source_sha256": "802ee7898f79e0e8c6deaeb32ae73c4d715f3123fded582310cef93980a70c56",
+      "object_sha256": "550aba05276936c835fbf9b7e5d34179bacd9f0cf15a7c4ccc006f8793bced8c",
+      "object_bytes": 75392
     },
     {
       "source": "src/engine.cpp",
-      "source_sha256": "8c4fd8224a95c0e312fde16892f44a8e97b007a5f5ba3d90f5b661c63fd56768",
-      "object_sha256": "91ff2830ca7753aa833421a6c444950f404273ac921c3baca1b3301f60b65abf",
-      "object_bytes": 47472
+      "source_sha256": "166a25e70ffc9b42bba9b99ac610fcc534b03e0e3cb3bd652ba6cd64285ae526",
+      "object_sha256": "849e051a3643a3d865bf9b3c34eb130ebe163fbb1c087925799d9ae5911b8a03",
+      "object_bytes": 61876
     },
     {
       "source": "src/history.cpp",
       "source_sha256": "b66d329d4a860a3e0dc5f44e3a9eef8e76795f360fefbcdb31eaf091ce308d71",
-      "object_sha256": "e8bf97460408dd3cd2962a6300577651cb5ee88c1b85ba0ea1491efd81340601",
-      "object_bytes": 30236
+      "object_sha256": "c8e7717eb14e8ba30d4a1c296d9073f7727b7b5723ca32a5f9241c608dbed397",
+      "object_bytes": 30208
     },
     {
       "source": "src/history_records.cpp",
@@ -49,36 +49,37 @@
     {
       "source": "src/telemetry.cpp",
       "source_sha256": "331a628f461d0060df520e29f23079696ed3a09402afb9c4c68a107d4224fa70",
-      "object_sha256": "8cb9d5d7e7f2fe438e0651908a99ae12133e8411aa44a664fab4ba92d70bb832",
-      "object_bytes": 26600
+      "object_sha256": "4e7fe6fd437c7957cf047cbfffe7b51ea8186f70b4aa194969b41d0a26c50ca5",
+      "object_bytes": 26604
     },
     {
       "source": "src/values.cpp",
-      "source_sha256": "c83ca984fad2c640229d604ee14c04b33a675d5c341900af7268b4280bf63e88",
-      "object_sha256": "78393c4655d39bcc37e9c4cbfcec80f99f0c1c2f04778d65427a872b33ae1864",
-      "object_bytes": 43504
+      "source_sha256": "640a186e1055f2bf68b5aa31534b77e5ee663c3f77334692ddd4d14dba9412d3",
+      "object_sha256": "905fabf3a04e68e98b256331d38c5ec589eedd122976c0ecc36ce9175bd21992",
+      "object_bytes": 64292
     },
     {
       "source": "src/http_server.c",
-      "source_sha256": "d4c483d952934b8080aa8b529b274a558ccc202a9d6f8a59b742cf698c2d350f",
-      "object_sha256": "e4a74433072f679199d370b3db2e380c53dbb3f2867e4bce24315fe78358e5ae",
-      "object_bytes": 24588
+      "source_sha256": "31ee677d636895f470c8a0780ec0bad7063a4c92958eca1cec7c7d9fdc8ba281",
+      "object_sha256": "7385127ed1fc42279cc94d70ac18f29f6ab668a186e9f2ae1cbffe4b8a362682",
+      "object_bytes": 33796
     }
   ],
   "headers": {
-    "include/picobrew/device_services.hpp": "428b31a12cc5803289595c472b005352756fb86c442cd38d4e6f526f868185ef",
-    "include/picobrew/standalone_engine.hpp": "279419441fd728e2ad871cc812749d148ab18960ac3fe75dca31fc4384787dd2",
-    "include/picobrew/http_server.h": "372a731e8585049656be468609a7bce21ccdbaec95758091ba4225408ae41ac3",
-    "src/engine_internal.hpp": "57521041b6c10f7ce3a2af9d0d909db47568d43ef1e0f2fae1c385faa99adb79",
+    "include/picobrew/device_services.hpp": "45553fae4ff48bcc8ea969804c1b51f3d771ff5ad686915ca101aec7ff4f3d01",
+    "include/picobrew/standalone_engine.hpp": "df62856674adb8e3b725403f0db25c91dc89ec0dbc865e54a55b22d0e0b0103b",
+    "include/picobrew/http_server.h": "0a301db4544a62250f9ba64e6e1947f8aaa3ed16be1fcd7c14322b380f03cb38",
+    "src/engine_internal.hpp": "2d3f37aebc1ba249c4d986a2e1b484b1ec35f2efbce690618d612bb161eb16b2",
     "src/json.hpp": "5ee0a5b00b92a6f5c3070fc0b29114fb707cc686380f0ab6abf28589c65c6654",
-    "src/records.hpp": "19dc25a561479648e6bae02d8157f6e6d47678acd313d4a37d9c7350ecd5c6bd"
+    "src/records.hpp": "19dc25a561479648e6bae02d8157f6e6d47678acd313d4a37d9c7350ecd5c6bd",
+    "src/recipe_record.hpp": "56f1184b773dfe54bfa0f28fab0aaa343579ce2c002ec08bade0a6c062b4264d"
   },
-  "build_script_sha256": "6d07a5ebd3f7d4c6f61e65e619afde1c8b32df5c3935c642b896e229546f2eff",
+  "build_script_sha256": "f315133c1c60ecfafb6c5f8f9bf808d6523e986c3a555cf38b304aa66dcc7226",
   "dependency_pin_sha256": "a7aa18e676018bb342605d2a952594058635004c15f1772884c715918d2d2592",
   "complete_application_linked": false,
   "hardware_tested": false,
   "scope": "The portable engine and unchanged S/Pro HTTP transport compile with the pinned target compiler. SDK/platform drivers, assets and complete application linkage are recorded by each machine profile.",
   "compiler": "xtensa-lx106-elf-g++ (crosstool-NG 1.20.0) 4.8.2",
   "compiler_sha256": "9090ec97ab7bc6d9cd3a1cb47b5899e05ecce8f83a7300efb868e491367bb5ec",
-  "archive_sha256": "83fa5520531e98d9a6f67af18505c9d1a8341fdffa0432a9dc933a09030f4923"
+  "archive_sha256": "d63389ac643fb75e9b3ece57260a25c7d0bb2723311e4531690199693b957f9d"
 }

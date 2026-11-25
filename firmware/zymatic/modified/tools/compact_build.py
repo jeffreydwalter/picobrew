@@ -9,7 +9,7 @@ import zlib
 
 import offline_program as recipes
 import usb_stock as stock
-from zymatic_build import INITIAL_RELEASE, RECIPE_MENU_PATCH, VERSION, has_oem_recipe_label
+from zymatic_build import INITIAL_RELEASE, RECIPE_MENU_PATCH, VERSION, has_oem_recipe_label, hub_port_patches
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "extension"
@@ -120,13 +120,7 @@ def patch_list(symbols, port=80, version=VERSION, *, legacy_menu=False):
         for i, pc in enumerate(locations):
             pointer = authority if i == 0 else host
             patches.append((name, pc, load_pointer(22, original), load_pointer(22, pointer)))
-    for label, register, locations in (
-        ("wifi-port", 18, [0x42ae, 0x603c, 0x61a0, 0x6290, 0x63b6, 0x65e0,
-                           0x671a, 0x6ae6, 0x6fc2, 0x87ee, 0x8e68, 0x901c]),
-        ("ethernet-port", 20, [0xba10, 0xbf18, 0xc02a, 0xc228, 0xcae8, 0xcfbc,
-                               0xd23a, 0xd3c8, 0xd836, 0xda36, 0xdd82, 0xdef6])):
-        for pc in locations:
-            patches.append((label, pc, load_pointer(register, 80), load_pointer(register, port)))
+    patches.extend(hub_port_patches(port))
     # About Zymatic and the startup banner both convert three literal unsigned
     # components with base-10 itoa. The stock wire protocol remains 1.1.14.
     _, minor, patch = map(int, version.partition("-")[0].split("."))

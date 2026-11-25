@@ -32,11 +32,18 @@ unsigned Engine::Impl::discovery_json(Writer& writer) {
     writer.text("{"); identity_json(writer, identity);
     if (pico_http_pairing_available(false)) writer.text(",\"pairing_v1\":true");
     if (capabilities.ota_protocol) { writer.text(",\"ota_protocol\":"); writer.quote(capabilities.ota_protocol); }
+    if (has_recipe_library()) writer.text(",\"recipe_conditional_write\":true");
+    if (capabilities.picostill_brewer_link_v1) writer.text(",\"picostill_brewer_link_v1\":true");
+    if (capabilities.group_z_programs_v1) writer.text(",\"group_z_programs_v1\":true");
+    if (capabilities.group_brewing_v1) writer.text(",\"group_brewing_v1\":true");
+    if (capabilities.z_state_v1) writer.text(",\"z_state_v1\":true");
+    if (capabilities.z_picopak_v1) writer.text(",\"z_picopak_v1\":true");
+    if (capabilities.z_cloud_program_v1) writer.text(",\"z_cloud_program_v1\":true");
     if (capabilities.z_program_maker) writer.text(",\"z_program_maker\":true");
     writer.text(",\"api_version\":1,\"release_channel\":\"stable\",\"firmware_version\":"); writer.quote(identity.firmware_version);
     writer.format(",\"mode\":\"standalone\",\"recipe_capacity\":%u,\"step_capacity\":%u,\"recipe_create_only\":%s,\"zero_minute_steps\":%s,\"restore_default_recipes\":%s,\"starter_recipe_count\":%u,\"recipe_labels\":\"printable ASCII\",\"commands\":[",
-        capabilities.flags & Recipes ? unsigned(RecipeCapacity) : 0u, capabilities.flags & Recipes ? unsigned(RecipeStepCapacity) : 0u,
-        capabilities.flags & Recipes ? "true" : "false", capabilities.zero_minute_steps ? "true" : "false", capabilities.starter_recipe_count ? "true" : "false", unsigned(capabilities.starter_recipe_count));
+        has_recipe_library() ? unsigned(RecipeCapacity) : 0u, has_recipe_library() ? unsigned(RecipeStepCapacity) : 0u,
+        has_recipe_library() ? "true" : "false", capabilities.zero_minute_steps ? "true" : "false", capabilities.starter_recipe_count ? "true" : "false", unsigned(capabilities.starter_recipe_count));
     for (std::size_t i = 0; i < capabilities.command_count; ++i) { if (i) writer.text(","); writer.quote(capabilities.commands[i].name); }
     writer.format("],\"dedicated_pause_resume\":%s,\"front_panel\":%s,\"events_persistent\":false,\"history_persistent\":true,\"history_capacity_records\":%u,\"history_capacity_sessions\":8,\"telemetry_forwarding\":true,\"capabilities\":{",
         capabilities.dedicated_pause_resume ? "true" : "false", capabilities.flags & FrontPanel ? "true" : "false", PointCapacity);
@@ -45,9 +52,10 @@ unsigned Engine::Impl::discovery_json(Writer& writer) {
         if (i) writer.text(",");
         writer.quote(names[i]); writer.text(":"); writer.boolean((capabilities.flags & (1u << i)) != 0);
     }
+    if (capabilities.flags & IntermittentWifi) writer.text(",\"intermittent_wifi\":true");
     writer.format("},\"history_sample_interval_ms\":%lu,\"settings_fields\":[", static_cast<unsigned long>(history_interval())); bool comma = false;
-    const char* settings_names[] = {"temperature_unit", "language", "detailed_status"};
-    for (unsigned i = 0; i < 3; ++i) if (capabilities.settings & (1u << i)) {
+    const char* settings_names[] = {"temperature_unit", "language", "detailed_status", "auto_cycle"};
+    for (unsigned i = 0; i < sizeof(settings_names)/sizeof(*settings_names); ++i) if (capabilities.settings & (1u << i)) {
         if (comma) writer.text(",");
         writer.quote(settings_names[i]); comma = true;
     }
@@ -66,7 +74,12 @@ unsigned Engine::Impl::status_json(Writer& writer, bool update) {
     writer.text("{"); identity_json(writer, identity); writer.text(",\"device_uid\":"); writer.quote(identity.device_uid);
     writer.format(",\"uptime_ms\":%lu,\"ready\":%s,\"busy\":%s,\"stopped\":%s,\"stop_reason\":",
         static_cast<unsigned long>(s.uptime_ms), s.ready ? "true" : "false", s.busy ? "true" : "false", s.stopped ? "true" : "false");
-    writer.quote(s.stop_reason); writer.text(",\"command\":"); writer.quote(s.command); writer.text(",\"state\":"); writer.quote(s.state);
+    writer.quote(s.stop_reason);
+    if (capabilities.dedicated_pause_resume) {
+        writer.text(",\"can_pause\":"); writer.boolean(s.can_pause);
+        writer.text(",\"can_resume\":"); writer.boolean(s.can_resume);
+    }
+    writer.text(",\"command\":"); writer.quote(s.command); writer.text(",\"state\":"); writer.quote(s.state);
     writer.format(",\"device_state\":%lu,\"phase\":%lu,\"controller_status\":%lu,\"compartment\":%lu,\"wort_f\":",
         static_cast<unsigned long>(s.device_state), static_cast<unsigned long>(s.phase), static_cast<unsigned long>(s.controller_status), static_cast<unsigned long>(s.compartment));
     reading(writer, s.wort_f); writer.text(",\"thermoblock_f\":"); reading(writer, s.thermoblock_f);
@@ -138,6 +151,8 @@ unsigned Engine::Impl::settings_api(const PicoHttpRequest& request, Writer& writ
             field = Language; valid = json.string(changed.language, sizeof(changed.language));
         } else if (!std::strcmp(key, "detailed_status")) {
             field = DetailedStatus; valid = json.boolean(changed.detailed_status);
+        } else if (!std::strcmp(key, "auto_cycle")) {
+            field = AutoCycle; valid = json.boolean(changed.auto_cycle);
         } else valid = false;
         if ((seen & field) || !(capabilities.settings & field)) valid = false;
         seen |= field; if (!valid || !json.next('}')) break;
@@ -149,7 +164,7 @@ unsigned Engine::Impl::settings_api(const PicoHttpRequest& request, Writer& writ
     settings_json(writer, settings, capabilities.settings); return 200;
 }
 unsigned Engine::Impl::recipes_api(const PicoHttpRequest& request, Writer& writer) {
-    if (!(capabilities.flags & Recipes)) return error(writer, Result(404, "not_found", "Recipes are unavailable on this device"));
+    if (!has_recipe_library()) return error(writer, Result(404, "not_found", "Recipes are unavailable on this device"));
     if (!persistent) return error(writer, Result(503, "storage_io", "The recipe catalogue is not verified"));
     const char* suffix = request.path + std::strlen("/api/v1/recipes");
     if (!*suffix) {
@@ -173,18 +188,26 @@ unsigned Engine::Impl::recipes_api(const PicoHttpRequest& request, Writer& write
     if (!valid_id(suffix)) return error(writer, Result(400, "invalid_recipe", "Invalid recipe ID"));
     if (request.method == PICO_HTTP_GET) {
         Recipe recipe; const Result result = owner.recipe_get(suffix, recipe); if (!result.ok()) return error(writer, result);
-        recipe_json(writer, recipe); return 200;
+        recipe_json(writer, recipe, catalogue_generation); return 200;
     }
+    std::uint32_t revision = 0;
     if (request.method == PICO_HTTP_DELETE) {
-        const Result result = recipe_delete(suffix); if (!result.ok()) return error(writer, result);
+        if (request.body_length) {
+            Json json(request.body, request.body_length); char key[40]; std::int64_t number;
+            if (!json.token('{') || !json.key(key) || std::strcmp(key, "if_revision") ||
+                !json.integer(1, UINT32_MAX, number) || !json.token('}') || !json.done())
+                return error(writer, Result(400, "invalid_recipe", "Expected a positive if_revision"));
+            revision = static_cast<std::uint32_t>(number);
+        }
+        const Result result = recipe_delete(suffix, revision); if (!result.ok()) return error(writer, result);
         writer.text("{\"deleted\":true}"); return 200;
     }
     if (request.method != PICO_HTTP_PUT) return method_error(writer);
     Recipe recipe; Json json(request.body, request.body_length);
     bool create_only = false;
-    if (!parse_recipe(json, suffix, recipe, create_only)) return error(writer, Result(400, "invalid_recipe", "Invalid or duplicate recipe fields"));
-    bool created = false; const Result result = recipe_write(recipe, &created, create_only); if (!result.ok()) return error(writer, result);
-    recipe_json(writer, recipe); return created ? 201 : 200;
+    if (!parse_recipe(json, suffix, recipe, create_only, revision)) return error(writer, Result(400, "invalid_recipe", "Invalid or duplicate recipe fields"));
+    bool created = false; const Result result = recipe_write(recipe, &created, create_only, revision); if (!result.ok()) return error(writer, result);
+    recipe_json(writer, recipe, catalogue_generation); return created ? 201 : 200;
 }
 unsigned Engine::Impl::command_api(const PicoHttpRequest& request, Writer& writer) {
     if (request.method != PICO_HTTP_POST) return method_error(writer);
@@ -198,13 +221,17 @@ unsigned Engine::Impl::command_api(const PicoHttpRequest& request, Writer& write
         ((descriptor->required_fields & Confirm) && !command.confirm))
         return error(writer, Result(400, "invalid_command", "Command arguments do not match advertised capabilities"));
     if (!persistent && std::strcmp(command.name, "stop")) return error(writer, Result(503, "storage_io", "Persistent state must be repaired before starting another operation"));
-    Recipe recipe;
+    if (!owner.device_.execute) return error(writer, Result(503, "not_ready", "The device command port is unavailable"));
+    Result result;
     if (command.fields & RecipeId) {
+        if (!has_recipe_library()) return error(writer, Result(404, "not_found", "Recipes are unavailable"));
+        Recipe recipe;
         const Result loaded = owner.recipe_get(command.recipe_id, recipe); if (!loaded.ok()) return error(writer, loaded);
         command.recipe = &recipe;
+        result = owner.device_.execute(owner.device_.context, command);
+    } else {
+        result = owner.device_.execute(owner.device_.context, command);
     }
-    if (!owner.device_.execute) return error(writer, Result(503, "not_ready", "The device command port is unavailable"));
-    const Result result = owner.device_.execute(owner.device_.context, command);
     if (!result.ok()) return error(writer, result);
     if (!std::strcmp(command.name, "stop")) owner.cancel_prepared_session();
     owner.event("command", command.name);

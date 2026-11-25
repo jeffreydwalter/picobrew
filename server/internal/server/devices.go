@@ -127,8 +127,11 @@ func (s *Server) refresh(ctx context.Context, d *runtimeDevice) {
 	if !s.registeredDevice(d) {
 		return
 	}
-	if _, err := s.verifiedStatus(ctx, d); err == nil {
+	if status, err := s.verifiedStatus(ctx, d); err == nil {
 		s.syncTelemetry(ctx, d, false)
+		if err := s.syncBrewGroup(ctx, d, status); err != nil && ctx.Err() == nil {
+			s.cfg.Logger.Debug("Group brewing deferred", "error", err)
+		}
 	}
 }
 
@@ -546,12 +549,21 @@ func (s *Server) deleteDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	d.commandMu.Lock()
 	defer d.commandMu.Unlock()
+	if err := s.withdrawBeforeUnregister(r.Context(), d); err != nil {
+		// Network/identity failure never justifies further commands to this address.
+		// Offline removal remains available, and the brewer expires its pending offer.
+		s.cfg.Logger.Debug("Could not withdraw group invitation before removal", "error", err)
+	}
 	d.mu.RLock()
 	busy := d.view.Status != nil && d.view.Status.Busy && !d.identityMismatch
 	id := d.view.ID
 	d.mu.RUnlock()
 	if busy {
 		s.fail(w, 409, "busy", "Finish the current operation before removing the machine")
+		return
+	}
+	if err := s.removeGroupMember(id); err != nil {
+		s.storeError(w, err)
 		return
 	}
 	telemetry := s.releaseTelemetry(r.Context(), d)
@@ -623,7 +635,20 @@ func (s *Server) deleteMachineRecipe(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, 409, "machine_not_idle", "Return the machine to its main menu before removing recipes")
 		return
 	}
-	if err = d.adapter.DeleteRecipe(r.Context(), chi.URLParam(r, "recipe_id")); err != nil {
+	id := chi.URLParam(r, "recipe_id")
+	var in struct {
+		Expected *domain.MachineRecipe `json:"expected"`
+	}
+	if r.ContentLength != 0 {
+		if !s.decode(w, r, &in) {
+			return
+		}
+		if in.Expected == nil || in.Expected.ID != id {
+			s.fail(w, 400, "recipe_id", "Include the saved recipe you selected for removal")
+			return
+		}
+	}
+	if err = d.adapter.DeleteRecipe(r.Context(), id, in.Expected); err != nil {
 		s.deviceError(w, err)
 		return
 	}
@@ -755,6 +780,15 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		switch in.Command.Command {
+		case "pause", "resume":
+			available := status.CanPause
+			if in.Command.Command == "resume" {
+				available = status.CanResume
+			}
+			if !status.Ready || status.Stopped || available == nil || !*available {
+				s.fail(w, 409, "session_control_unavailable", "Use the current options on the brewer's front panel")
+				return
+			}
 		case "restart", "restore-starter-recipes":
 			if status.Busy || status.Stopped || !status.Ready || (in.Command.Command == "restart" && status.Phase != 4) {
 				s.fail(w, 409, "machine_not_idle", "Return to the main menu and unlock the idle brewer first")

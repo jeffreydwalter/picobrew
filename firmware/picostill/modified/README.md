@@ -19,6 +19,21 @@ are not exposed by the standalone API.
 
 After a distillation program is used, the local website and authenticated status show a condenser-cleaning reminder. After cleaning the removable parts, acknowledge the reminder while PicoStill is idle.
 
+## Paired operation with a Z
+
+After pairing in the Hub or the Z’s local site, start the manual or boil-point
+program on the Z and follow its setup screens. The PicoStill keeps its own
+native pump, cooling and sensor interlocks. Its local button and **Stop**
+command remain available throughout the session. Operate the accessory's
+standalone cleaning program while the paired session is stopped.
+
+The authenticated `/api/v1/brewer-link` endpoint verifies the target UID
+and grants one brewer an exclusive session. The brewer must renew it within
+6.5 seconds. Pressing the accessory button releases the session and cuts the
+outputs, including during setup. The Z then stops when it detects the lost
+session. A new session requires a fresh claim. See the
+[Z pairing and qualification notes](../../z-series/modified/README.md#using-a-picostill-with-the-z).
+
 ## Wireless updates
 
 After USB setup provisions wireless recovery, the Hub can update an idle PicoStill over its local network. Factory recovery starts with pump and fan power off. It reads the saved device key and Wi-Fi settings, checks the package identity, and writes the application and its embedded website together. Settings, history and the factory recovery copy occupy separate flash regions.

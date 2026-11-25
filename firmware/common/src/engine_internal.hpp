@@ -71,14 +71,14 @@ const char* kind_name(SensorKind kind);
 const char* actuator_name(ActuatorKind kind);
 bool valid_id(const char* value, std::size_t capacity = 21);
 bool valid_text(const char* value, std::size_t capacity);
-bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker);
+bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker, bool z_cloud, bool z_pak);
 bool settings_valid(const Settings& settings);
 bool telemetry_valid(const TelemetryConfig& config);
-bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only);
+bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only, std::uint32_t& revision);
 bool parse_command(Json& json, Command& command);
 unsigned error(Writer& writer, Result result);
 void reading(Writer& writer, Reading value);
-void recipe_json(Writer& writer, const Recipe& recipe);
+void recipe_json(Writer& writer, const Recipe& recipe, std::uint32_t revision);
 void settings_json(Writer& writer, const Settings& settings, std::uint32_t fields);
 bool layout_create(const Snapshot& snapshot, Layout& layout);
 bool layout_save(const Records&, const char* name, const Layout&, std::uint32_t previous,
@@ -99,6 +99,15 @@ struct standalone::Engine::Impl {
     detail::Records records;
     Identity identity;
     Capabilities capabilities;
+    bool has_recipe_library() const {
+#ifdef PICOBREW_NO_RECIPE_LIBRARY
+        // The PicoFerm only records fermentation. Its ESP8266 shares a small
+        // DRAM pool between constant strings, TCP, SPIFFS and the runtime heap.
+        return false;
+#else
+        return capabilities.flags & Recipes;
+#endif
+    }
     Snapshot snapshot;
     Settings settings;
     detail::TelemetryConfig telemetry;
@@ -141,8 +150,8 @@ struct standalone::Engine::Impl {
     bool load_recipes();
     bool save_catalogue(const detail::RecipeEntry* entries);
     Result recipe_read(unsigned slot, Recipe& output) const;
-    Result recipe_write(const Recipe&, bool* created, bool create_only = false);
-    Result recipe_delete(const char* id);
+    Result recipe_write(const Recipe&, bool* created, bool create_only = false, std::uint32_t revision = 0);
+    Result recipe_delete(const char* id, std::uint32_t revision = 0);
     Result restore_defaults(unsigned& added, unsigned& preserved);
     bool load_history();
     bool save_history(const detail::Session* entries, unsigned next);

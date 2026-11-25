@@ -10,6 +10,7 @@ import re
 import boot_evidence
 import zymatic_build as build
 import compact_build
+import wifi_build
 import usb_stock as stock
 
 CONSERVATIVE = 0x1e000
@@ -24,7 +25,7 @@ def release_for(profile, version=build.VERSION):
     else:
         raise ValueError("Unknown Zymatic build profile or firmware version")
     if version == build.VERSION:
-        return module
+        return wifi_build.EXTENDED if profile == build.PROFILE else wifi_build.COMPACT
     return SimpleNamespace(
         VERSION=version.partition("-")[0], PROFILE=profile, template=partial(module.template, version=version),
         build_application=partial(module.build_application, version=version),
@@ -33,6 +34,8 @@ def release_for(profile, version=build.VERSION):
 
 
 def known_releases():
+    yield wifi_build.COMPACT
+    yield wifi_build.EXTENDED
     yield compact_build
     yield build
     yield release_for(compact_build.PROFILE, build.INITIAL_RELEASE)
@@ -62,10 +65,7 @@ def identify(flash):
 def best_fit(limit):
     if limit not in (CONSERVATIVE, 0x1f000, 0x1f800, MAX_APPLICATION):
         raise ValueError("Unknown Zymatic application window")
-    high, _ = build.template()
-    if build.START + len(high) <= limit:
-        return build
-    return compact_build
+    return wifi_build.EXTENDED if limit >= wifi_build.EXTENDED.limit else wifi_build.COMPACT
 
 
 def qualified_limit(directory, flash, installed):

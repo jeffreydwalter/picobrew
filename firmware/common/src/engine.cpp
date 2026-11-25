@@ -75,6 +75,8 @@ Result Engine::Impl::save_config(const Settings& next, const TelemetryConfig& fo
     std::uint8_t bytes[136] = {};
     bytes[0] = next.temperature_unit; bytes[1] = next.detailed_status;
     bytes[2] = next.language[0]; bytes[3] = next.language[1]; bytes[4] = forwarding.enabled;
+    // Zero in older records means the brewer's original slideshow setting applies.
+    if (capabilities.settings & AutoCycle) bytes[5] = next.auto_cycle ? 1 : 2;
     bytes[6] = forwarding.port; bytes[7] = forwarding.port >> 8;
     std::memcpy(bytes + 8, forwarding.host, sizeof(forwarding.host));
     std::uint32_t generation = 0;
@@ -109,7 +111,8 @@ Result Engine::Impl::initialize() {
     std::uint8_t bytes[136] = {}; std::size_t length = 0;
     const RecordResult config = records.load("cfg", bytes, sizeof(bytes), length, config_generation);
     if (config == RecordResult::Ok) {
-        if (length != sizeof(bytes) || bytes[1] > 1 || bytes[4] > 1) return storage_error();
+        if (length != sizeof(bytes) || bytes[1] > 1 || bytes[4] > 1 || bytes[5] > 2) return storage_error();
+        if (bytes[5]) settings.auto_cycle = bytes[5] == 1;
         settings.temperature_unit = bytes[0]; settings.detailed_status = bytes[1];
         settings.language[0] = bytes[2]; settings.language[1] = bytes[3]; settings.language[2] = 0;
         telemetry.enabled = bytes[4]; telemetry.port = bytes[6] | (unsigned(bytes[7]) << 8);
@@ -124,7 +127,7 @@ Result Engine::Impl::initialize() {
         Result result = owner.device_.apply_settings(owner.device_.context, settings, capabilities.settings); if (!result.ok()) return result;
     }
     if (config == RecordResult::Missing && !save_config(settings, telemetry).ok()) return storage_error();
-    if (capabilities.flags & Recipes) {
+    if (has_recipe_library()) {
         recipes = new (std::nothrow) RecipeEntry[RecipeCapacity];
         if (!recipes) return Result(503, "capacity", "The recipe catalogue could not allocate its bounded state");
         if (!load_recipes()) {
@@ -198,10 +201,18 @@ Result Engine::record_care(CareEvent change) {
     impl_->care_flags = flags; impl_->brews_since_clean = brews; impl_->care_generation = generation;
     return Result();
 }
-void Engine::poll() {
+void Engine::poll() { poll(true); }
+void Engine::poll(bool network) {
     if (!impl_ || !impl_->initialized) return;
     if (impl_->refresh().ok()) impl_->history_poll();
-    impl_->tx_poll();
+    if (network) impl_->tx_poll();
+}
+bool Engine::forwarding_enabled() const { return impl_ && impl_->telemetry.enabled; }
+bool Engine::forwarding_active() const { return impl_ && impl_->tx_open; }
+void Engine::schedule_forwarding_now() {
+    if (!impl_ || !impl_->telemetry.enabled || impl_->tx_open) return;
+    impl_->tx_scheduled = impl_->now() - SamplePeriod;
+    impl_->tx_state = Impl::TxState::Ready;
 }
 void Engine::event(const char* kind, const char* message) {
     if (!impl_) return;
@@ -244,18 +255,21 @@ Result Engine::Impl::recipe_read(unsigned slot, Recipe& recipe) const {
     char name[12]; ::snprintf(name, sizeof(name), "r%02u", slot);
     if (records.load(name, bytes, sizeof(bytes), length, generation, recipes[slot].generation) != RecordResult::Ok ||
         !read_recipe_record(recipe, bytes, length)) return storage_error();
-    if (!recipe_valid(recipe, capabilities.zero_minute_steps, capabilities.z_program_maker) || std::strcmp(recipe.id, recipes[slot].id) ||
+    if (!recipe_valid(recipe, capabilities.zero_minute_steps, capabilities.z_program_maker, capabilities.z_cloud_program_v1, capabilities.z_picopak_v1) || std::strcmp(recipe.id, recipes[slot].id) ||
         std::strcmp(recipe.name, recipes[slot].name) || recipe.step_count != recipes[slot].steps) return storage_error();
     return owner.device_.validate_recipe ? owner.device_.validate_recipe(owner.device_.context, recipe) : Result();
 }
+std::uint32_t Engine::recipe_revision() const noexcept {
+    return impl_ && impl_->persistent ? impl_->catalogue_generation : 0;
+}
 std::size_t Engine::recipe_count() const noexcept {
     std::size_t count = 0;
-    if (impl_ && impl_->recipes && (impl_->capabilities.flags & Recipes))
+    if (impl_ && impl_->recipes && impl_->has_recipe_library())
         for (unsigned i = 0; i < RecipeCapacity; ++i) if (impl_->recipes[i].id[0]) ++count;
     return count;
 }
 Result Engine::recipe_at(std::size_t ordinal, Recipe& output) const {
-    if (!impl_ || !(impl_->capabilities.flags & Recipes)) return Result(404, "not_found", "Recipes are unavailable");
+    if (!impl_ || !impl_->has_recipe_library()) return Result(404, "not_found", "Recipes are unavailable");
     if (!impl_->persistent) return storage_error();
     for (unsigned i = 0; i < RecipeCapacity; ++i) if (impl_->recipes[i].id[0]) {
         if (!ordinal--) return impl_->recipe_read(i, output);
@@ -263,18 +277,18 @@ Result Engine::recipe_at(std::size_t ordinal, Recipe& output) const {
     return Result(404, "recipe_not_found", "Recipe not found");
 }
 Result Engine::recipe_get(const char* id, Recipe& output) const {
-    if (!impl_ || !(impl_->capabilities.flags & Recipes)) return Result(404, "not_found", "Recipes are unavailable");
+    if (!impl_ || !impl_->has_recipe_library()) return Result(404, "not_found", "Recipes are unavailable");
     if (!impl_->persistent) return storage_error();
     if (!valid_id(id)) return Result(400, "invalid_recipe", "Invalid recipe ID");
     for (unsigned i = 0; i < RecipeCapacity; ++i) if (!std::strcmp(impl_->recipes[i].id, id)) return impl_->recipe_read(i, output);
     return Result(404, "recipe_not_found", "Recipe not found");
 }
-Result Engine::Impl::recipe_write(const Recipe& recipe, bool* created, bool create_only) {
+Result Engine::Impl::recipe_write(const Recipe& recipe, bool* created, bool create_only, std::uint32_t revision) {
     if (created) *created = false;
-    if (!(capabilities.flags & Recipes)) return Result(404, "not_found", "Recipes are unavailable");
+    if (!has_recipe_library()) return Result(404, "not_found", "Recipes are unavailable");
     if (!persistent) return storage_error();
     if (!idle()) return Result(409, "busy", "Change recipes only while the appliance is idle");
-    if (!recipe_valid(recipe, capabilities.zero_minute_steps, capabilities.z_program_maker)) return Result(400, "invalid_recipe", "Invalid recipe fields or bounds");
+    if (!recipe_valid(recipe, capabilities.zero_minute_steps, capabilities.z_program_maker, capabilities.z_cloud_program_v1, capabilities.z_picopak_v1)) return Result(400, "invalid_recipe", "Invalid recipe fields or bounds");
     if (owner.device_.validate_recipe) {
         const Result valid = owner.device_.validate_recipe(owner.device_.context, recipe); if (!valid.ok()) return valid;
     }
@@ -283,6 +297,7 @@ Result Engine::Impl::recipe_write(const Recipe& recipe, bool* created, bool crea
         if (!std::strcmp(recipes[i].id, recipe.id)) { slot = i; existing = true; break; }
         if (!recipes[i].id[0] && slot < 0) slot = i;
     }
+    if (revision && (!existing || revision != catalogue_generation)) return Result(409, "recipe_changed", "Saved recipes changed. Reopen this recipe before editing.");
     if (existing && create_only) return Result(409, "recipe_exists", "Recipe ID is already in use. Choose another ID or open the saved recipe to edit it.");
     if (slot < 0) return Result(507, "recipe_capacity", "The recipe catalogue is full");
     RecipeEntry staged[RecipeCapacity]; std::memcpy(staged, recipes, sizeof(staged));
@@ -299,11 +314,12 @@ Result Engine::Impl::recipe_write(const Recipe& recipe, bool* created, bool crea
 Result Engine::recipe_store(const Recipe& recipe, bool* created) {
     return impl_ ? impl_->recipe_write(recipe, created) : Result(503, "not_ready", "Standalone initialization is incomplete");
 }
-Result Engine::Impl::recipe_delete(const char* id) {
-    if (!(capabilities.flags & Recipes)) return Result(404, "not_found", "Recipes are unavailable");
+Result Engine::Impl::recipe_delete(const char* id, std::uint32_t revision) {
+    if (!has_recipe_library()) return Result(404, "not_found", "Recipes are unavailable");
     if (!persistent) return storage_error();
     if (!idle()) return Result(409, "busy", "Change recipes only while the appliance is idle");
     if (!valid_id(id)) return Result(400, "invalid_recipe", "Invalid recipe ID");
+    if (revision && revision != catalogue_generation) return Result(409, "recipe_changed", "Saved recipes changed. Reopen this recipe before editing.");
     for (unsigned i = 0; i < RecipeCapacity; ++i) if (!std::strcmp(recipes[i].id, id)) {
         RecipeEntry staged[RecipeCapacity]; std::memcpy(staged, recipes, sizeof(staged));
         // Preserve the bank generation after deletion. Reusing this slot must
@@ -312,6 +328,7 @@ Result Engine::Impl::recipe_delete(const char* id) {
         if (!save_catalogue(staged)) return storage_error();
         owner.event("recipe", "deleted"); return Result();
     }
+    if (revision) return Result(409, "recipe_changed", "Saved recipes changed. Reopen this recipe before editing.");
     return Result(404, "recipe_not_found", "Recipe not found");
 }
 Result Engine::recipe_remove(const char* id) {
@@ -325,6 +342,7 @@ Result Engine::preferences_store(const Settings& value, std::uint32_t changed) {
     if (changed & TemperatureUnit) next.temperature_unit = value.temperature_unit;
     if (changed & Language) std::memcpy(next.language, value.language, sizeof(next.language));
     if (changed & DetailedStatus) next.detailed_status = value.detailed_status;
+    if (changed & AutoCycle) next.auto_cycle = value.auto_cycle;
     if (device_.validate_settings) { const Result result = device_.validate_settings(device_.context, next, changed); if (!result.ok()) return result; }
     const Settings previous = impl_->settings;
     if (device_.apply_settings) {
@@ -337,7 +355,7 @@ Result Engine::preferences_store(const Settings& value, std::uint32_t changed) {
 }
 Result Engine::Impl::restore_defaults(unsigned& added, unsigned& preserved) {
     added = preserved = 0;
-    if (!(capabilities.flags & Recipes) || !capabilities.starter_recipe_count) return Result(404, "not_found", "No device-specific starter catalogue is supplied");
+    if (!has_recipe_library() || !capabilities.starter_recipe_count) return Result(404, "not_found", "No device-specific starter catalogue is supplied");
     if (!persistent) return storage_error();
     if (!idle()) return Result(409, "busy", "Restore recipes only while the appliance is idle");
     RecipeEntry staged[RecipeCapacity]; std::memcpy(staged, recipes, sizeof(staged));
@@ -345,7 +363,7 @@ Result Engine::Impl::restore_defaults(unsigned& added, unsigned& preserved) {
     for (const RecipeEntry& entry : staged) if (!entry.id[0]) ++empty;
     for (std::size_t n = 0; n < capabilities.starter_recipe_count; ++n) {
         const Recipe& recipe = capabilities.starter_recipes[n]; bool found = false;
-        if (!recipe_valid(recipe, capabilities.zero_minute_steps, capabilities.z_program_maker)) return Result(503, "invalid_defaults", "Invalid native starter recipe");
+        if (!recipe_valid(recipe, capabilities.zero_minute_steps, capabilities.z_program_maker, capabilities.z_cloud_program_v1, capabilities.z_picopak_v1)) return Result(503, "invalid_defaults", "Invalid native starter recipe");
         if (owner.device_.validate_recipe) { const Result valid = owner.device_.validate_recipe(owner.device_.context, recipe); if (!valid.ok()) return valid; }
         for (const RecipeEntry& entry : staged) if (!std::strcmp(entry.id, recipe.id)) found = true;
         for (std::size_t j = 0; j < n; ++j) if (!std::strcmp(recipe.id, capabilities.starter_recipes[j].id)) return Result(503, "invalid_defaults", "Duplicate starter recipe ID");

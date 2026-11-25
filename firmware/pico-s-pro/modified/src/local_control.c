@@ -84,6 +84,9 @@ void pico_local_control_enter_menu(void)
     /* Any workflow that returned without its normal history finalizer was
      * abandoned. Settings and maintenance never start a new history. */
     pico_history_finish(true);
+    local.application->state.group_joined = false;
+    local.application->state.group_armed = false;
+    local.application->state.group_started_ms = 0;
     local.at_menu = true;
     local.running = false;
     local.active_command = "idle";
@@ -256,6 +259,7 @@ void pico_local_control_brew(PicoApplication *a, const char *id)
     if (!pico_recipe_session_start(&a->recipe, true))
         return;
     a->state.device_state = 3;
+    a->state.group_armed = !a->state.group_joined;
     pico_recipe_run(&a->recipe, &a->state.recipe, true);
     if (!local.stopped)
         pico_recipe_rinse(&a->recipe);
@@ -275,7 +279,9 @@ bool pico_local_control_run_pending(void)
     case 1: pico_local_control_brew(a, local.recipe_id); break;
     case 2: pico_recipe_run_cooking_program(&a->recipe, 3); break;
     case 3: pico_recipe_run_cooking_program(&a->recipe, 4); break;
-    case 4: pico_recipe_rinse(&a->recipe); break;
+    case 4:
+        a->state.group_armed = !a->state.group_joined;
+        pico_recipe_rinse(&a->recipe); break;
     case 5: pico_recipe_first_rinse(&a->recipe); break;
     case 6: pico_recipe_descale(&a->recipe); break;
     case 7: pico_recipe_circulate(&a->recipe); break;

@@ -39,7 +39,7 @@ func TestFamilyIdentityAndUnsupportedSurfaces(t *testing.T) {
 			p.capabilities = &caps
 			_, display := p.Display(context.Background())
 			_, recipes := p.Recipes(context.Background())
-			for _, err := range []error{display, recipes, p.PutRecipe(context.Background(), nativeRecipe()), p.DeleteRecipe(context.Background(), "Ale_01")} {
+			for _, err := range []error{display, recipes, p.PutRecipe(context.Background(), nativeRecipe(), nil), p.DeleteRecipe(context.Background(), "Ale_01", nil)} {
 				if deviceFailure(t, err).Code != "unsupported_capability" {
 					t.Fatal(err)
 				}

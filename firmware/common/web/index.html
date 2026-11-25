@@ -53,6 +53,10 @@
         </div>
         <div id="sensorReadings" class="metrics sensor-readings"></div>
         <div id="actuatorReadings" class="metrics actuator-readings"></div>
+        <article id="groupInvite" class="card" hidden aria-labelledby="groupHeading">
+          <h2 id="groupHeading">Group invitation</h2><p id="groupDetail"></p>
+          <div class="button-group"><button id="joinGroup" class="button primary">Accept and start</button><button id="declineGroup" class="button">Decline</button></div>
+        </article>
         <article id="recoveryPanel" class="card" aria-labelledby="recoveryHeading" hidden>
           <p class="eyebrow">INTERRUPTED BREW</p><h2 id="recoveryHeading">Review the saved checkpoint.</h2>
           <p id="recoveryDetail"></p><p id="recoveryTime" class="hint"></p>
@@ -97,6 +101,17 @@
                 <label><input type="checkbox" id="zBeer"> Show beer setup instructions</label>
                 <label><input type="checkbox" id="zPak"> Use PicoPak adjunct compartments</label>
               </div>
+              <fieldset id="zKitOptions" hidden disabled>
+                <legend>Z PicoPak adapter</legend>
+                <p>Set up the original PicoPak in its adapter with 6.81 L of water.</p>
+                <label id="kitStrengthRow">Kit strength<select id="kitStrength"></select></label>
+                <label id="kitBitternessRow">Kit bitterness<select id="kitBitterness"></select></label>
+              </fieldset>
+              <fieldset id="zCloudOptions" hidden disabled>
+                <legend>Original Z recipe setup</legend>
+                <label>Starting water (L)<input id="cloudWater" type="number" min="0.001" max="16.163" step="0.001" required></label>
+                <label><input id="cloudBeer" type="checkbox"> Show beer setup instructions</label>
+              </fieldset>
               <div class="steps-heading"><label>Brewing steps</label><button id="addStep" type="button" class="button small">+ Add step</button></div><div class="table-scroll"><table class="steps-table"><thead><tr><th>Step</th><th id="zStepType" hidden>Type</th><th id="recipeRoutingHeader">Location</th><th id="stepTarget">Target °F</th><th id="stepTimeHeading">Minutes</th><th id="stepDrain">Drain min</th><th><span class="sr-only">Remove</span></th></tr></thead><tbody id="steps"></tbody></table></div>
               <p id="recipeRoutingHint" class="hint">Use verified locations 1–6 for this device.</p><p id="recipeLimits" class="hint">Up to 15 steps. A target of 0 means unheated circulation. Changes can be saved while the brewer is idle.</p>
               <div class="editor-actions"><button id="deleteRecipe" type="button" class="button text-danger" disabled>Delete recipe</button><button id="saveRecipe" type="submit" class="button primary" disabled>Save to Pico</button></div>
@@ -117,6 +132,14 @@
           <div class="history-actions"><button id="historyExportJson" class="button" disabled>Export JSON</button><button id="historyExportCsv" class="button" disabled>Export CSV</button></div>
           <p class="hint">History shares a fixed storage budget. The oldest completed sessions are removed as space is needed. Times are elapsed from the start of each session.</p>
         </article>
+        <article class="card history-card" id="statusCapture" hidden>
+          <h2>Record live status</h2>
+          <p>Capture readings from this Z in this browser tab, including while the machine is idle. Download the capture before closing this page.</p>
+          <label for="captureInterval">Sample interval in seconds</label>
+          <input type="number" id="captureInterval" min="2" max="3600" step="1" value="5">
+          <div class="history-actions"><button type="button" class="button" id="captureToggle">Start capture</button><button type="button" class="button" id="captureDownload" disabled>Download capture</button></div>
+          <p id="captureSummary" class="hint" role="status">No samples recorded.</p>
+        </article>
         <article class="card history-phases"><h2>State changes</h2><div class="table-scroll"><table class="history-table"><thead><tr><th>Elapsed time</th><th>State</th><th>Details</th></tr></thead><tbody id="historyPhases"></tbody></table></div></article>
       </section>
       <section id="settings" class="tab-panel" hidden>
@@ -127,9 +150,23 @@
             <form id="settingsForm">
               <div class="settings-row"><label for="temperatureUnit">Temperature unit</label><select id="temperatureUnit"><option value="F">Fahrenheit (°F)</option><option value="C">Celsius (°C)</option></select></div>
               <div class="settings-row" data-setting="language"><label for="language">Front-panel language</label><select id="language"><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option></select></div>
+              <div class="settings-row" data-setting="auto_cycle"><label class="checkbox"><input type="checkbox" id="autoCycle"> Automatically cycle brew status screens</label></div>
               <div class="settings-row" data-setting="detailed_status"><label class="checkbox"><input type="checkbox" id="detailedStatus"> Show detailed status on the brewer</label></div>
               <div class="settings-actions"><button id="saveSettings" class="button primary" disabled>Save preferences</button></div>
             </form>
+          </section>
+          <section id="stillLinkSection" class="settings-section" aria-labelledby="stillLinkHeading" hidden>
+            <div class="settings-section-heading"><h2 id="stillLinkHeading">PicoStill</h2><p class="muted">Choose a registered accessory in the Hub’s brewer preferences, or enter its connection here.</p></div>
+            <p id="stillLinkStatus" role="status" aria-live="polite"></p>
+            <p id="stillSample" hidden></p>
+            <form id="stillLinkForm">
+              <div class="settings-row"><label for="stillHost">PicoStill host</label><input id="stillHost" maxlength="63" required placeholder="IP address or local hostname"></div>
+              <div class="settings-row"><label for="stillPort">HTTP port</label><input id="stillPort" type="number" min="1" max="65535" value="80" required></div>
+              <div class="settings-row"><label for="stillUID">PicoStill device UID</label><input id="stillUID" maxlength="12" pattern="[a-fA-F0-9]{12}" required></div>
+              <div class="settings-row"><label for="stillKey">PicoStill device key</label><input id="stillKey" type="password" maxlength="64" pattern="[a-fA-F0-9]{64}" autocomplete="off" required></div>
+              <div class="settings-actions"><button id="stillPair" class="button primary" disabled>Pair PicoStill</button><button id="stillUnpair" class="button" type="button" hidden>Unpair</button></div>
+            </form>
+            <label id="stillLogRow" class="checkbox" hidden><input type="checkbox" id="stillLogging"> Record PicoStill sessions</label>
           </section>
           <section class="settings-section" aria-labelledby="forwardingHeading" data-feature="telemetry_forwarding" hidden>
             <div class="settings-section-heading"><h2 id="forwardingHeading">Hub connection</h2><p class="muted">Add this device in PicoBrew Hub to connect automatically. The Hub manages where live readings are sent; session history stays on the device.</p></div>

@@ -871,14 +871,14 @@ function ImportDialog({
       }
     >
       <p>
-        Import BeerXML, PicoBrew Hub JSON, or Z Program Maker JSON. Recipes are added as new library
+        Import BeerXML, Hub recipes, original PicoPak files, or Z Program Maker JSON. Recipes are added as new library
         entries.
       </p>
       <div className="form-grid">
         <Field label="Format">
           <select value={format} onChange={(event) => setFormat(event.target.value)}>
             <option value="beerxml">BeerXML (.xml)</option>
-            <option value="json">Hub or Z Program Maker JSON (.json)</option>
+            <option value="json">PicoBrew recipe JSON (.json)</option>
           </select>
         </Field>
         <Field label="Choose a file">

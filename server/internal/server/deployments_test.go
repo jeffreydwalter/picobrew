@@ -62,15 +62,18 @@ func (a *transferAdapter) Recipe(_ context.Context, id string) (domain.MachineRe
 	r.Steps = append([]domain.MachineStep(nil), r.Steps...)
 	return r, nil
 }
-func (a *transferAdapter) PutRecipe(_ context.Context, r domain.MachineRecipe) error {
-	return a.writeRecipe(r, false)
+func (a *transferAdapter) PutRecipe(_ context.Context, r domain.MachineRecipe, expected *domain.MachineRecipe) error {
+	return a.writeRecipe(r, false, expected)
 }
 func (a *transferAdapter) CreateRecipe(_ context.Context, r domain.MachineRecipe) error {
-	return a.writeRecipe(r, true)
+	return a.writeRecipe(r, true, nil)
 }
-func (a *transferAdapter) writeRecipe(r domain.MachineRecipe, create bool) error {
+func (a *transferAdapter) writeRecipe(r domain.MachineRecipe, create bool, expected *domain.MachineRecipe) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if expected != nil && !reflect.DeepEqual(a.programs[r.ID], *expected) {
+		return &device.Error{StatusCode: 409, Code: "recipe_changed"}
+	}
 	if create {
 		if a.arriveDuringCreate != nil {
 			a.programs[a.arriveDuringCreate.ID] = *a.arriveDuringCreate

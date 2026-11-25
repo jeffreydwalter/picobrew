@@ -8,10 +8,11 @@ const state = {key:'', connected:false, generation:0, status:null, recipes:[],
 let requestQueue = Promise.resolve();
 let pollTimer;
 let apiExplorer;
+let statusCapture;
 let brewHistory;
 const hasFeature = name => PicoDevice.feature(state.info,name);
 const allowedCommand = name => state.capabilities.includes(name);
-const programLabels = {'sous-vide':'Sous vide', 'cold-brew':'Cold brew', manual:'Manual brewing',
+const programLabels = {'sous-vide':'Sous vide', 'sous-vide-no-keg':'Sous vide without keg', 'cold-brew':'Cold brew', coffee:'Coffee menu', 'picostill-manual':'PicoStill manual', 'picostill-boil-point':'PicoStill boiling point', manual:'Manual brewing',
   rinse:'Rinse', 'first-rinse':'First rinse', descale:'Descale', circulate:'Circulate',
   'drain-reservoir':'Drain reservoir', 'drain-filter':'Drain step filter', 'rack-beer':'Rack beer',
   clean:'Clean',drain:'Drain',chill:'Chill',utilities:'Utilities menu', settings:'Settings menu'};
@@ -82,6 +83,7 @@ function api(path, method='GET', body) {
 
 function connected(value) {
   state.connected = value;
+  if(!value)statusCapture?.stop('Connection lost');else statusCapture?.render();
   const appearance = $('appearanceRow');
   if (value) $('settingsForm').before(appearance);
   else $('publicOverview').append(appearance);
@@ -97,7 +99,64 @@ function connected(value) {
   updateControls();
 }
 
+let groupInvite=null, groupResponding=false, groupChecked=0;
+function displayGroup(invite) {
+  groupInvite=invite?.state==='pending' ? invite : null;
+  $('groupInvite').hidden=!groupInvite;
+  if(!groupInvite)return;
+  const recipe=state.recipes.find(r=>r.id===invite.recipe_id);
+  const program=invite.program_name || recipe?.name || programLabels[invite.action] || invite.recipe_id || 'a program';
+  const coffee=invite.action==='z_program' && [invite.water_l,invite.temperature_f,invite.intensity,invite.time_seconds].every(Number.isFinite);
+  const dose=[];
+  if(invite.action==='brew'){
+    if(Number.isInteger(invite.selected_abv))dose.push('Strength '+invite.selected_abv+'/10');
+    if(Number.isInteger(invite.selected_ibu))dose.push('Bitterness '+invite.selected_ibu+'/10');
+  }
+  if(coffee)dose.push(Number(invite.water_l.toFixed(2))+' L',temperature(invite.temperature_f),invite.time_seconds/60+' min','Intensity '+invite.intensity+'/15');
+  $('groupDetail').textContent=invite.from+' invited this brewer to run '+program+'.'+(dose.length?' '+dose.join(' · '):'');
+  $('joinGroup').textContent=coffee?'Review on brewer':'Accept and start';
+  $('joinGroup').disabled=groupResponding || state.status?.filter_inserted===false;
+  $('declineGroup').disabled=groupResponding;
+}
+async function respondGroup(op) {
+  if(!groupInvite || groupResponding || !state.connected)return;
+  groupResponding=true;displayGroup(groupInvite);
+  try {const reply=await api('/group-brew','POST',{op,id:groupInvite.id});displayGroup(reply.invite);}
+  catch(error){notify(error.message,true);displayGroup(null);}
+  finally {groupResponding=false;groupChecked=0;}
+}
+let stillLink=null, stillPending=false, stillChecked=0;
+function renderStillLink() {
+  const idle=state.connected && state.status?.ready && !state.status?.busy && !stillPending && !stillLink?.checking;
+  $('stillPair').disabled=!idle || !stillLink;
+  $('stillUnpair').hidden=!stillLink?.paired;
+  $('stillUnpair').disabled=!idle;
+  $('stillLogRow').hidden=!stillLink?.paired;
+  $('stillLogging').disabled=!idle;
+  $('stillLogging').checked=!!stillLink?.session_logging;
+  $('stillLinkStatus').textContent=stillLink?.checking ? 'Verifying the PicoStill connection…' :
+    stillLink?.error || (stillLink?.paired ? 'Paired with '+stillLink.host+'.' : 'No paired PicoStill.');
+  const sample=stillLink?.sample;
+  $('stillSample').hidden=!sample;
+  if(sample) {
+    const temperatures=['Inlet','Outlet','Pot','Ambient'].map((label,i)=>label+' '+temperature(sample.temperature_c[i]*9/5+32));
+    $('stillSample').textContent=[...temperatures,'Pressure '+sample.pressure_psi+' psi',
+      'Pump '+(sample.pump_running?'on':'off'),'Cooling fan '+(sample.fan_2_running?'on':'off')].join(' · ');
+  }
+}
+async function readStillLink() {
+  stillChecked=Date.now();
+  try {stillLink=await api('/picostill');renderStillLink()} catch(error){stillLink=null;renderStillLink();$('stillLinkStatus').textContent=error.message;}
+}
+async function changeStillLink(method,body) {
+  if(stillPending)return;
+  stillPending=true;renderStillLink();
+  try {stillLink=await api('/picostill',method,body);}
+  catch(error){notify(error.message,true);await readStillLink();}
+  finally {stillPending=false;renderStillLink();}
+}
 function updateControls() {
+  if(!$('stillLinkSection').hidden)renderStillLink();
   const ready = state.connected && state.status?.ready === true && !state.pending;
   const busy = !!state.status?.busy;
   const stopped = !!state.status?.stopped;
@@ -115,10 +174,9 @@ function updateControls() {
   $('clearStop').hidden = !stopped;
   $('clearStop').disabled = !ready || busy;
   $('sessionButtons').hidden=!allowedCommand('pause')&&!allowedCommand('resume');
-  const runningSession=state.info.model==='z-series' ? state.status?.state==='Running' : busy;
   for(const command of ['pause','resume']) {
     $(command+'Session').hidden=!allowedCommand(command);
-    $(command+'Session').disabled=!ready || !runningSession || stopped;
+    $(command+'Session').disabled=!ready || stopped || state.status?.['can_'+command]!==true;
   }
   $('recoveryPanel').hidden=!state.connected || !interrupted;
   $('resumeInterrupted').hidden=!allowedCommand('resume-interrupted') || recovery?.valid!==true;
@@ -162,6 +220,7 @@ function applyCapabilities(info) {
   $('settingsForm').hidden=!fields.length;
   $('restoreRecipes').hidden=info.restore_default_recipes!==true;
   if(state.tab==='recipes'&&!hasFeature('recipes'))selectTab('overview');
+  $('stillLinkSection').hidden=info.model!=='z-series'||info.picostill_brewer_link_v1!==true;
   renderActions();apiExplorer?.configure(info);
 }
 function renderActions() {
@@ -314,7 +373,7 @@ function renderDisplay(frame) {
 function renderPrograms() {
   $('program').replaceChildren();
   for (const command of state.capabilities) if (programLabels[command]) {
-    $('program').add(new Option(programLabels[command],command));
+    $('program').add(new Option(command==='sous-vide'&&state.capabilities.includes('sous-vide-no-keg')?'Sous vide with keg':programLabels[command],command));
   }
   updateControls();
 }
@@ -412,17 +471,23 @@ function addZStep(step={Name:'Mash',StepType:1,Location:2,Temp:65,Time:3600,Drai
       input.seconds()>limit ? 'Maximum '+duration(limit)+' (minutes:seconds).' : ''));
     return input;
   }
-  const hold=time('Duration in minutes and seconds',step.Time,86400);
+  const originalPauseTime=step.StepType===2 ? step.Time : undefined;
+  const hold=time('Duration in minutes and seconds',step.StepType===2 ? 0 : step.Time,86400);
   const drain=time('Drain in minutes and seconds',step.Drain ?? 0,7200);
   function updateType() {
     const pause=type.value==='2';
-    route.disabled=target.disabled=drain.disabled=pause;
+    route.disabled=target.disabled=drain.disabled=hold.disabled=pause;
+    hold.hidden=pause;
+    pauseNote.hidden=!pause;
     hold.required=!pause;drain.required=!pause;
   }
+  const pauseNote=document.createElement('span');
+  pauseNote.textContent='Until confirmed';hold.after(pauseNote);
   type.addEventListener('change',updateType);updateType();
   row.readStep=()=>{
     const value={Name:name.value,StepType:Number(type.value)};
-    if(hold.value!=='')value.Time=hold.seconds();
+    if(value.StepType===2 && originalPauseTime!==undefined)value.Time=originalPauseTime;
+    if(value.StepType===1 && hold.value!=='')value.Time=hold.seconds();
     if(value.StepType===1)Object.assign(value,{Location:Number(route.value),Temp:celsius,Drain:drain.seconds()});
     return value;
   };
@@ -451,18 +516,45 @@ function addStep(step={name:'New step',location:1,target_f:152,minutes:20,drain_
   const definitions=[['name','text',null,null],['location','select',1,6],['target_f','number',0,212],['minutes','number',0,599],['drain_minutes','number',0,120]];
   for (const [field,type,min,max] of definitions) {
     const cell=document.createElement('td');let input;
-    if(type==='select') {input=document.createElement('select');flowPaths.forEach((label,index)=>input.add(new Option(label,String(index+1))));}
+    if(type==='select') {
+      input=document.createElement('select');
+      flowPaths.forEach((label,index)=>input.add(new Option(label,String(state.zCloud?index:index+1))));
+      if(state.zCloud)input.add(new Option('Pause for operator','6'));
+    }
     else {input=document.createElement('input');input.type=type;if(type==='text'){input.maxLength=21;input.pattern='[ -~]{1,21}';input.title='Use printable ASCII characters.';}else{input.min=min;input.max=max;input.step=1;}}
     input.dataset.field=field;input.required=true;input.value=step[field] ?? (field==='drain_minutes' ? 0 : '');
     input.setAttribute('aria-label',field.replaceAll('_',' '));cell.append(input);row.append(cell);
   }
   const cell=document.createElement('td');const remove=document.createElement('button');remove.type='button';remove.className='remove';remove.textContent='×';remove.setAttribute('aria-label','Remove step');
   remove.addEventListener('click',()=>{row.remove();state.dirty=true;});cell.append(remove);row.append(cell);$('steps').append(row);
+  if(state.zCloud){
+    const route=row.querySelector('[data-field=location]');
+    const sync=()=>{for(const key of ['target_f','minutes','drain_minutes'])row.querySelector('[data-field='+key+']').disabled=route.value==='6';};
+    route.addEventListener('change',sync);sync();
+  }
 }
 
 function editRecipe(recipe, existing=false) {
   const program=recipe.z_program || (state.info.z_program_maker===true && !recipe.steps ? newZProgram() : null);
   state.zProgram=!!program;
+  state.zCloud=!!recipe.z_cloud;
+  state.zKit=recipe.z_pak || null;
+  $('zKitOptions').hidden=$('zKitOptions').disabled=!state.zKit;
+  $('addStep').hidden=!!state.zKit;
+  if(state.zKit) {
+    for(const [id,key] of [['kitStrength','abv'],['kitBitterness','ibu']]){
+      const select=$(id), baseline=state.zKit[key];
+      const adjustable=baseline>=1 && baseline<=9 && state.zKit.step_options.some((o,i)=>
+        o.action===0 && o.min_time!=null && o.max_time!=null && (key==='abv'?recipe.steps[i].location===2:recipe.steps[i].location>=3));
+      $(id+'Row').hidden=!adjustable;
+      select.replaceChildren(new Option('Original ('+baseline+' of 10)',''));
+      for(let i=0;i<=10;i++)if(i!==baseline)select.add(new Option(i+' of 10',String(i)));
+      select.value=state.zKit['selected_'+key]===baseline?'':String(state.zKit['selected_'+key] ?? '');
+    }
+  }
+  $('zCloudOptions').hidden=$('zCloudOptions').disabled=!state.zCloud;
+  $('cloudWater').value=state.zCloud ? recipe.z_cloud.start_water_ml/1000 : '';
+  $('cloudBeer').checked=recipe.z_cloud?.is_beer===true;
   state.zHasUnit=program?.IsMetric!==undefined;
   $('zStepType').hidden=$('zProgramOptions').hidden=!program;
   $('zUnits').value=state.zHasUnit ? (program.IsMetric ? 'C' : 'F') : state.settings.temperature_unit;
@@ -474,12 +566,31 @@ function editRecipe(recipe, existing=false) {
   $('stepDrain').textContent=program ? 'Drain (min:sec)' : 'Drain min';
   $('recipeLimits').textContent=program ? 'Up to 15 steps. A pause waits for the operator to continue.' : 'Up to 15 steps. A target of 0 means unheated circulation.';
   $('recipeRoutingHint').textContent=program ? 'Import or export Z Program Maker JSON. Use minutes:seconds for exact timing.' : 'Choose the flow path for each step.';
-  state.editorId=existing ? recipe.id : null;state.dirty=false;
+  if(state.zCloud){
+    $('recipeRoutingHint').textContent='The brewer uses the saved water quantity during setup. Pauses wait for you to continue.';
+    $('recipeLimits').textContent='A target of 0 keeps the previous heat setting. The Z adjusts boiling steps to its local boiling point.';
+  }
+  if(state.zKit){
+    $('recipeRoutingHint').textContent='The Z uses the original PicoPak schedule and adjusts only steps with kit-specific timing ranges.';
+    $('recipeLimits').textContent='A target of 0 keeps the previous heat setting.';
+  }
+  state.editorId=existing ? recipe.id : null;
+  state.editorRevision=existing ? recipe.revision : undefined;
+  state.dirty=false;
   $('recipeName').value=program?.Name || recipe.name || '';$('recipeId').value=recipe.id || programId($('recipeName').value);$('recipeId').readOnly=existing;
   $('recipeId').dataset.auto=existing ? 'false' : 'true';
   $('editorHeading').textContent=existing ? 'Edit recipe' : 'New recipe';$('steps').replaceChildren();
   if(program)program.Steps.forEach(addZStep);
   else for(const step of recipe.steps || [{name:'Mash',location:2,target_f:152,minutes:60,drain_minutes:0}])addStep(step);
+  if(state.zKit)Array.from($('steps').children).forEach((row,i)=>{
+    const pause=state.zKit.step_options[i].action===1;
+    for(const input of row.querySelectorAll('input,select,button'))input.disabled=true;
+    row.querySelector('button').hidden=true;
+    if(pause){
+      row.querySelector('select').hidden=true;
+      row.cells[1].append(document.createTextNode('Pause for operator'));
+    }
+  });
   updateControls();
 }
 
@@ -503,8 +614,22 @@ function recipeFromForm() {
   });
   if(!steps.length){notify('Add at least one brewing step.',true);return null;}
   if(state.info.zero_minute_steps!==true && steps.some(step=>step.minutes===0)){notify('This firmware requires at least one minute per step.',true);return null;}
-  if(steps.some(step=>step.target_f!==0 && step.target_f<60)){notify('Targets must be 0 for unheated circulation, or between 60 and 212 °F.',true);return null;}
-  return {id:$('recipeId').value,name:$('recipeName').value,steps};
+  const minimum=state.zCloud || state.zKit ? 32 : 60;
+  if(steps.some(step=>step.target_f!==0 && step.target_f<minimum)){notify('Use 0 or a target between '+minimum+' and 212 °F.',true);return null;}
+  const result={id:$('recipeId').value,name:$('recipeName').value,steps};
+  if(steps.some((s,i)=>s.target_f>0 && s.target_f<60 &&
+    ((state.zCloud && s.location!==6 && steps[i-1]?.location!==6) ||
+     (state.zKit && state.zKit.step_options[i].action===0 && state.zKit.step_options[i-1]?.action!==1)))){
+    notify('Place an operator pause before a chilling step below 60 °F.',true);return null;
+  }
+  if(state.zKit){
+    result.z_pak={...state.zKit};
+    for(const [id,key] of [['kitStrength','selected_abv'],['kitBitterness','selected_ibu']]){
+      if($(id).value==='')delete result.z_pak[key];else result.z_pak[key]=Number($(id).value);
+    }
+  }
+  if(state.zCloud)result.z_cloud={start_water_ml:Math.round(Number($('cloudWater').value)*1000),is_beer:$('cloudBeer').checked};
+  return result;
 }
 
 async function sendCommand(body) {
@@ -524,7 +649,7 @@ function download(name,data) {
 }
 
 function renderSettings(settings) {
-  state.settings={temperature_unit:'F',...settings};$('temperatureUnit').value=state.settings.temperature_unit;$('language').value=settings.language || 'en';$('detailedStatus').checked=!!settings.detailed_status;
+  state.settings={temperature_unit:'F',...settings};$('temperatureUnit').value=state.settings.temperature_unit;$('language').value=settings.language || 'en';$('detailedStatus').checked=!!settings.detailed_status;$('autoCycle').checked=!!settings.auto_cycle;
 }
 
 function renderTelemetry(config) {
@@ -555,9 +680,23 @@ async function poll() {
   if(!state.key || state.polling)return;
   state.polling=true;const generation=state.generation;
   try {
-    if(!document.hidden) {
-      renderStatus(await api('/status'));connected(true);
+    if(!document.hidden || statusCapture?.active()) {
+      const status=await api('/status');
+      if(generation!==state.generation)return;
+      const capture=statusCapture?.due();
+      if(capture) {
+        try{statusCapture.sample(capture,status,await api('/z/state'));}
+        catch(error){if(capture===statusCapture.due())statusCapture.stop('Capture interrupted: '+error.message);}
+      }
+      if(generation!==state.generation)return;
+      renderStatus(status);connected(true);
+      if(document.hidden)return;
       if(state.tab==='overview' && hasFeature('front_panel')) {try{renderDisplay(await PicoDevice.readDisplay(api));}catch(error){$('displayHint').textContent=error.message;}}
+      if(state.tab==='overview' && state.info.group_brewing_v1 && !groupResponding && Date.now()-groupChecked>=4000){
+        groupChecked=Date.now();
+        try{displayGroup((await api('/group-brew')).invite);}catch(_){displayGroup(null);}
+      }
+      if(state.tab==='settings' && !$('stillLinkSection').hidden && !stillPending && Date.now()-stillChecked>=2500)await readStillLink();
       if(state.tab==='settings' && state.info.telemetry_forwarding && Date.now()-state.telemetryAt>=5000)await refreshTelemetry();
     }
   } catch(error) {
@@ -570,11 +709,13 @@ function selectTab(tab) {
   state.tab=tab;document.querySelectorAll('.tab-panel').forEach(panel=>panel.hidden=panel.id!==tab);
   document.querySelectorAll('[data-tab]').forEach(button=>{const active=button.dataset.tab===tab;button.classList.toggle('selected',active);if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});
   if(state.connected && tab==='recipes')refreshRecipes().catch(error=>notify(error.message,true));
+  if(state.connected && tab==='settings' && !$('stillLinkSection').hidden)void readStillLink();
   if(state.connected && tab==='settings' && state.info.telemetry_forwarding)refreshTelemetry();
   if(tab==='history')brewHistory?.activate();
 }
 
 async function connect(key) {
+  statusCapture?.stop('Connection changed');
   state.key=key;state.generation++;clearTimeout(pollTimer);
   state.telemetry=null;state.telemetryAt=0;
   const info=await api('');state.capabilities=PicoDevice.commands(info);applyCapabilities(info);renderPrograms();
@@ -587,6 +728,7 @@ async function connect(key) {
 }
 
 function disconnect() {
+  displayGroup(null);groupChecked=0;stillLink=null;$('stillLinkForm').reset();
   state.generation++;state.key='';state.status=null;clearTimeout(pollTimer);connected(false);
   state.telemetry=null;$('telemetryStatus').textContent='Connect to see Hub connection status.';
   $('hubDestination').textContent='No Hub connection loaded.';
@@ -646,12 +788,13 @@ $('recipeName').addEventListener('input',()=>{if($('recipeId').dataset.auto==='t
 $('recipeId').addEventListener('input',()=>{$('recipeId').dataset.auto='false';});
 $('recipeForm').addEventListener('submit',async event=>{
   event.preventDefault();const recipe=recipeFromForm();if(!recipe)return;
-  try{await api('/recipes/'+encodeURIComponent(recipe.id),'PUT',{...(recipe.z_program ? {z_program:recipe.z_program} : {name:recipe.name,steps:recipe.steps}),...(!state.editorId && {create_only:true})});editRecipe(recipe,true);await refreshRecipes();notify('Recipe saved on the Pico.');}
+  const {id,...body}=recipe;
+  try{const saved=await api('/recipes/'+encodeURIComponent(id),'PUT',{...body,...(state.editorId ? {if_revision:state.editorRevision} : {create_only:true})});editRecipe(saved,true);await refreshRecipes();notify('Recipe saved on the Pico.');}
   catch(error){notify(error.message,true);}
 });
 $('deleteRecipe').addEventListener('click',async()=>{
   if(!state.editorId || !confirm('Delete this recipe from the Pico?'))return;
-  try{await api('/recipes/'+encodeURIComponent(state.editorId),'DELETE');editRecipe({});await refreshRecipes();notify('Recipe deleted.');}
+  try{await api('/recipes/'+encodeURIComponent(state.editorId),'DELETE',state.editorRevision ? {if_revision:state.editorRevision} : undefined);editRecipe({});await refreshRecipes();notify('Recipe deleted.');}
   catch(error){notify(error.message,true);}
 });
 $('importRecipe').addEventListener('click',()=>$('importFile').click());
@@ -669,7 +812,21 @@ function readRecipeFile(text) {
       current.add(key);
     }
   }
+  // A revision belongs to the source brewer. An imported copy gets a new one.
+  if(recipe && Object.hasOwn(recipe,'id') && Number.isInteger(recipe.revision) &&
+     recipe.revision>0 && recipe.revision<=0xffffffff)delete recipe.revision;
   const validId=id=>typeof id==='string' && id.length>=1 && id.length<=20 && !/[^a-zA-Z0-9_-]/.test(id);
+  if(recipe && Object.hasOwn(recipe,'PicoRecipeID')){
+    if(!hasOnlyFields(recipe,['Name','Abv','Ibu','PicoRecipeID','PicoBeerID','Steps']) || !Array.isArray(recipe.Steps) ||
+      recipe.Steps.some(s=>!hasOnlyFields(s,['Name','Location','Temp','Time','Drain','Action','MinTime','MaxTime']) ||
+        ['Name','Location','Temp','Time','Drain','Action'].some(key=>s[key]==null)))
+      throw new Error('Missing or unsupported fields in the original PicoPak.');
+    const program={id:'pico-pak-'+recipe.PicoRecipeID,name:recipe.Name,
+      steps:recipe.Steps.map(s=>({name:s.Name,location:s.Location,target_f:s.Temp,minutes:s.Time,drain_minutes:s.Drain})),
+      z_pak:{recipe_id:recipe.PicoRecipeID,beer_id:recipe.PicoBeerID,abv:recipe.Abv,ibu:recipe.Ibu,
+        step_options:recipe.Steps.map(s=>({action:s.Action,...(s.MinTime==null?{}:{min_time:s.MinTime}),...(s.MaxTime==null?{}:{max_time:s.MaxTime})}))}};
+    return readRecipeFile(JSON.stringify(program));
+  }
   if(recipe && (Object.hasOwn(recipe,'Steps') || Object.hasOwn(recipe,'z_program'))) {
     if(state.info.z_program_maker!==true)throw new Error('This brewer does not support Z Program Maker files.');
     const wrapped=Object.hasOwn(recipe,'z_program');
@@ -683,12 +840,35 @@ function readRecipeFile(text) {
   }
   const label=(value,max)=>typeof value==='string' && value.length>=1 && value.length<=max && !/[^ -~]/.test(value);
   const integer=(value,min,max)=>Number.isInteger(value) && value>=min && value<=max;
-  if(!hasOnlyFields(recipe,['id','name','steps']) || !validId(recipe.id) || !label(recipe.name,31) ||
+  const cloud=recipe && Object.hasOwn(recipe,'z_cloud');
+  const kit=recipe && Object.hasOwn(recipe,'z_pak');
+  if(kit){
+    const p=recipe.z_pak;
+    if(cloud || state.info.z_picopak_v1!==true || !hasOnlyFields(p,['recipe_id','beer_id','abv','ibu','selected_abv','selected_ibu','step_options']) ||
+      !integer(p.recipe_id,1,0xffffffff) || !integer(p.beer_id,1,0xffffffff) || !integer(p.abv,-1,127) || !integer(p.ibu,-1,127) ||
+      !Array.isArray(recipe.steps) || !Array.isArray(p.step_options) || p.step_options.length!==recipe.steps.length ||
+      p.step_options.some(o=>!hasOnlyFields(o,['action','min_time','max_time']) || !integer(o.action,0,1) ||
+        ['min_time','max_time'].some(k=>k in o && !integer(o[k],0,599)))) throw new Error('This brewer or file does not support the supplied PicoPak schedule.');
+    for(const key of ['abv','ibu']){
+      if(!('selected_'+key in p))continue;
+      const selected=p['selected_'+key];
+      if(!integer(selected,0,10) || (selected!==p[key] && (!integer(p[key],1,9) || !p.step_options.some((o,i)=>
+        o.action===0 && o.min_time!=null && o.max_time!=null && (key==='abv'?recipe.steps[i]?.location===2:recipe.steps[i]?.location>=3)))))
+        throw new Error('This PicoPak has no matching authored adjustment for the selected strength.');
+    }
+  }
+  if(cloud && (state.info.z_cloud_program_v1!==true || !hasOnlyFields(recipe.z_cloud,['start_water_ml','is_beer']) ||
+    !integer(recipe.z_cloud.start_water_ml,1,16163) || typeof recipe.z_cloud.is_beer!=='boolean'))
+    throw new Error('This Z schedule requires a compatible brewer and a valid starting-water quantity.');
+  if(kit && !label(recipe.name,31))throw new Error('Give this kit a device name of up to 31 printable ASCII characters in the Hub, then transfer it.');
+  if(!hasOnlyFields(recipe,['id','name','steps','z_cloud','z_pak']) || !validId(recipe.id) || !label(recipe.name,31) ||
      !Array.isArray(recipe.steps) || !integer(recipe.steps.length,1,15))throw new Error('Choose a Pico Local recipe with a valid ID, name, and 1–15 steps.');
   for(const [i,step] of recipe.steps.entries()) {
     if(!hasOnlyFields(step,['name','location','target_f','minutes','drain_minutes']) || !label(step.name,21) ||
-       !integer(step.location,1,6) || (step.target_f!==0 && !integer(step.target_f,60,212)) ||
+       !integer(step.location,cloud?0:1,6) || (step.target_f!==0 && !integer(step.target_f,cloud || kit?32:60,212)) ||
        !integer(step.minutes,state.info.zero_minute_steps===true ? 0 : 1,599) ||
+       (cloud && step.location!==6 && step.target_f>0 && step.target_f<60 && recipe.steps[i-1]?.location!==6) ||
+       (kit && recipe.z_pak.step_options[i].action===0 && step.target_f>0 && step.target_f<60 && recipe.z_pak.step_options[i-1]?.action!==1) ||
        ('drain_minutes' in step && !integer(step.drain_minutes,0,120)))throw new Error('Step '+(i+1)+' contains unsupported fields or values.');
   }
   return recipe;
@@ -711,10 +891,21 @@ $('importRecipe').addEventListener('drop',event=>{
   event.preventDefault();importRecipeFile(event.dataTransfer.files[0]);
 });
 $('exportRecipe').addEventListener('click',()=>{const recipe=recipeFromForm();if(recipe)download(recipe.id+'.json',recipe.z_program || recipe);});
+$('stillLinkForm').addEventListener('submit',event=>{
+  event.preventDefault();
+  const body={host:$('stillHost').value.trim(),port:Number($('stillPort').value),uid:$('stillUID').value.toLowerCase(),key:$('stillKey').value.toLowerCase()};
+  $('stillKey').value='';
+  void changeStillLink('PUT',body);
+});
+$('stillUnpair').addEventListener('click',()=>void changeStillLink('DELETE'));
+$('joinGroup').addEventListener('click',()=>void respondGroup('accept'));
+$('declineGroup').addEventListener('click',()=>void respondGroup('decline'));
+$('stillLogging').addEventListener('change',event=>void changeStillLink('PATCH',{session_logging:event.target.checked}));
 $('settingsForm').addEventListener('submit',async event=>{
-  event.preventDefault();try{const available={temperature_unit:$('temperatureUnit').value,language:$('language').value,detailed_status:$('detailedStatus').checked};const keys=state.info.settings_fields || Object.keys(available);const patch=Object.fromEntries(keys.filter(key=>key in available).map(key=>[key,available[key]]));const settings=await api('/settings','PATCH',patch);renderSettings(settings);if(state.status)renderStatus(state.status);notify('Preferences saved on the Pico.');}catch(error){notify(error.message,true);}
+  event.preventDefault();try{const available={temperature_unit:$('temperatureUnit').value,language:$('language').value,detailed_status:$('detailedStatus').checked,auto_cycle:$('autoCycle').checked};const keys=state.info.settings_fields || ['temperature_unit','language','detailed_status'];const patch=Object.fromEntries(keys.filter(key=>key in available).map(key=>[key,available[key]]));const settings=await api('/settings','PATCH',patch);renderSettings(settings);if(state.status)renderStatus(state.status);notify('Preferences saved on the Pico.');}catch(error){notify(error.message,true);}
 });
 document.addEventListener('visibilitychange',()=>{if(!document.hidden && state.key)poll();});
+statusCapture=setupStatusCapture({session:()=>({supported:state.info.z_state_v1===true,uid:state.status?.device_uid,connected:state.connected}),download,refresh:poll});
 apiExplorer=setupApiExplorer({session:()=>({key:state.key,connected:state.connected,generation:state.generation}),enqueue:task=>{
   const result=requestQueue.catch(()=>{}).then(task);requestQueue=result;return result;
 }});

@@ -17,13 +17,14 @@ The idle home screen suggests Rinse after a brew and Clean after three brews. A 
 
 Hub USB setup can provision an individually identified Z-series module with protected recovery. The Hub backs up the whole device and verifies the active stock image and partition layout first. For previously paired standalone installations, it also saves the running flash before repartitioning, checks the existing key, and verifies each migrated file and its metadata. Unreadable storage, an unknown application, or data that cannot fit stops setup before a write.
 
-A provisioned module advertises `esp32-factory-v1`. From the machine’s Firmware panel, an idle module can restart into recovery, accept a matching application, read it back, and select it for boot. Recovery uses the existing Wi-Fi settings and device key and leaves the heater and pumps off. The 4 MiB layout reserves 896 KiB for recovery, 1,668 KiB for the application and 1,468 KiB for SPIFFS. USB recovery and OTA still require operating trials on physical hardware.
+A provisioned module advertises `esp32-factory-v1`. From the machine’s Firmware panel, an idle module can restart into recovery, accept a matching application, read it back, and select it for boot. Recovery uses the existing device key and selected network interface. The factory receiver keeps the heater and pumps off. Earlier receivers support Wi-Fi only. The 4 MiB layout reserves 896 KiB for recovery, 1,668 KiB for the application and 1,468 KiB for SPIFFS. USB recovery and OTA still require operating trials on physical hardware.
 
 ## Implemented local operation
 
+See the [OEM feature comparison](oem-parity.md) for Program Maker, native state capture, the two sous vide programs and original kit support.
+
 Choose **Brew Recipe** on the front panel to select a saved recipe. The panel also
-provides sous vide, coffee, maintenance, Wi-Fi and persisted language, temperature
-and display preferences.
+opens **Sous vide** with or without a keg. **Coffee** offers Cold Brew, Hot Coffee, Hybrid Coffee and Custom Coffee. Choose a profile and review its settings before starting. **Utilities** offers Rinse, Clean, Drain, Rack, Circulate and Chill. Use **Settings** for network, language, temperature units and display preferences.
 The common browser and Hub expose the same advertised capabilities, the actual
 grayscale display and ordered encoder movement/clicks. Local operation and
 startup do not require cloud DNS, registration or an Internet connection.
@@ -39,7 +40,7 @@ recovered Z builder still applies its valve and local boiling-temperature
 limits. An unheated step explicitly stops the preceding PID before valve
 movement. Original setup, filter and completion prompts remain interactive.
 
-The local recipe format carries no starting-water quantity. For these programs,
+The canonical recipe format carries no starting-water quantity. For these programs,
 the loading screen prompts the operator to add water according to the recipe.
 The native duration estimator still uses its nominal heating volume.
 
@@ -50,17 +51,75 @@ Step type 2 requests an operator acknowledgement. Uploading a program saves
 it for a separate start action. See the [recipe wire format](../../common/docs/api-schema.md#z-program-maker-recipes).
 
 Archived native Z programs use a different grammar: locations 0–5 map to
-valves 1–6, and location 6 means pause. They are retained as reference/export
-data in the Hub; they are not silently interpreted as canonical API recipes.
-The shared API does not advertise starter programs without an attributed,
-model-specific conversion. S/Pro PicoPak data is not installed under a Z label.
+valves 1–6, and location 6 means pause. The Hub sends the original starting water and schedule to standalone Z firmware with `z_cloud_program_v1`. The Z compiles it through the dedicated native cloud recipe path.
 
-Advertised commands are `brew`, `sous-vide`, `cold-brew`, `rinse`,
+A Z advertising `z_picopak_v1` can also save a compatible original PicoPak program for use with a physical pack and the Z PicoPak Adapter. The native setup requests the adapter and 6.81 L of process water. The brewer uses the kit’s own flow steps, pauses and timed strength/bitterness adjustments. A fresh Z has no preinstalled starter catalog. [Original PicoPak format](../../common/docs/api-schema.md#original-picopak-programs-on-z)
+
+Advertised commands include `brew`, `sous-vide` (with keg), `sous-vide-no-keg`, `coffee`, `cold-brew`, `rinse`,
 `clean`, `circulate`, `drain`, `rack-beer`, `chill`, `utilities`, `settings`,
 `stop`, `clear-stop`, `pause`, `resume`, `encoder`, `resume-interrupted` and
-`discard-interrupted`. Recipe and command fields are discoverable through
+`discard-interrupted`. During a run, use the reported `can_pause` and `can_resume` fields to see which action is available. A step-filter fault or PicoStill error needs attention at the machine. Recipe and command fields are discoverable through
 `/api/v1`. The generic API and display/history formats are documented in
 [`../../common/docs/api-schema.md`](../../common/docs/api-schema.md).
+
+## Group Brewing
+
+In the Hub, group the individual brewers you want to use together. A saved brew,
+rinse or clean can invite compatible members. Z modules with the extended group
+capability can also share drain, rack, circulate, chill, both sous vide programs,
+all four coffee programs and paired PicoStill operations. Each receiving Z shows
+the sender and program on its OLED. Answer on that dial, its local website or the
+Hub. For coffee, **Review coffee** on the dial opens the parameter screen with the sender’s
+water, temperature, intensity and duration. Choose **Start** there to begin.
+Each Z running a PicoStill operation needs its own ready, linked accessory.
+
+A saved recipe runs through the normal Z compiler, including native Program Maker
+steps. The invitation is tied to the staged catalog revision. An active operation,
+a latched stop, a controller fault, or a pending recovery checkpoint prevents a
+group start. The step filter must be present at acceptance. An accepted start
+opens the usual native setup steps and does not generate another invitation.
+
+The Hub brokers group membership and withdraws invitations from removed members
+as soon as it can reach them. If a member disconnects after delivery, its OLED
+offer can still be accepted for up to two minutes from the original receipt.
+Repeating the same pending offer leaves that deadline in place. A reboot clears
+the offer. Each brewer tracks its own session independently.
+
+## Using a PicoStill with the Z
+
+Pair an idle Z with a PicoStill running compatible standalone firmware. The
+Hub can supply its saved accessory address and device key. The Z verifies the
+accessory UID with an authenticated request before replacing its saved pairing.
+The devices must be able to reach one another on the local network during use.
+After pairing, **PicoStill** on the Z opens its original manual and boil-point
+programs. Both retain the native setup screens, filter check, operator prompts,
+temperature and pressure logic. A cleaning reminder must be acknowledged on
+the brewer after physically cleaning the condenser.
+
+The Z holds its heater and pump outputs off through setup and waits for the
+accessory to acknowledge starting its native controller. It receives the
+four temperatures in Celsius, pressure in psi, pump state, cooling fan state
+and controller activity. These readings feed the recovered controller’s
+native sample windows and statistics. The Z’s **PicoStill** setting in
+**Settings** controls recording the brewer session in local history. The
+accessory independently records its own sensor and actuator history.
+
+Authenticated `GET /api/v1/picostill` reports the pairing, logging preference
+and latest sample during a session. `PUT` stages an address, port, UID and key.
+Poll GET until `checking` clears and verify the saved UID and `error`.
+After a reboot, `paired` identifies a saved binding and `verified` becomes
+true when the accessory next proves its identity. `PATCH` takes
+`{"session_logging":true}` or `false` for that field. `DELETE` clears the
+binding. Both devices advertise `picostill_brewer_link_v1`. The commands
+`picostill-manual` and `picostill-boil-point` use the same prompts as the dial.
+
+The Z requests fresh data every 1.5 seconds and cuts its outputs on a failed
+exchange or invalid reading. Requests time out after 3 seconds. PicoStill
+independently cuts its outputs if the Z fails to renew its session for 6.5
+seconds. Either machine can stop its session. Restoring network connectivity
+requires a fresh operator start. Physical tests are still needed for heat
+and pressure response, cooling, filter removal, operator stop, network loss
+and power loss on each controller.
 
 ## Restart recovery and output inhibition
 
@@ -118,9 +177,24 @@ missing; an unreadable modified record is not overwritten by that migration.
 The checked startup preserves NVS on initialization failure. Runtime SPIFFS
 mounting never formats an unreadable partition.
 
-The modified API transport is Wi-Fi. Original W5500 Ethernet and remote cloud
-protocols remain in the OEM reconstruction; the modified settings menu does
-not advertise Ethernet/cloud configuration. Local history retains 4,224 samples
+The local website, authenticated API, and optional Hub telemetry share the
+selected network connection. On an idle Z, choose **Settings → Network →
+Ethernet → Use Ethernet** and reopen **Ethernet** to see the DHCP address.
+**Use Wi-Fi** switches back to the saved wireless settings. The brewer saves
+the selection and boiler configuration in verified flash records. USB setup
+imports the original board settings when it identifies the factory EEPROM
+layout. Ethernet updates require a protected receiver with the W5500 transport.
+A Z provisioned with an earlier Wi-Fi-only receiver can update over Wi-Fi
+or use USB setup to install the new receiver. Physical Ethernet operation
+still needs verification on a Z.
+
+The W5500 uses socket 0 in MACRAW mode with the original SPI bus and chip
+select. The firmware exchanges at most one frame per control pass; DHCP, DNS
+and TCP run through the same SDK stack as Wi-Fi. The interface retries after
+cable loss or a stalled chip command. The register implementation follows
+the [WIZnet W5500 datasheet](https://docs.wiznet.io/img/products/w5500/W5500_ds_v110e.pdf).
+
+Local history retains 4,224 samples
 across eight sessions, with named sensor/actuator schemas and explicit gaps,
 truncation and interrupted sessions. Optional Hub telemetry defaults off and
 uses bounded asynchronous networking.

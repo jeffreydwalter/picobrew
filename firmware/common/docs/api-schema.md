@@ -59,6 +59,30 @@ Malformed metadata produces an explicit invalid-snapshot error, not a resumable
 button. An invalid stored checkpoint uses `valid:false`, even when
 `available:false`, and remains visible for explicit discard.
 
+When dedicated session controls are supported, the authenticated status response
+includes `can_pause` and `can_resume`. Each flag refers to the current native
+runtime step. The brewer rechecks the same conditions when executing the
+command. Use the front panel for setup instructions and program-specific choices.
+A client must see a true flag before offering the corresponding shortcut.
+
+### Native Z state
+
+A device advertising `z_state_v1:true` serves authenticated `GET /api/v1/z/state`.
+It returns the stock Z state fields, including the original spelling of
+`SecondsEllapsed`. `WortTemp`, `ThermoBlockTemp`, `DrainTemp`, `AmbientTemp` and
+`TargetTemp` are Celsius. `TargetTemp` is the last controller setpoint and may
+remain set after heating stops. Use the common status to show active heating.
+`ValvePosition` is the physical position, while `Location` accounts for
+`UsePicoPakMode`. The remaining fields are `KegPumpOn`, `DrainPumpOn`,
+`PauseReason`, `rssi`, `StepName` and `SecondsRemaining`. RSSI is zero when
+the Wi-Fi link is inactive.
+
+In the device website's Brew journal, **Record live status** records common status and
+native Z state in consecutive requests. It defaults to five seconds and accepts
+intervals from two seconds to one hour. Recording ends at disconnect or at
+4,096 samples or 4 MiB of sample data. Download before closing or refreshing the
+tab. Recorded brew sessions have independent, persistent storage.
+
 ## Commands, recipes and preferences
 
 `POST /api/v1/commands` accepts `command` plus only the arguments advertised for
@@ -104,6 +128,8 @@ locations 1..6, target 0 or 60..212 F, active minutes 0..599 and drain minutes
 keep device-specific recovered meaning; they are not interchangeable physical
 compartments across models. `zero_minute_steps` is explicitly advertised.
 When discovery advertises `recipe_create_only`, send `create_only: true` in a recipe PUT when creating a new recipe or importing a copy. An existing ID returns 409 `recipe_exists` and keeps the saved recipe. Omitting the field preserves the usual create-or-update behavior.
+
+When discovery advertises `recipe_conditional_write`, GET or PUT of a single recipe returns a positive `revision`. Send that value as `if_revision` in a PUT or DELETE JSON body to modify the version you read. A change to the saved recipe catalog, including deletion and recreation, returns HTTP 409 `recipe_changed`. Reopen the recipe to review changes. A PUT can also round-trip the returned `revision` field. Supply only one revision field and omit `create_only: true` when updating.
 The common engine exposes catalogue reads to the local front panel and passes
 the full selected recipe to the adapter's brew command. Mutations require an
 idle device and verified persistent writes. Defaults are offered only when an
@@ -130,7 +156,7 @@ acknowledgement. Unknown fields, mixed program encodings and out-of-range
 values are rejected before storage.
 
 Settings use the existing `temperature_unit` (`F`/`C`), `language`
-(`en`/`es`/`fr`) and `detailed_status` fields, only where advertised. PATCH is a
+(`en`/`es`/`fr`), `detailed_status` and `auto_cycle` (automatically advance the Z brew status screens), only where advertised. PATCH is a
 nonempty subset and preserves unrelated fields. Common persistence validates
 before saving; application failures return an explicit error, never a success
 claim. No Wi-Fi credentials, API key or calibration values are exposed as
@@ -181,3 +207,19 @@ and delivery counters. Forwarding is optional, defaults off, contains no device
 key, and uses the existing versioned Hub status envelope. Device operation and
 history continue without the Hub. Slow/unreachable networks are bounded and
 must not block actuator/sensor service. No firmware OTA route is implied.
+
+### Archived Z cloud recipes
+
+On a brewer advertising `z_cloud_program_v1`, a saved recipe can carry `z_cloud: {"start_water_ml":13100,"is_beer":true}` with the usual `name`, `id` and `steps`. This selects the Z cloud compiler. Source locations 0–5 mean keg, mash and adjuncts 1–4. Location 6 is an operator pause. Hold and drain are whole minutes. A zero temperature keeps the previous heat setting. The device uses the original raw Fahrenheit values and measured local boiling point when compiling. A positive active target below 60 °F requires an immediately preceding operator pause for chiller setup. The Hub reads back and compares the entire saved program before reporting a transfer. Starting water must be 1–16,163 mL, within the stock keg planning ceiling.
+
+### Original PicoPak programs on Z
+
+`z_picopak_v1:true` advertises the dedicated PicoPak compiler on a Z. It requires the operator's original pack and Z PicoPak Adapter. Add `z_pak` to a named recipe containing the original steps. Required members are positive `recipe_id` (PicoRecipeID) and `beer_id` (PicoBeerID), original `abv` and `ibu` indices, and `step_options` containing one entry per source step in order. Each option contains `action` (0 for a flow step or 1 for an operator pause). Optional `min_time` and `max_time` are whole minutes. Omit absent bounds. Preserve direct source locations 1 through 6. An optional `selected_abv` or `selected_ibu` (0–10) changes timing only when the original target is 1–9 and a corresponding active mash or hop step has both bounds. The device executes the native strength calculation, setup prompts and 6.81 L water charge. The PicoPak and Z cloud formats are mutually exclusive.
+
+## Z Group Brewing and PicoStill
+
+A Z advertising `group_brewing_v1` accepts authenticated reads and writes at `/api/v1/group-brew`. A read reports a recent local start and the current invitation. An offer identifies a saved slot and revision for a recipe, or selects rinse or clean. Accepting the offer enters the normal preparation flow. A Z with `z_picopak_v1` can include `selected_abv` and `selected_ibu` in a kit invitation. Each is an optional index from 0 to 10 for this brew. An omitted setting uses the value saved with the slot. The source and recipient each keep their saved recipe. The Hub handles membership and per-brewer consent. [Group operations and expiry](../../z-series/modified/README.md#group-brewing)
+
+A Z advertising `group_z_programs_v1` accepts `action:"z_program"` with a `program_id`. Supported IDs are 2 (Drain), 3 (Rack), 4 (Circulate), 5 and 6 (Sous vide without and with keg), 7 (PicoStill manual), 20–23 (Cold Brew, Hybrid, Hot and Custom coffee), 26 (PicoStill boil point) and 27 (Chill). Both ends must support this capability. Coffee requires `water_l`, `temperature_f`, `intensity` and `time_seconds`. The water limits come from the original 1–4.2 US gallon and 4–15.5 L pickers. Temperature is 100–200 °F, intensity is an integer from 1 to 15, and time is 60–5,400 seconds in one-minute increments. Accepting coffee loads the original program and presents the separate Start control. Reads include a localized `program_name` for display. The device determines that name.
+
+A Z advertising `picostill_brewer_link_v1` exposes the paired accessory at `/api/v1/picostill`. The brewer reports the accessory's four temperature readings, pressure, pump, cooling fan and program state during a session. The paired UID and verification status are readable between sessions. [Pairing, logging and commands](../../z-series/modified/README.md#using-a-picostill-with-the-z)

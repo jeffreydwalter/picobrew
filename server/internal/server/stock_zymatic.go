@@ -193,34 +193,41 @@ func (s *Server) compileStockSelection(w http.ResponseWriter, refs []stockRefere
 				saved.SourceModel = "zymatic"
 			}
 		}
-		item := stockItem{RecipeID: saved.ID, Revision: saved.Revision, Maintenance: saved.Kind == "maintenance"}
-		var p domain.MachineRecipe
-		var err error
-		if len(saved.Ingredients) > 0 && !recipe.IsNative(saved) {
-			var plan domain.Adapted
-			plan, err = recipe.Translate(saved, profile, 0)
-			if err == nil {
-				if plan.MachineRecipe == nil {
-					err = errors.New(strings.Join(plan.DeploymentBlockers, "; "))
-				} else {
-					p = *plan.MachineRecipe
-					item.BatchLiters = plan.Recipe.BatchLiters
-					item.HopSlotsByMinute = plan.HopSlotsByMinute
-				}
-			}
-		} else {
-			p, err = recipe.StockZymaticProgram(saved, profile)
-		}
+		item, err := compileStockRecipe(saved, profile)
 		if err != nil {
 			s.fail(w, 422, "stock_program", saved.Name+": "+err.Error())
 			return nil, false
 		}
-		item.Program = p
 		changes = append(changes, item)
 	}
 	return changes, true
 }
 
+func compileStockRecipe(saved domain.Recipe, profile domain.Profile) (stockItem, error) {
+	item := stockItem{RecipeID: saved.ID, Revision: saved.Revision, Maintenance: saved.Kind == "maintenance"}
+	var p domain.MachineRecipe
+	var err error
+	if len(saved.Ingredients) > 0 && !recipe.IsNative(saved) {
+		var plan domain.Adapted
+		plan, err = recipe.Translate(saved, profile, 0)
+		if err == nil {
+			if plan.MachineRecipe == nil {
+				err = errors.New(strings.Join(plan.DeploymentBlockers, "; "))
+			} else {
+				p = *plan.MachineRecipe
+				item.BatchLiters = plan.Recipe.BatchLiters
+				item.HopSlotsByMinute = plan.HopSlotsByMinute
+			}
+		}
+	} else {
+		p, err = recipe.StockZymaticProgram(saved, profile)
+	}
+	if err == nil {
+		err = recipe.ValidateStockZymaticProgram(p)
+	}
+	item.Program = p
+	return item, err
+}
 func stockReply(w http.ResponseWriter, body string) {
 	w.Header().Set("Content-Type", "text/plain; charset=us-ascii")
 	w.Header().Set("Cache-Control", "no-store")

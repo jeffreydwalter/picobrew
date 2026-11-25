@@ -250,6 +250,11 @@ def project_files():
                 "extension/1.2.0/extension.bin",
                 "extension/1.2.0/extension.json",
                 "zymatic_pairing.h",
+                "tools/wifi_build.py",
+                "extension/wifi/compact/application.delta",
+                "extension/wifi/compact/layout.json",
+                "extension/wifi/extended/application.delta",
+                "extension/wifi/extended/layout.json",
                 "tools/oem_tables.py",
                 "tools/compact_build.py",
                 "tools/usb_layout.py",
@@ -279,7 +284,7 @@ def worker_inputs():
     ))
     inputs.update(ROOT / name for name in (
         "firmware/common/requirements-usb.txt", "firmware/pico-s-pro/modified/requirements-usb.txt",
-        ".github/workflows/hub-usb-tools.yml",
+        ".github/workflows/hub-usb-tools.yml", "LICENSE", "LICENSES.md", "server/LICENSE",
     ))
     digest = hashlib.sha256()
     for path in sorted(inputs, key=lambda entry: entry.relative_to(ROOT).as_posix()):
@@ -297,6 +302,8 @@ def notices(key, output, avr):
     versions = {}
     with zipfile.ZipFile(output / f"usb-notices-{key}.zip", "w", zipfile.ZIP_DEFLATED) as archive:
         archive.write(ROOT / "LICENSES.md", "PicoBrew-LICENSES.md")
+        archive.write(ROOT / "LICENSE", "PicoBrew-LICENSE.txt")
+        archive.write(ROOT / "server/LICENSE", "Hub-LICENSE.txt")
         archive.write(avr / "AVRDUDE-LICENSE.txt", "AVRDUDE-LICENSE.txt")
         for path in (
             Path(sysconfig.get_path("stdlib")) / "LICENSE.txt",

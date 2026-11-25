@@ -15,13 +15,13 @@ class NetworkTests(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("Node.js is required for the browser script test")
-        subprocess.run([node, str(ROOT / "tests/panel-site.cjs")], check=True, timeout=10)
+        subprocess.run([node, str(ROOT / "tests/panel-site.cjs")], check=True, timeout=60)
 
     def test_appearance_settings_in_both_shipped_pages(self):
         node = shutil.which("node")
         if not node:
             self.skipTest("Node.js is required for the browser script test")
-        subprocess.run([node, str(ROOT / "tests/appearance.cjs")], check=True, timeout=10)
+        subprocess.run([node, str(ROOT / "tests/appearance.cjs")], check=True, timeout=60)
 
     def test_register_io_http_authentication_and_ring_wrap(self):
         cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")

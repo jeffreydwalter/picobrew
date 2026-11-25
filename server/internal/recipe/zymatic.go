@@ -95,7 +95,7 @@ func StockZymaticProgram(r domain.Recipe, profile domain.Profile) (domain.Machin
 // compilation and delivery. Previously saved menus or recovery snapshots may
 // predate these checks. The original 1.1.14 and custom controller use this ABI.
 func ValidateStockZymaticProgram(p domain.MachineRecipe) error {
-	if p.ZProgram != nil || len(p.Steps) == 0 || len(p.Steps) > 25 {
+	if p.ZPak != nil || p.ZCloud != nil || p.ZProgram != nil || len(p.Steps) == 0 || len(p.Steps) > 25 {
 		return errors.New("a Zymatic program needs 1–25 native steps")
 	}
 	if _, err := hex.DecodeString(p.ID); err != nil || len(p.ID) != 32 || p.ID != strings.ToLower(p.ID) {

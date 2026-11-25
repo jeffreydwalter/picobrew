@@ -15,10 +15,10 @@ enum Capability : std::uint32_t {
     Recipes = 1u << 0, Brewing = 1u << 1, Heating = 1u << 2,
     Pump = 1u << 3, Fans = 1u << 4, Temperature = 1u << 5,
     Pressure = 1u << 6, Battery = 1u << 7, Calibration = 1u << 8,
-    Fermentation = 1u << 9, FrontPanel = 1u << 10
+    Fermentation = 1u << 9, FrontPanel = 1u << 10, IntermittentWifi = 1u << 11
 };
 enum SettingField : std::uint32_t {
-    TemperatureUnit = 1u << 0, Language = 1u << 1, DetailedStatus = 1u << 2
+    TemperatureUnit = 1u << 0, Language = 1u << 1, DetailedStatus = 1u << 2, AutoCycle = 1u << 3
 };
 enum CommandField : std::uint32_t {
     RecipeId = 1u << 0, Delta = 1u << 1, Click = 1u << 2,
@@ -45,6 +45,12 @@ struct Capabilities {
     bool zero_minute_steps = false;
     bool dedicated_pause_resume = false;
     bool z_program_maker = false;
+    bool z_cloud_program_v1 = false;
+    bool z_picopak_v1 = false;
+    bool z_state_v1 = false;
+    bool group_brewing_v1 = false;
+    bool group_z_programs_v1 = false;
+    bool picostill_brewer_link_v1 = false;
     const char* ota_protocol = nullptr;
     // Advertise only when the adapter supplies attributed, validated defaults.
     const struct Recipe* starter_recipes = nullptr;
@@ -101,6 +107,7 @@ struct Snapshot {
     char recipe_name[32] = {};
     char step_name[32] = {};
     bool filter_known = false, filter_inserted = false;
+    bool can_pause = false, can_resume = false;
     std::int32_t encoder_position = 0, encoder_min = 0, encoder_max = 0;
     Sensor sensors[SensorCapacity];
     std::size_t sensor_count = 0;
@@ -122,17 +129,29 @@ struct ZProgramStep {
     std::uint16_t drain_seconds = 0;
     bool pause = false, null_target = false, has_time = false;
 };
+struct PicoPakStepOptions {
+    std::int16_t minimum = -1, maximum = -1;
+    std::uint8_t action = 0;
+};
+struct PicoPakOptions {
+    std::uint32_t recipe_id = 0, beer_id = 0;
+    std::int8_t abv = -1, ibu = -1, selected_abv = -1, selected_ibu = -1;
+};
 struct RecipeStep {
     char name[22] = {};
     std::uint8_t location = 0, target_f = 0;
     std::uint16_t minutes = 0, drain_minutes = 0;
     ZProgramStep z;
+    PicoPakStepOptions pak;
 };
 struct Recipe {
     char id[21] = {};
     char name[32] = {};
     RecipeStep steps[RecipeStepCapacity];
     std::uint8_t step_count = 0;
+    // A nonzero charge selects the archived Z cloud grammar (locations 0–6).
+    std::uint16_t z_cloud_water_ml = 0;
+    PicoPakOptions pak;
     bool z_program = false, is_beer = true, use_pico_pak = false;
     bool has_metric = false, is_metric = false;
 };
@@ -140,6 +159,7 @@ struct Settings {
     char temperature_unit = 'F';
     char language[3] = {'e', 'n', 0};
     bool detailed_status = false;
+    bool auto_cycle = true;
 };
 struct Command {
     char name[32] = {};

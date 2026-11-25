@@ -334,6 +334,37 @@ func TestCommandsAreConcurrentAcrossMachinesAndIdempotent(t *testing.T) {
 		t.Fatal("idempotency payload mismatch accepted")
 	}
 }
+func TestSessionControlRequiresFreshMachinePermission(t *testing.T) {
+	s, h, c := newTestServer(t)
+	d, base := groupTestBrewer(t, s, "session-controls", "z-series")
+	base.caps.Commands = []string{"pause", "resume"}
+	base.st.Busy = true
+	base.st.State = "Running"
+	brewer := &pairingAdapter{status: base.st, caps: base.caps}
+	d.adapter = brewer
+	csrf := signIn(t, c, h.URL)
+	send := func(command, key string, want int) {
+		t.Helper()
+		code, response := request(t, c, "POST", h.URL+"/api/v1/devices/session-controls/commands", csrf,
+			map[string]any{"command": command, "confirm": true}, map[string]string{"Idempotency-Key": key})
+		if code != want {
+			t.Fatalf("%s: %d %s", command, code, response)
+		}
+	}
+	yes, no := true, false
+	send("pause", "pre-eligibility", 409)
+	brewer.status.CanPause, brewer.status.CanResume = &yes, &no
+	send("pause", "pause-once", 202)
+	send("resume", "resume-premature", 409)
+	// The view still reflects the last poll, but the next command re-reads the brewer.
+	brewer.status.CanPause, brewer.status.CanResume = &no, &yes
+	send("pause", "already-paused", 409)
+	send("resume", "resume-once", 202)
+	if brewer.commands != 2 {
+		t.Fatal(brewer.commands)
+	}
+}
+
 func TestUnknownCommandOutcomeIsNeverAutomaticallyRetried(t *testing.T) {
 	s, h, c := newTestServer(t)
 	csrf := signIn(t, c, h.URL)

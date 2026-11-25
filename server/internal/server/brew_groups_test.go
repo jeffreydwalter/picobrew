@@ -1,0 +1,596 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/device"
+	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/domain"
+	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/recipe"
+)
+
+type groupTestDevice struct {
+	device.Adapter
+	st          domain.Status
+	caps        domain.Capabilities
+	state       device.GroupState
+	slots       map[string]domain.MachineRecipe
+	hist        domain.History
+	calls       []device.GroupOffer
+	rev         uint32
+	responseErr error
+}
+
+func (a *groupTestDevice) Discover(context.Context) (domain.Capabilities, error) { return a.caps, nil }
+func (a *groupTestDevice) Status(context.Context) (domain.Status, error)         { return a.st, nil }
+func (a *groupTestDevice) GroupState(context.Context) (device.GroupState, error) { return a.state, nil }
+func (a *groupTestDevice) GroupRespond(_ context.Context, p device.GroupOffer) error {
+	a.calls = append(a.calls, p)
+	if a.responseErr != nil {
+		return a.responseErr
+	}
+	if p.Op == "offer" {
+		p.State = "pending"
+		a.state.Invite = &p
+		return nil
+	}
+	if p.ID != a.state.Invite.ID {
+		panic("mismatched group operation")
+	}
+	a.state.Invite.State = map[string]string{"accept": "accepted", "decline": "declined", "withdraw": "withdrawn"}[p.Op]
+	if p.Op == "accept" {
+		a.st.Busy = true
+	}
+	return nil
+}
+func (a *groupTestDevice) GroupRecipe(_ context.Context, id string) (domain.MachineRecipe, uint32, error) {
+	if v, ok := a.slots[id]; ok {
+		return v, a.rev, nil
+	}
+	return domain.MachineRecipe{}, 0, &device.Error{StatusCode: 404}
+}
+func (a *groupTestDevice) Recipes(context.Context) ([]domain.MachineRecipe, error) {
+	var p []domain.MachineRecipe
+	for _, v := range a.slots {
+		p = append(p, v)
+	}
+	return p, nil
+}
+func (a *groupTestDevice) CreateRecipe(_ context.Context, p domain.MachineRecipe) error {
+	if _, ok := a.slots[p.ID]; ok {
+		panic("overwriting group program")
+	}
+	a.slots[p.ID] = p
+	return nil
+}
+func (a *groupTestDevice) History(context.Context) (domain.History, error) { return a.hist, nil }
+func groupTestBrewer(t *testing.T, s *Server, id, model string) (*runtimeDevice, *groupTestDevice) {
+	t.Helper()
+	family := model
+	if model == "pico-pro" || model == "pico-s" {
+		family = "pico-s-pro"
+	}
+	a := &groupTestDevice{st: domain.Status{DeviceUID: id, Model: model, ModelFamily: family, Ready: true}, caps: domain.Capabilities{APIVersion: 1, GroupBrewingV1: true, Model: model, ModelFamily: family, RecipeCapacity: 16, StepCapacity: 15, RecipeCreateOnly: true, HistoryPersistent: true, ZeroMinuteSteps: true, Commands: []string{"brew", "rinse", "clean"}}, rev: 2, slots: map[string]domain.MachineRecipe{}}
+	if model == "pico-c" {
+		a.st.DisplayVariant = "ssd1325"
+		a.caps.DisplayVariant = "ssd1325"
+	}
+	if model == "z-series" {
+		a.caps.ZProgramMaker = true
+	}
+	d := &runtimeDevice{adapter: a, cancel: func() {}, view: domain.DeviceView{Device: domain.Device{ID: id, Name: id, Model: model, ModelSource: "firmware", Adapter: "pico-standalone", Enabled: true}, Status: &a.st, Capabilities: &a.caps, Online: true}}
+	s.mu.Lock()
+	s.devices[id] = d
+	s.mu.Unlock()
+	return d, a
+}
+func TestGroupConsentAndIsolation(t *testing.T) {
+	ctx := context.Background()
+	s, h, c := newTestServer(t)
+	base := h.URL + "/api/v1"
+	a, source := groupTestBrewer(t, s, "one", "pico-s")
+	b, target := groupTestBrewer(t, s, "two", "z-series")
+	_, other := groupTestBrewer(t, s, "other", "pico-c")
+	input := map[string]any{"name": "Double", "device_ids": []string{"one", "two"}}
+	if code, _ := request(t, c, "POST", base+"/brew-groups", "", input, nil); code != 401 {
+		t.Fatal(code)
+	}
+	csrf := signIn(t, c, h.URL)
+	code, raw := request(t, c, "POST", base+"/brew-groups", csrf, input, nil)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	var g brewGroup
+	json.Unmarshal(raw, &g)
+	if code, _ = request(t, c, "POST", base+"/brew-groups", csrf, input, nil); code != 409 {
+		t.Fatal(code)
+	}
+	age := uint32(0)
+	source.state.Source = &device.GroupSource{ID: "1234567890abcdef", AgeMS: &age, Action: "rinse"}
+	source.st.Busy = true
+	source.hist = domain.History{Sessions: []domain.HistorySession{{Available: true, ID: 12, Command: "rinse", State: "recording"}}}
+	sync := func(d *runtimeDevice, x *groupTestDevice) {
+		t.Helper()
+		d.mu.Lock()
+		d.view.Status = &x.st
+		d.mu.Unlock()
+		if err := s.syncBrewGroup(ctx, d, x.st); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sync(a, source)
+	if len(target.calls) != 0 || len(other.calls) != 0 {
+		t.Fatal("source sent direct commands")
+	}
+	i, _ := s.memberInvite("two")
+	if i == nil || i.State != "waiting" {
+		t.Fatalf("%#v", i)
+	}
+	sync(b, target)
+	sync(a, source)
+	sync(b, target)
+	if len(target.calls) != 1 || target.calls[0].Op != "offer" || target.calls[0].TTLMS < 1 || target.calls[0].TTLMS > 120000 || target.st.Busy {
+		t.Fatalf("%+v", target.calls)
+	}
+	post := base + "/devices/two/brew-invite/" + i.ID + "/respond"
+	target.st.Stopped = true
+	if code, _ = request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 409 {
+		t.Fatal(code)
+	}
+	target.st.Stopped = false
+	target.responseErr = &device.Error{StatusCode: 409, Code: "busy", Message: "Finish the current prompt"}
+	if code, _ = request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 409 {
+		t.Fatal(code)
+	}
+	if fresh, _ := s.memberInvite("two"); fresh.State != "pending" {
+		t.Fatal(fresh)
+	}
+	target.responseErr = nil
+	// Z is busy while showing the group prompt. Native acceptance checks idle
+	// and all interlocks inside the brewer; history can appear a poll later.
+	target.st.Busy = true
+	if code, raw = request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	if code, _ = request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 409 || len(target.calls) != 3 {
+		t.Fatal(code, target.calls)
+	}
+	target.hist = domain.History{Sessions: []domain.HistorySession{{Available: true, ID: 21, Command: "rinse", State: "recording"}}}
+	sync(b, target)
+	var srcLink, dstLink groupJournal
+	if _, err := s.db.Get("group-journal", "one-12", &srcLink); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Get("group-journal", "two-21", &dstLink); err != nil || srcLink != dstLink || dstLink.GroupID != g.ID {
+		t.Fatalf("%+v %+v %v", srcLink, dstLink, err)
+	}
+	target.state.Invite = nil
+	target.st.Busy = false
+	source.state.Source.ID = "1234567890abcdee"
+	sync(a, source)
+	sync(b, target)
+	if code, _ = request(t, c, "DELETE", base+"/brew-groups/"+g.ID+"?revision=1", csrf, nil, nil); code != 200 {
+		t.Fatal(code)
+	}
+	sync(b, target)
+	if target.calls[len(target.calls)-1].Op != "withdraw" {
+		t.Fatal(target.calls)
+	}
+	// Re-create the native prompt and unregister the reachable recipient.
+	target.state.Invite.State = "pending"
+	i, _ = s.memberInvite("two")
+	i.State, i.TargetUID, i.ExpiresAt = "pending", target.st.DeviceUID, time.Now().Add(inviteLifetime)
+	if err := s.saveInvite(*i); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.withdrawBeforeUnregister(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+	if target.state.Invite.State != "withdrawn" {
+		t.Fatal(target.state.Invite)
+	}
+	i.State, i.ExpiresAt = "pending", time.Now().Add(inviteLifetime)
+	target.state.Invite.State = "unavailable"
+	if err := s.reconcileGroupInvite(ctx, b, groupView(b), target, target.state.Invite, i); err != nil || i.State != "unavailable" {
+		t.Fatal(i, err)
+	}
+	if i, _ := s.memberInvite("other"); i != nil {
+		t.Fatal(i)
+	}
+}
+func TestGroupRecipeProofAndZymaticMenu(t *testing.T) {
+	s, _, _ := newTestServer(t)
+	ctx := context.Background()
+	_, src := groupTestBrewer(t, s, "source", "pico-s")
+	dst, wire := groupTestBrewer(t, s, "target", "pico-c")
+	peer, same := groupTestBrewer(t, s, "peer", "pico-s")
+	library := validRecipe()
+	library.ID = "original"
+	library.Revision = 2
+	p, _ := s.selectProfile("pico-s")
+	plan, err := recipe.Translate(library, p, 0)
+	if err != nil || plan.MachineRecipe == nil {
+		t.Fatalf("%v %+v", err, plan.DeploymentBlockers)
+	}
+	program := *plan.MachineRecipe
+	ref := groupRecipe{Model: "pico-s", Program: program}
+	if _, _, err = s.groupTargetRecipe(ctx, dst, dst.view, wire, ref); err == nil || len(wire.slots) != 0 {
+		t.Fatal("unproven mixed recipe")
+	}
+	other := program
+	other.ID = "localcopy"
+	same.slots[other.ID] = other
+	if slot, _, err := s.groupTargetRecipe(ctx, peer, peer.view, same, ref); err != nil || slot != other.ID {
+		t.Fatalf("local program: %s %v", slot, err)
+	}
+	other.Steps = append([]domain.MachineStep(nil), other.Steps...)
+	other.Steps[0].Minutes++
+	same.slots[other.ID] = other
+	if _, _, err = s.groupTargetRecipe(ctx, peer, peer.view, same, ref); err == nil {
+		t.Fatal("different same-model schedule accepted")
+	}
+	_, _ = s.db.Put("recipe-revision", "original:2", library, 0)
+	_, _ = s.db.Put("deployment", "r", groupReceipt{"source", src.st.DeviceUID, "original", 2, program, "verified"}, 0)
+	ref, err = s.identifyGroupRecipe(groupView(s.groupDevice("source")), program)
+	if err != nil || ref.LibraryID != library.ID {
+		t.Fatal(ref, err)
+	}
+	slot, revision, err := s.groupTargetRecipe(ctx, dst, dst.view, wire, ref)
+	if err != nil || revision != 2 || len(wire.slots) != 1 {
+		t.Fatal(slot, err)
+	}
+	cp, _ := s.selectProfile("pico-c")
+	cplan, _ := recipe.Translate(library, cp, 0)
+	if !reflect.DeepEqual(wire.slots[slot], *cplan.MachineRecipe) {
+		t.Fatal("target was not compiled for Pico C")
+	}
+	_, _ = s.db.Put("group-brew-program", "session", ref, 0)
+	i := brewInvite{ID: "0123456789abcdef", Action: "brew", GroupSessionID: "session", TargetDeviceID: stockMemberPrefix + "ABC"}
+	if err = s.prepareMenuInvite(&i, "ABC"); err != nil || i.State != "pending" {
+		t.Fatal(i, err)
+	}
+	if err = s.acceptGroupMenu(&i); err != nil {
+		t.Fatal(err)
+	}
+	var stock stockBrewer
+	if _, err = s.db.Get(stockKind, "ABC", &stock); err != nil || len(stock.Items) != 1 || stock.Session.ID != "" {
+		t.Fatal(stock, err)
+	}
+}
+func TestGroupRejectsOldAndInvalidEvents(t *testing.T) {
+	if _, fresh := sourceAge(119000, time.Now().Add(-2*time.Second)); fresh {
+		t.Fatal("An old observation gained a new invitation window")
+	}
+	age := uint32(120000)
+	e := device.GroupSource{ID: "deadbeefdeadbeef", Action: "clean", AgeMS: &age}
+	if validEvent(&e) {
+		t.Fatal("expired")
+	}
+	age = 1
+	e.RecipeID = "x"
+	if validEvent(&e) {
+		t.Fatal("unexpected recipe")
+	}
+	e.Action = "brew"
+	if validEvent(&e) {
+		t.Fatal("missing revision")
+	}
+	e.Revision = 1
+	e.ID = strings.ToUpper(e.ID)
+	if validEvent(&e) {
+		t.Fatal("upper-case id")
+	}
+	s, h, c := newTestServer(t)
+	_, _ = groupTestBrewer(t, s, "one", "pico-s")
+	_, _ = groupTestBrewer(t, s, "two", "pico-s")
+	csrf := signIn(t, c, h.URL)
+	s.rememberZymatic("Z123")
+	input := map[string]any{"name": "group", "device_ids": []string{"one", stockMemberPrefix + "Z123"}}
+	if code, p := request(t, c, http.MethodPost, h.URL+"/api/v1/brew-groups", csrf, input, nil); code != 200 {
+		t.Fatalf("%d %s", code, p)
+	}
+	if err := s.removeGroupMember("one"); err != nil {
+		t.Fatal(err)
+	}
+	groups, _ := listRecords[brewGroup](s, groupKind)
+	if len(groups) != 0 {
+		t.Fatal(groups)
+	}
+	now := time.Now()
+	i := brewInvite{GroupID: "g", TargetDeviceID: "two", SourceDeviceID: "one", State: "pending", ExpiresAt: now}
+	if err := s.expireInvite(&i, &brewGroup{ID: "g", DeviceIDs: []string{"one", "two"}}, now); err != nil || i.State != "expired" {
+		t.Fatal(err, i)
+	}
+}
+
+func (a *groupTestDevice) StartGroupAction(_ context.Context, action, id string, rev uint32) error {
+	if a.st.Stopped || a.st.Busy || action == "brew" && rev != a.rev {
+		return &device.Error{StatusCode: 409, Code: "changed", Message: "Recipe changed"}
+	}
+	a.calls = append(a.calls, device.GroupOffer{Op: "guarded", RecipeID: id, Revision: rev})
+	a.st.Busy = true
+	return nil
+}
+func TestCCGroupStartsRequireFreshProvenBrewAndGuardedSlot(t *testing.T) {
+	ctx := context.Background()
+	s, h, c := newTestServer(t)
+	csrf := signIn(t, c, h.URL)
+	a, source := groupTestBrewer(t, s, "brewer-a", "pico-s")
+	b, target := groupTestBrewer(t, s, "brewer-b", "pico-s")
+	source.caps.GroupBrewingV1 = false
+	source.caps.GroupRecipeV1 = true
+	target.caps = source.caps
+	p := domain.MachineRecipe{ID: "ale", Name: "House ale", Steps: []domain.MachineStep{{Location: 1, Name: "Boil", Minutes: 45, TargetF: 202}}}
+	source.slots[p.ID] = p
+	target.slots[p.ID] = p
+	g := brewGroup{ID: "g", Name: "Group", DeviceIDs: []string{a.view.ID, b.view.ID}, MemberSince: map[string]time.Time{a.view.ID: time.Now().Add(-time.Hour), b.view.ID: time.Now().Add(-time.Hour)}}
+	_, _ = s.db.Put(groupKind, g.ID, g, 0)
+	source.st.RecipeName = p.Name
+	source.st.Busy = true
+	age := uint32(30)
+	source.st.GroupRecipeID = p.ID
+	source.st.GroupRevision = source.rev
+	rec := domain.HistorySession{Available: true, ID: 47, Command: "brew", RecipeName: p.Name, State: "recording"}
+	source.hist.Sessions = []domain.HistorySession{rec}
+	poll := func(d *runtimeDevice, x *groupTestDevice) {
+		t.Helper()
+		d.mu.Lock()
+		d.view.Status = &x.st
+		d.mu.Unlock()
+		if err := s.syncBrewGroup(ctx, d, x.st); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Original firmware and cancelled setup don't produce start evidence.
+	poll(a, source)
+	if i, _ := s.memberInvite(b.view.ID); i != nil {
+		t.Fatal(i)
+	}
+	source.st.GroupAgeMS = &age
+	source.hist.Sessions[0].RecoveredAfterRestart = true
+	poll(a, source)
+	if i, _ := s.memberInvite(b.view.ID); i != nil {
+		t.Fatal(i)
+	}
+	source.hist.Sessions[0].RecoveredAfterRestart = false
+	poll(a, source)
+	poll(b, target)
+	poll(a, source)
+	i, _ := s.memberInvite(b.view.ID)
+	if i == nil || !i.HubConfirmation || i.State != "pending" || len(target.calls) != 0 {
+		t.Fatal(i, target.calls)
+	}
+	post := h.URL + "/api/v1/devices/" + b.view.ID + "/brew-invite/" + i.ID + "/respond"
+	target.rev++ // An edit on the brewer occurred between preview and acceptance.
+	if code, p := request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 409 {
+		t.Fatalf("%d %s", code, p)
+	}
+	if len(target.calls) != 0 || target.st.Busy {
+		t.Fatal("stale program started")
+	}
+	source.hist.Sessions[0].ID++
+	poll(a, source)
+	poll(b, target)
+	i, _ = s.memberInvite(b.view.ID)
+	post = h.URL + "/api/v1/devices/" + b.view.ID + "/brew-invite/" + i.ID + "/respond"
+	if code, p := request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 200 {
+		t.Fatalf("%d %s", code, p)
+	}
+	if len(target.calls) != 1 || target.calls[0].RecipeID != p.ID || target.calls[0].Revision != target.rev {
+		t.Fatal(target.calls)
+	}
+}
+
+func TestCCPhysicalRinseKeepsOneInvite(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := newTestServer(t)
+	d, a := groupTestBrewer(t, s, "a", "pico-s")
+	_, _ = groupTestBrewer(t, s, "b", "z-series")
+	a.caps.GroupBrewingV1 = false
+	a.caps.GroupRecipeV1 = true
+	a.st.Busy = true
+	a.st.UptimeMS = 67100
+	start := uint32(67000)
+	a.st.GroupRinseStartedMS = &start
+	g := brewGroup{ID: "g", DeviceIDs: []string{"a", "b"}}
+	_, _ = s.db.Put(groupKind, "g", g, 0)
+	for run := 0; run < 2; run++ {
+		if err := s.syncBrewGroup(ctx, d, a.st); err != nil {
+			t.Fatal(err)
+		}
+		a.st.UptimeMS++
+	}
+	events, _ := s.db.List("group-brew-event")
+	i, _ := s.memberInvite("b")
+	if len(events) != 1 || i == nil || i.Action != "rinse" {
+		t.Fatal(events, i)
+	}
+}
+
+func TestGroupOriginalKitSelection(t *testing.T) {
+	ctx := context.Background()
+	s, h, c := newTestServer(t)
+	csrf := signIn(t, c, h.URL)
+	source, a := groupTestBrewer(t, s, "origin", "z-series")
+	target, b := groupTestBrewer(t, s, "peer", "z-series")
+	pico, p := groupTestBrewer(t, s, "pico", "pico-pro")
+	older, o := groupTestBrewer(t, s, "older", "z-series")
+	a.caps.ZPicoPakV1 = true
+	b.caps.ZPicoPakV1 = true
+	p.caps.GroupBrewingV1 = false
+	p.caps.GroupRecipeV1 = true
+	g := brewGroup{ID: "g", Name: "Batch", DeviceIDs: []string{"origin", "peer", "pico", "older", stockMemberPrefix + "ABC"}}
+	if _, err := s.db.Put(groupKind, g.ID, g, 0); err != nil {
+		t.Fatal(err)
+	}
+	steps := []domain.MachineStep{{Name: "Mash", Location: 2, TargetF: 150, Minutes: 10}, {Name: "Hops", Location: 3, TargetF: 203, Minutes: 10}}
+	minimum, maximum, savedABV, savedIBU := 5, 15, 7, 10
+	program := domain.MachineRecipe{ID: "kit", Name: "Pico Pale", Steps: steps, ZPak: &domain.ZPicoPak{RecipeID: 64, BeerID: 40, ABV: 4, IBU: 6, SelectedABV: &savedABV, SelectedIBU: &savedIBU, StepOptions: []domain.ZPakStep{{MinTime: &minimum, MaxTime: &maximum}, {MinTime: &minimum, MaxTime: &maximum}}}}
+	a.slots[program.ID] = program
+	b.slots[program.ID] = program
+	o.slots[program.ID] = program
+	zero, baseline, age := 0, 6, uint32(0)
+	dose := device.GroupKitSelection{SelectedABV: &zero, SelectedIBU: &baseline}
+	a.state.Source = &device.GroupSource{GroupKitSelection: dose, ID: "9600000000000001", AgeMS: &age, Action: "brew", RecipeID: program.ID, Revision: a.rev}
+	for _, d := range []*runtimeDevice{source, target, older, pico, source, target} {
+		if err := s.syncBrewGroup(ctx, d, *d.view.Status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{"pico", "older", stockMemberPrefix + "ABC"} {
+		i, err := s.memberInvite(id)
+		if err != nil || i == nil || i.State != "unavailable" || i.Message != kitGroupRequirement {
+			t.Fatalf("%s: %+v, %v", id, i, err)
+		}
+	}
+	if len(a.calls) != 0 || len(o.calls) != 0 || len(p.calls) != 0 || len(b.calls) != 1 || b.st.Busy {
+		t.Fatalf("unexpected commands: %+v, %+v, %+v, %+v", a.calls, b.calls, o.calls, p.calls)
+	}
+	offer := b.calls[0]
+	if offer.Op != "offer" || offer.RecipeID != program.ID || offer.Revision != b.rev || !reflect.DeepEqual(offer.GroupKitSelection, dose) {
+		t.Fatal(offer)
+	}
+	i, err := s.memberInvite("peer")
+	if err != nil || i == nil {
+		t.Fatal(i, err)
+	}
+	for _, path := range []string{"/brew-invites", "/devices/peer/brew-invite"} {
+		code, raw := request(t, c, "GET", h.URL+"/api/v1"+path, csrf, nil, nil)
+		if code != 200 || !strings.Contains(string(raw), `"selected_abv":0`) || !strings.Contains(string(raw), `"selected_ibu":6`) {
+			t.Fatalf("%s: %d %s", path, code, raw)
+		}
+	}
+	post := h.URL + "/api/v1/devices/peer/brew-invite/" + i.ID + "/respond"
+	b.state.Invite.SelectedABV = nil
+	if code, _ := request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 409 || b.st.Busy {
+		t.Fatal("accepted an invitation whose strength differed from the source", code)
+	}
+	b.state.Invite.SelectedABV = &zero
+	if code, raw := request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 200 || !b.st.Busy {
+		t.Fatalf("%d %s", code, raw)
+	}
+	for _, w := range []*groupTestDevice{a, b} {
+		kit := w.slots[program.ID].ZPak
+		if *kit.SelectedABV != 7 || *kit.SelectedIBU != 10 {
+			t.Fatal("group start changed the saved slot", kit)
+		}
+	}
+
+	// A changed or incomplete echo of the same ID must be withdrawn rather
+	// than becoming a pending invitation again on the next poll.
+	i.State = "pending"
+	b.state.Invite.State = "pending"
+	b.state.Invite.SelectedIBU = nil
+	if err = s.reconcileGroupInvite(ctx, target, target.view, b, b.state.Invite, i); err != nil || i.State != "unconfirmed" || b.calls[len(b.calls)-1].Op != "withdraw" {
+		t.Fatal(i, b.calls, err)
+	}
+	a.state.Source.ID = "9600000000000002"
+	a.state.Source.Revision++
+	if err = s.syncBrewGroup(ctx, source, a.st); err != nil {
+		t.Fatal(err)
+	}
+	i, err = s.memberInvite("peer")
+	if err != nil || i == nil || i.State != "unavailable" || !strings.Contains(i.Message, "source recipe changed") {
+		t.Fatal("accepted a stale source slot", i, err)
+	}
+}
+
+func TestGroupKitValidatesAuthoredRangesAndStoredSlot(t *testing.T) {
+	s, _, _ := newTestServer(t)
+	dst, w := groupTestBrewer(t, s, "target", "z-series")
+	w.caps.ZPicoPakV1 = true
+	lo, hi, mid, out := 3, 20, 5, 11
+	p := domain.MachineRecipe{ID: "kit", Name: "Kit", Steps: []domain.MachineStep{{Name: "Mash", Location: 2, TargetF: 151, Minutes: 10}}, ZPak: &domain.ZPicoPak{RecipeID: 7, BeerID: 8, ABV: mid, IBU: mid, StepOptions: []domain.ZPakStep{{MinTime: &lo, MaxTime: &hi}}}}
+	dose := device.GroupKitSelection{SelectedABV: &mid}
+	if err := validateGroupKit(dst.view, p, dose); err != nil {
+		t.Fatal(err)
+	}
+	for _, selection := range []device.GroupKitSelection{{SelectedABV: &out}, {SelectedIBU: &mid}} {
+		if err := validateGroupKit(dst.view, p, selection); err == nil {
+			t.Fatal("unsupported strength accepted", selection)
+		}
+	}
+	if err := validateGroupKit(dst.view, domain.MachineRecipe{}, dose); err == nil {
+		t.Fatal("kit strength accepted on an ordinary program")
+	}
+	ref := groupRecipe{GroupKitSelection: dose, Program: p, Model: "z-series", LibraryID: "library", Revision: 1}
+	if _, _, err := s.groupTargetRecipe(context.Background(), dst, dst.view, w, ref); err == nil || len(w.slots) != 0 {
+		t.Fatal("missing stored kit was created for a one-brew dose")
+	}
+}
+
+func TestZOwnerProgramInvitesStayOnCompatibleModules(t *testing.T) {
+	s, h, c := newTestServer(t)
+	ctx := context.Background()
+	csrf := signIn(t, c, h.URL)
+	src, a := groupTestBrewer(t, s, "origin", "z-series")
+	peer, b := groupTestBrewer(t, s, "peer", "z-series")
+	old, ow := groupTestBrewer(t, s, "old", "z-series")
+	cc, cw := groupTestBrewer(t, s, "cc", "pico-c")
+	cw.caps.GroupBrewingV1 = false
+	cw.caps.GroupRecipeV1 = true
+	b.caps.GroupZProgramsV1 = true
+	g := brewGroup{ID: "coffee-group", Name: "Coffee", DeviceIDs: []string{"origin", "peer", "old", "cc", stockMemberPrefix + "ABC"}}
+	if _, err := s.db.Put(groupKind, g.ID, g, 0); err != nil {
+		t.Fatal(err)
+	}
+	age, ml, temp, intensity, secs := uint32(0), 5.7, 194.45, 7, 420
+	a.state.Source = &device.GroupSource{ID: "5000000000000001", AgeMS: &age, Action: "z_program", GroupZProgram: device.GroupZProgram{ProgramID: 23, WaterL: &ml, TemperatureF: &temp, Intensity: &intensity, TimeSeconds: &secs}}
+	sync := func(d *runtimeDevice) {
+		t.Helper()
+		if err := s.syncBrewGroup(ctx, d, *d.view.Status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sync(src)
+	if i, _ := s.memberInvite("peer"); i != nil {
+		t.Fatal("unsupported source generated an invite", i)
+	}
+	a.caps.GroupZProgramsV1 = true
+	for _, d := range []*runtimeDevice{src, peer, old, cc, src, peer} {
+		sync(d)
+	}
+	if len(a.calls) != 0 || len(ow.calls) != 0 || len(cw.calls) != 0 || len(b.calls) != 1 || b.st.Busy {
+		t.Fatal(a.calls, b.calls, ow.calls, cw.calls)
+	}
+	offer := b.calls[0]
+	if offer.Op != "offer" || offer.Action != "z_program" || !reflect.DeepEqual(offer.GroupZProgram, a.state.Source.GroupZProgram) || len(b.slots) != 0 {
+		t.Fatal(offer)
+	}
+	for _, id := range []string{"old", "cc", stockMemberPrefix + "ABC"} {
+		i, err := s.memberInvite(id)
+		if err != nil || i == nil || i.State != "unavailable" || i.Message != zGroupRequirement {
+			t.Fatal(id, i, err)
+		}
+	}
+	get := h.URL + "/api/v1/devices/peer/brew-invite"
+	for _, path := range []string{get, h.URL + "/api/v1/brew-invites"} {
+		code, raw := request(t, c, "GET", path, csrf, nil, nil)
+		if code != 200 || !strings.Contains(string(raw), `"program_name":"Custom coffee"`) || !strings.Contains(string(raw), `"water_l":5.7`) || !strings.Contains(string(raw), `"time_seconds":420`) {
+			t.Fatalf("%d %s", code, raw)
+		}
+	}
+	answer := get + "/" + offer.ID + "/respond"
+	changed := 60
+	b.state.Invite.TimeSeconds = &changed
+	if code, _ := request(t, c, "POST", answer, csrf, map[string]bool{"accept": true}, nil); code != 409 || len(b.calls) != 1 {
+		t.Fatal("wrong source coffee settings accepted", code)
+	}
+	b.state.Invite.TimeSeconds = &secs
+	b.caps.GroupZProgramsV1 = false
+	if code, _ := request(t, c, "POST", answer, csrf, map[string]bool{"accept": true}, nil); code != 409 || len(b.calls) != 1 {
+		t.Fatal("missing native capability accepted", code)
+	}
+	b.caps.GroupZProgramsV1 = true
+	if code, raw := request(t, c, "POST", answer, csrf, map[string]bool{"accept": true}, nil); code != 200 || len(b.calls) != 2 || b.calls[1].Op != "accept" {
+		t.Fatalf("%d %s %+v", code, raw, b.calls)
+	}
+	if name := groupHistoryCommand(brewInvite{Action: "z_program", GroupZProgram: device.GroupZProgram{ProgramID: 23}}); name != "" {
+		t.Fatal("misidentified generic coffee history", name)
+	}
+}

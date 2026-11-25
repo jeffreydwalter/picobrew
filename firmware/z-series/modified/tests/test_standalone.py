@@ -1,6 +1,9 @@
 """Exercise the production adapter, real Core/Head and shared persistent engine."""
 from pathlib import Path
 import os
+import json
+import hashlib
+import zipfile
 import shlex
 import subprocess
 import sys
@@ -30,9 +33,18 @@ class StandaloneTests(unittest.TestCase):
             '-I'+str(ROOT/'include'),'-I'+str(OEM/'include'),'-I'+str(COMMON/'include'),'-I'+str(COMMON/'src')]+
             [str(p) for p in sources]+[str(http),str(OEM/'build/libzseries_oem_json.a'),'-o',str(cls.binary)],check=True)
     def run_case(self,name):subprocess.run([str(self.binary),name],check=True,timeout=15)
+    def test_kit_strength_dial_keeps_the_saved_recipe_and_resumes_the_chosen_dose(self):self.run_case("kit-dial")
+    def test_group_brewing_two_brewers_and_real_dial(self):self.run_case("group-brew")
+    def test_group_owner_utilities_coffee_and_still(self):self.run_case("group-owner")
+    def test_group_owner_program_validation(self):self.run_case("group-owner-invalid")
+    def test_group_brewing_native_programs(self):self.run_case("group-routines")
+    def test_group_brewing_interlocks_and_replay(self):self.run_case("group-interlocks")
     def test_program_maker_storage_execution_and_recovery_match_original(self):self.run_case('maker')
     def test_owned_recipe_native_program_and_reserved_history(self):self.run_case('recipe')
     def test_storage_failure_precedes_native_program_start(self):self.run_case('storage')
+    def test_both_picostill_programs_execute_native_prompts_before_accessory_start(self):self.run_case('still-programs')
+    def test_picostill_identity_verification_atomic_replacement_and_unpair(self):self.run_case('still-pairing')
+    def test_picostill_native_cleaning_start_barrier_samples_and_link_loss(self):self.run_case('still-session')
     def test_unheated_step_executes_real_runtime_pid_stop(self):self.run_case('unheated')
     def test_latched_stop_blocks_gpio_and_msp_with_filter_clear_prerequisite(self):self.run_case('stop')
     def test_combined_encoder_input_and_custom_menu_cleanup(self):self.run_case('input')
@@ -44,10 +56,70 @@ class StandaloneTests(unittest.TestCase):
     def test_corrupt_checkpoint_rejects_start_and_explicit_discard_repairs_both_banks(self):self.run_case('recovery-corrupt')
     def test_checkpoint_failure_cuts_outputs_and_stop_or_completion_clears_recovery(self):self.run_case('recovery-end')
     def test_sensor_short_reply_and_invalid_bytes_cut_outputs_before_return(self):self.run_case('sensor-fault')
+    def test_dedicated_controls_match_live_pause_and_interlocks(self):self.run_case('session-controls')
     def test_buffered_coffee_uses_native_history_without_beer_recovery(self):self.run_case('coffee-buffer')
     def test_recipe_menu_and_retired_manual_command(self):self.run_case('recipe-menu')
     def test_remote_recipe_start_wakes_native_standby(self):self.run_case('standby-start')
     def test_recipe_step_index_ignores_common_steps_and_resume_labels(self):self.run_case('step-indices')
+    def test_wired_selection_busy_storage_link_loss_and_return_to_wifi(self):self.run_case('wired-network')
+    def test_both_native_sous_vide_programs(self):self.run_case('sous-vide')
+    def test_original_z_archive_instructions_and_water_match_the_oem_compiler(self):
+        catalog=ROOT.parents[2]/'server/internal/catalog/data/catalog.zip'
+        with zipfile.ZipFile(catalog) as archive:
+            rows=[r for r in json.loads(archive.read('index.json')) if r['source_model']=='z' and r['kind']=='native-program']
+            self.assertEqual(len(rows),39)
+            for row in rows:
+                detail=json.loads(archive.read('entries/'+row['id']+'.json'))
+                record,=detail['source_records']
+                data=archive.read('originals/'+detail['source_id']+'/'+record['path'])
+                self.assertEqual(hashlib.sha256(data).hexdigest(),record['sha256'])
+                raw=json.loads(data)
+                if detail['source_id']=='chiefwigms':
+                    locations=['PassThru','Mash','Adjunct1','Adjunct2','Adjunct3','Adjunct4','Pause']
+                    raw={'Name':raw['name'],'StartWater':raw['start_water'],'Steps':[
+                        {'Name':s['name'],'Temp':s['temperature'],'Time':s['step_time'],'Drain':s['drain_time'],
+                         'Location':locations.index(s['location'])} for s in raw['steps']]}
+                body={'name':raw['Name'] if len(raw['Name'])<=31 else raw['Name'].removeprefix('Base Recipe - '),
+                      'steps':detail['native_program']['steps'],
+                      'z_cloud':{'is_beer':raw.get('TypeCode','Beer')=='Beer','start_water_ml':round(raw['StartWater']*1000)}}
+                original=Path(self.temp.name)/'original.json';original.write_text(json.dumps(raw))
+                wire=Path(self.temp.name)/'wire.json';wire.write_text(json.dumps(body))
+                with self.subTest(recipe=row['id']):
+                    subprocess.run([self.binary,'original-z',original,wire],check=True)
+
+    def test_pak_invalid_replacements_leave_the_saved_copy_intact(self):self.run_case('pak-input')
+    def test_original_picopak_archive_and_native_strength_compiler(self):
+        catalog=ROOT.parents[2]/'server/internal/catalog/data/catalog.zip'
+        corpus=Path(self.temp.name)/'pak-corpus.jsonl'
+        count=0
+        with zipfile.ZipFile(catalog) as archive, corpus.open('w') as out:
+            for entry in json.loads(archive.read('index.json')):
+                if entry['source_model']!='pico' or entry['source_id']!='picopak-library':continue
+                detail=json.loads(archive.read('entries/'+entry['id']+'.json'))
+                rec=next(r for r in detail['source_records'] if r['sha256']==detail['provenance']['sha256'] and r['path']==detail['provenance']['path'])
+                data=archive.read('originals/'+detail['source_id']+'/'+rec['path'])
+                self.assertEqual(hashlib.sha256(data).hexdigest(),rec['sha256'])
+                raw=json.loads(data);p=detail['native_program']
+                if len(p['name'])>31 or not all(' '<=c<='~' for c in p['name']):continue
+                self.assertEqual(len(raw['Steps']),len(p['steps']))
+                opts=[{'action':s['Action'],**{field:s[key] for key,field in [('MinTime','min_time'),('MaxTime','max_time')]
+                                                     if s.get(key) is not None}} for s in raw['Steps']]
+                ident={'recipe_id':raw['PicoRecipeID'],'beer_id':raw['PicoBeerID'],'abv':raw['Abv'],'ibu':raw['Ibu'],'step_options':opts}
+                # z_pak comes before steps to test object-field order independence.
+                body={'name':p['name'],'z_pak':ident,'steps':p['steps']}
+                def write():
+                    out.write(json.dumps(raw,separators=(',',':'))+'\t'+json.dumps(body,separators=(',',':'))+'\n')
+                write();count+=1
+                for key,route in [('abv',lambda l:l==2),('ibu',lambda l:3<=l<=6)]:
+                    if 1<=ident[key]<=9 and any(s['Action']==0 and route(s['Location']) and
+                        s.get('MinTime') is not None and s.get('MaxTime') is not None for s in raw['Steps']):
+                        ident['selected_'+key]=0;write()
+                        ident['selected_'+key]=10;write()
+                        del ident['selected_'+key]
+            self.assertEqual(count,3694)
+        subprocess.run([self.binary,'pak-corpus',corpus],check=True)
+
+    def test_original_z_state_is_authenticated_and_complete(self):self.run_case('native-state')
     def test_wifi_picker_keeps_lease_and_selects_from_deduplicated_snapshot(self):self.run_case('wifi-picker')
     def test_pairing_requires_physical_selection_and_the_displayed_request(self):self.run_case('pairing')
     def test_all_native_network_entry_points_use_standalone_wifi_menu(self):self.run_case('network-menus')

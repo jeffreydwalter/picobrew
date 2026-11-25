@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"reflect"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -246,7 +247,7 @@ func (s *simulator) Discover(ctx context.Context) (domain.Capabilities, error) {
 	if err := simulationContext(ctx); err != nil {
 		return domain.Capabilities{}, err
 	}
-	return domain.Capabilities{APIVersion: 1, FirmwareVersion: "simulator", FrontPanel: true, Commands: append([]string(nil), recipeBrewerCommands...), RecipeCapacity: 16, StepCapacity: 15, HistoryPersistent: false, TelemetryForwarding: false, DedicatedPauseResume: false, ZeroMinuteSteps: true, RecipeCreateOnly: true}, nil
+	return domain.Capabilities{APIVersion: 1, FirmwareVersion: "simulator", FrontPanel: true, Commands: append([]string(nil), recipeBrewerCommands...), RecipeCapacity: 16, StepCapacity: 15, HistoryPersistent: false, TelemetryForwarding: false, DedicatedPauseResume: false, ZeroMinuteSteps: true, RecipeCreateOnly: true, RecipeConditionalWrite: true}, nil
 }
 func (s *simulator) Status(ctx context.Context) (domain.Status, error) {
 	if err := simulationContext(ctx); err != nil {
@@ -284,12 +285,18 @@ func (s *simulator) Recipe(ctx context.Context, id string) (domain.MachineRecipe
 }
 
 func (s *simulator) CreateRecipe(ctx context.Context, recipe domain.MachineRecipe) error {
-	return s.writeRecipe(ctx, recipe, true)
+	return s.writeRecipe(ctx, recipe, true, nil)
 }
-func (s *simulator) PutRecipe(ctx context.Context, recipe domain.MachineRecipe) error {
-	return s.writeRecipe(ctx, recipe, false)
+func (s *simulator) PutRecipe(ctx context.Context, recipe domain.MachineRecipe, expected *domain.MachineRecipe) error {
+	return s.writeRecipe(ctx, recipe, false, expected)
 }
-func (s *simulator) writeRecipe(ctx context.Context, recipe domain.MachineRecipe, create bool) error {
+func (s *simulator) writeRecipe(ctx context.Context, recipe domain.MachineRecipe, create bool, expected *domain.MachineRecipe) error {
+	if recipe.ZPak != nil {
+		return unsupportedCapability("z_picopak_v1")
+	}
+	if recipe.ZCloud != nil {
+		return unsupportedCapability("z_cloud_program_v1")
+	}
 	if recipe.ZProgram != nil {
 		return unsupportedCapability("z_program_maker")
 	}
@@ -305,7 +312,10 @@ func (s *simulator) writeRecipe(ctx context.Context, recipe domain.MachineRecipe
 	if s.status.Busy {
 		return busyError()
 	}
-	_, exists := s.recipes[recipe.ID]
+	current, exists := s.recipes[recipe.ID]
+	if expected != nil && (!exists || !reflect.DeepEqual(current, *expected)) {
+		return recipeChanged()
+	}
 	if exists && create {
 		return existsError()
 	}
@@ -315,7 +325,7 @@ func (s *simulator) writeRecipe(ctx context.Context, recipe domain.MachineRecipe
 	s.recipes[recipe.ID] = cloneRecipe(recipe)
 	return nil
 }
-func (s *simulator) DeleteRecipe(ctx context.Context, id string) error {
+func (s *simulator) DeleteRecipe(ctx context.Context, id string, expected *domain.MachineRecipe) error {
 	if err := simulationContext(ctx); err != nil {
 		return err
 	}
@@ -328,7 +338,11 @@ func (s *simulator) DeleteRecipe(ctx context.Context, id string) error {
 	if s.status.Busy {
 		return busyError()
 	}
-	if _, exists := s.recipes[id]; !exists {
+	current, exists := s.recipes[id]
+	if expected != nil && (!exists || !reflect.DeepEqual(current, *expected)) {
+		return recipeChanged()
+	}
+	if !exists {
 		return &Error{StatusCode: 404, Code: "recipe_not_found", Message: "Recipe is not stored on this simulator"}
 	}
 	delete(s.recipes, id)

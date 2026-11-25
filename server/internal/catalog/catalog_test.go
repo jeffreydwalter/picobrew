@@ -19,6 +19,7 @@ func TestPinnedArchiveIntegrityAndCopyCoverage(t *testing.T) {
 	if len(a.entries) != 5216 {
 		t.Fatalf("unexpected catalogue size: %d", len(a.entries))
 	}
+	kits, readyKits := 0, 0
 	kinds := map[string]int{}
 	copyable, deployable, originalRecords := 0, 0, 0
 	for _, summary := range a.entries {
@@ -58,6 +59,12 @@ func TestPinnedArchiveIntegrityAndCopyCoverage(t *testing.T) {
 				t.Fatalf("invented plan for native program %s", detail.ID)
 			}
 		}
+		if detail.NativeProgram != nil && detail.NativeProgram.ZPak != nil {
+			kits++
+			if _, err := recipe.NativeJSON(*detail.NativeProgram); err == nil {
+				readyKits++
+			}
+		}
 		if detail.CanDeploy {
 			deployable++
 			if detail.NativeProgram == nil {
@@ -68,7 +75,10 @@ func TestPinnedArchiveIntegrityAndCopyCoverage(t *testing.T) {
 			}
 		}
 	}
-	if copyable != 5206 || deployable != 3694 || originalRecords != 10666 {
+	if kits != 3836 || readyKits != 3694 {
+		t.Fatalf("original kits: %d preserved, %d transferable", kits, readyKits)
+	}
+	if copyable != 5206 || deployable != 3733 || originalRecords != 10666 {
 		t.Fatalf("coverage changed: %d copyable, %d deployable, %d originals", copyable, deployable, originalRecords)
 	}
 	if !reflect.DeepEqual(kinds, map[string]int{"recipe": 1316, "native-program": 3897, "maintenance": 3}) {

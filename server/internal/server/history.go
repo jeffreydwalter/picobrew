@@ -105,6 +105,12 @@ func (s *Server) mergeHistoryBrew(device domain.Device, h domain.HistorySession,
 			return b, err
 		}
 		before := b
+		var link groupJournal
+		if _, err := s.db.Get("group-journal", id, &link); err == nil {
+			b.GroupID, b.GroupName, b.GroupSessionID, b.GroupSourceDeviceID = link.GroupID, link.GroupName, link.GroupSessionID, link.GroupSourceDeviceID
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return b, err
+		}
 		if observed != nil && observed.Busy && !observed.Stopped &&
 			h.State == "recording" && h.Command == "brew" && h.RecipeName != "" && observed.RecipeName == h.RecipeName &&
 			observed.CurrentStep >= 0 && observed.CurrentStep < observed.StepCount && observed.StepCount <= 255 {

@@ -22,6 +22,8 @@ export interface DeviceStatus {
   ready: boolean
   device_uid: string
   stock_serial?: string
+  can_pause?: boolean
+  can_resume?: boolean
   busy: boolean
   stopped: boolean
   command: string
@@ -75,6 +77,7 @@ export interface Capabilities {
   events_persistent?: boolean
   history_sample_interval_ms?: number
   pairing_v1?: boolean
+  picostill_brewer_link_v1?: boolean
   capabilities?: Record<string, boolean>
   settings_fields?: string[] | null
   command_fields?: Record<string, { allowed: string[]; required: string[] }>
@@ -93,6 +96,7 @@ export interface Capabilities {
   telemetry_forwarding: boolean
   dedicated_pause_resume: boolean
   z_program_maker?: boolean
+  z_cloud_program_v1?: boolean
   recipe_create_only?: boolean
   zero_minute_steps?: boolean
 }
@@ -165,8 +169,19 @@ export interface ZProgram {
   UsePicoPakMode: boolean
   Steps: ZProgramStep[]
 }
+export interface ZPicoPak {
+  recipe_id: number
+  beer_id: number
+  abv: number
+  ibu: number
+  selected_abv?: number
+  selected_ibu?: number
+  step_options: { action: number; min_time?: number; max_time?: number }[]
+}
 export interface MachineRecipe {
+  z_pak?: ZPicoPak
   z_program?: ZProgram
+  z_cloud?: { start_water_ml: number; is_beer: boolean }
   id: string
   name: string
   steps: MachineStep[]
@@ -296,6 +311,10 @@ export interface Conditioning {
   }[]
 }
 export interface Brew {
+  group_id?: string
+  group_name?: string
+  group_session_id?: string
+  group_source_device_id?: string
   picoferm_id?: string
   picoferm_name?: string
   picoferm_recording_id?: string
@@ -342,6 +361,7 @@ export interface AIAdvice {
   error?: string
 }
 export interface DeviceSettings {
+  auto_cycle?: boolean
   temperature_unit: 'F' | 'C'
   language: string
   detailed_status: boolean
@@ -378,7 +398,7 @@ export interface FirmwareRelease extends FirmwareCandidate {
 export interface FirmwareUpdates {
   checked?: string
   releases: FirmwareRelease[]
-  notices: { device_id: string; name: string; version: string }[]
+  notices: { device_id: string; name: string; version: string; revised?: boolean }[]
 }
 export interface FirmwareCatalog extends FirmwareSettings {
   commit: string

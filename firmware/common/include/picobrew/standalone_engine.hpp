@@ -27,7 +27,12 @@ public:
     // A failed persistent store keeps health/status/stop available, while
     // mutation/session creation fails explicitly and preserves existing files.
     Result begin();
+    // The recorder continues to run when a battery device switches off its radio.
     void poll();
+    void poll(bool network);
+    bool forwarding_enabled() const;
+    bool forwarding_active() const;
+    void schedule_forwarding_now();
     Result record_care(CareEvent event);
     // The platform owns the stable string and sets it after qualifying its live boot layout.
     void set_ota_protocol(const char* protocol) noexcept;
@@ -37,6 +42,7 @@ public:
     bool handle(const PicoHttpRequest& request,PicoHttpResponse& response,char* arena,std::size_t capacity);
     static bool http_handler(const PicoHttpRequest*,PicoHttpResponse*,char*,std::size_t,void*);
     std::size_t recipe_count() const noexcept;
+    std::uint32_t recipe_revision() const noexcept;
     Result recipe_at(std::size_t ordinal,Recipe& output) const;
     Result recipe_get(const char* id,Recipe& output) const;
     Result recipe_store(const Recipe& recipe,bool* created=nullptr);

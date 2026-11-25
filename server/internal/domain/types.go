@@ -24,6 +24,14 @@ type Maintenance struct {
 	Due       []string `json:"due"`
 }
 type Status struct {
+	CanPause            *bool   `json:"can_pause,omitempty"`
+	CanResume           *bool   `json:"can_resume,omitempty"`
+	GroupJoined         bool    `json:"group_joined,omitempty"`
+	GroupRinseStartedMS *uint32 `json:"group_rinse_started_ms,omitempty"`
+	GroupAgeMS          *uint32 `json:"group_age_ms,omitempty"`
+	GroupRevision       uint32  `json:"group_revision,omitempty"`
+	GroupRecipeID       string  `json:"group_recipe_id,omitempty"`
+
 	Model            string     `json:"model,omitempty"`
 	ModelName        string     `json:"model_name,omitempty"`
 	ModelFamily      string     `json:"model_family,omitempty"`
@@ -102,12 +110,19 @@ type FieldMetadata struct {
 	Kind  string `json:"kind"`
 }
 type Capabilities struct {
+	ZPicoPakV1            bool `json:"z_picopak_v1,omitempty"`
+	PicoStillBrewerLinkV1 bool `json:"picostill_brewer_link_v1,omitempty"`
+	GroupRecipeV1         bool `json:"group_recipe_v1,omitempty"`
+	GroupZProgramsV1      bool `json:"group_z_programs_v1,omitempty"`
+
+	GroupBrewingV1          bool                     `json:"group_brewing_v1,omitempty"`
 	ReleaseChannel          string                   `json:"release_channel,omitempty"`
 	EventsPersistent        *bool                    `json:"events_persistent,omitempty"`
 	SystemRestart           bool                     `json:"system_restart,omitempty"`
 	HistorySampleIntervalMS uint32                   `json:"history_sample_interval_ms,omitempty"`
 	StockRestoreOTAV1       bool                     `json:"stock_restore_ota_v1,omitempty"`
 	PairingV1               bool                     `json:"pairing_v1,omitempty"`
+	ZCloudProgramV1         bool                     `json:"z_cloud_program_v1,omitempty"`
 	ZProgramMaker           bool                     `json:"z_program_maker,omitempty"`
 	OTAProtocol             string                   `json:"ota_protocol,omitempty"`
 	HubOTAV1                bool                     `json:"hub_ota_v1,omitempty"`
@@ -124,6 +139,7 @@ type Capabilities struct {
 	HistoryPersistent       bool                     `json:"history_persistent"`
 	TelemetryForwarding     bool                     `json:"telemetry_forwarding"`
 	DedicatedPauseResume    bool                     `json:"dedicated_pause_resume"`
+	RecipeConditionalWrite  bool                     `json:"recipe_conditional_write,omitempty"`
 	RecipeCreateOnly        bool                     `json:"recipe_create_only"`
 	ZeroMinuteSteps         bool                     `json:"zero_minute_steps"`
 	RestoreDefaultRecipes   bool                     `json:"restore_default_recipes"`
@@ -216,10 +232,12 @@ type MachineStep struct {
 	DrainMinutes int    `json:"drain_minutes"`
 }
 type MachineRecipe struct {
-	ZProgram *ZProgram     `json:"z_program,omitempty"`
-	ID       string        `json:"id"`
-	Name     string        `json:"name"`
-	Steps    []MachineStep `json:"steps"`
+	ZPak     *ZPicoPak      `json:"z_pak,omitempty"`
+	ZCloud   *ZCloudProgram `json:"z_cloud,omitempty"`
+	ZProgram *ZProgram      `json:"z_program,omitempty"`
+	ID       string         `json:"id"`
+	Name     string         `json:"name"`
+	Steps    []MachineStep  `json:"steps"`
 }
 type Ingredient struct {
 	SlotAddition bool    `json:"slot_addition,omitempty"`
@@ -397,6 +415,11 @@ type Conditioning struct {
 	Stages         []ConditioningStage `json:"stages"`
 }
 type Brew struct {
+	GroupID             string `json:"group_id,omitempty"`
+	GroupName           string `json:"group_name,omitempty"`
+	GroupSessionID      string `json:"group_session_id,omitempty"`
+	GroupSourceDeviceID string `json:"group_source_device_id,omitempty"`
+
 	PicoFermID            string                   `json:"picoferm_id,omitempty"`
 	PicoFermName          string                   `json:"picoferm_name,omitempty"`
 	PicoFermRecordingID   string                   `json:"picoferm_recording_id,omitempty"`

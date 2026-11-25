@@ -129,6 +129,10 @@ func recipeCapabilityIssue(caps domain.Capabilities, recipe domain.MachineRecipe
 	switch {
 	case !caps.Supports("recipes") || caps.RecipeCapacity < 1:
 		return "This firmware does not advertise recipe storage"
+	case recipe.ZPak != nil && (caps.Model != "z-series" || !caps.ZPicoPakV1):
+		return "This brewer does not support original PicoPak programs on the Z adapter"
+	case recipe.ZCloud != nil && (caps.Model != "z-series" || !caps.ZCloudProgramV1):
+		return "This brewer needs firmware with original Z schedule support"
 	case recipe.ZProgram != nil && (caps.Model != "z-series" || !caps.ZProgramMaker):
 		return "This brewer does not support Z Program Maker programs"
 	case recipe.StepCount() > caps.StepCapacity:
@@ -416,11 +420,7 @@ func (s *Server) executeDeployment(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, 500, "receipt_error", "Transfer stopped because its receipt could not be saved. Inspect the current machine inventory before trying again.")
 			return
 		}
-		write := d.adapter.CreateRecipe
-		if item.Update {
-			write = d.adapter.PutRecipe
-		}
-		if err = write(r.Context(), *item.Native); err != nil {
+		if err = saveReviewedRecipe(r.Context(), d.adapter, *item.Native, item.Previous); err != nil {
 			item.Status = "unconfirmed"
 			item.Reason = "The recipe write was not verified. Refresh the machine inventory before preparing another transfer."
 			var failure *device.Error

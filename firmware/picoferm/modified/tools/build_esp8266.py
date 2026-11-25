@@ -31,7 +31,7 @@ def main():
     check_pin(toolchain,OEM/'dependencies/toolchain.json');check_pin(arduino,OEM/'dependencies/arduino-esp8266.json')
     output.mkdir(parents=True,exist_ok=True);sdk=arduino/'tools/sdk';core=arduino/'cores/esp8266'
     binary=toolchain/'bin';cc=binary/'xtensa-lx106-elf-gcc';cxx=binary/'xtensa-lx106-elf-g++';ar=binary/'xtensa-lx106-elf-ar'
-    flags=['-Os','-Wall','-Wextra','-Werror','-mlongcalls','-mtext-section-literals','-ffunction-sections','-fdata-sections','-falign-functions=4',
+    flags=['-DPICOBREW_NO_RECIPE_LIBRARY','-Os','-Wall','-Wextra','-Werror','-mlongcalls','-mtext-section-literals','-ffunction-sections','-fdata-sections','-falign-functions=4',
            '-fno-fast-math','-ffp-contract=off','-D__ets__','-DICACHE_FLASH','-U__STRICT_ANSI__','-DESP8266','-DARDUINO_ARCH_ESP8266','-DARDUINO=10805','-DF_CPU=80000000L','-DLWIP_OPEN_SRC']
     includes=[ROOT/'include',ROOT/'platform/esp8266',OEM/'include',COMMON/'include',COMMON/'platform/esp8266',
               core,core/'umm_malloc',core/'libb64',core/'spiffs',arduino/'variants/generic',sdk/'include',sdk/'lwip/include',sdk/'libc/xtensa-lx106-elf/include']
@@ -85,7 +85,7 @@ def main():
     symbols=subprocess.check_output([str(binary/'xtensa-lx106-elf-nm'),'-C','-n',str(elf)],text=True)
     functions='\n'.join(line for line in symbols.splitlines()if len(line.split())>=3 and line.split()[1]in('T','t','W','w'))
     required=[' call_user_start',' user_init',' setup',' loop','picoferm::standalone::Controller::poll()',
-              'picoferm::standalone::BoundedAcquisition::poll(', 'picobrew::standalone::Engine::poll()',
+              'picoferm::standalone::BoundedAcquisition::poll(', 'picobrew::standalone::Engine::poll(bool)',
               'picobrew::standalone::Provisioning::feed(', 'picobrew::standalone::esp8266::HttpListener::receive(',
               'picobrew::standalone::esp8266::SpiffsStorage::begin()', 'picobrew::standalone::esp8266::AsyncTelemetry::send(',
               'picoferm::standalone::LocalControls::poll_button()', 'picoferm::standalone::LocalControls::poll_leds(', 'pico_http_server_poll']

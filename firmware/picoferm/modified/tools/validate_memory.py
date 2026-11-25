@@ -61,7 +61,7 @@ def target_sizes(toolchain,sdk,build,output,elf):
     return sizes,heap
 
 def native_build(sdk,i386,output):
-    flags=['-O2','-Wall','-Wextra','-Werror','-m32','-static','-msse2','-mfpmath=sse','-ffunction-sections','-fdata-sections',
+    flags=['-DPICOBREW_NO_RECIPE_LIBRARY','-O2','-Wall','-Wextra','-Werror','-m32','-static','-msse2','-mfpmath=sse','-ffunction-sections','-fdata-sections',
         '-include',str(ROOT/'tests/memory_host/allocator_config.h')]
     if i386:
         sysroot=i386/'sysroot'
@@ -133,6 +133,10 @@ def main():
     sizes,heap_start=target_sizes(args.toolchain,args.arduino,args.build_dir,args.output,elf)
     if sizes['telemetry_impl']!=280 or sizes['http_impl']!=24:raise ValueError('Update exact platform reservation for changed target owners')
     if args.ab:
+        symbols = subprocess.check_output([str(args.toolchain/'bin/xtensa-lx106-elf-nm'), '-C', str(elf)], text=True)
+        for unused in ('::detail::parse_recipe(', '::detail::recipe_json(', '::Impl::load_recipes('):
+            if unused in symbols:
+                raise ValueError('PicoFerm retains unsupported brewer-only code: '+unused)
         other_symbols=subprocess.check_output([str(args.toolchain/'bin/xtensa-lx106-elf-nm'),'-n',str(args.build_dir/'bank-1.elf')],text=True)
         if int(re.search(r'^([0-9a-f]+)\s+\S\s+_heap_start$',other_symbols,re.M)[1],16)!=heap_start:
             raise ValueError('Dual PicoFerm banks disagree on available heap')

@@ -259,7 +259,7 @@ static void test_boot_and_offline_adapters(void)
     strcpy(recipe.steps[0].name,"Mash"); recipe.steps[0].location=2;
     recipe.steps[0].active_minutes=20; recipe.steps[0].target_fahrenheit=152;
     bool created=false;
-    assert(pico_local_recipe_put(&app.network,&recipe,false,&created)==PICO_LOCAL_STORE_OK && created);
+    assert(pico_local_recipe_put(&app.network,&recipe,false,&created,NULL)==PICO_LOCAL_STORE_OK && created);
     assert(pico_api_fetch_recipe(&app.network,"test-ale",-1,-1)==0);
     assert(!strcmp(app.state.screen.recipe_name,"Test Ale"));
     assert(app.state.recipe.program==&app.state.session && app.state.recipe.steps[0].target_fahrenheit==152);
@@ -287,7 +287,7 @@ static void test_checkpoint_restore_is_explicit_and_recipe_bound(void)
     strcpy(stored.steps[0].name,"Mash"); stored.steps[0].location=1;
     stored.steps[0].target_fahrenheit=152; stored.steps[0].active_minutes=60;
     stored.steps[0].drain_minutes=3;
-    assert(pico_local_recipe_put(&app.network,&stored,false,NULL)==PICO_LOCAL_STORE_OK);
+    assert(pico_local_recipe_put(&app.network,&stored,false,NULL,NULL)==PICO_LOCAL_STORE_OK);
     assert(pico_api_fetch_recipe(&app.network,"checkpoint",-1,-1)==0);
     pico_recipe_program_initialize(&app.recipe,&app.state.session,1,0);
     assert(pico_storage_save_recovery(&app.network,13,5,0,PICO_BREW_PHASE_HEATED_HOLD,true,1));
@@ -304,10 +304,10 @@ static void test_checkpoint_restore_is_explicit_and_recipe_bound(void)
     assert(pico_recipe_session_restore(&app.recipe,&app.state.recipe));
     assert(app.state.recipe.steps[0].active_minutes==13 && outputs_off());
     stored.steps[0].target_fahrenheit=155;
-    assert(pico_local_recipe_put(&app.network,&stored,false,NULL)==PICO_LOCAL_STORE_OK);
+    assert(pico_local_recipe_put(&app.network,&stored,false,NULL,NULL)==PICO_LOCAL_STORE_OK);
     assert(!pico_recipe_session_restore(&app.recipe,&app.state.recipe));
     assert(!app.recipe.recovery_phase && outputs_off());
-    assert(pico_local_recipe_delete(&app.network,"checkpoint")==PICO_LOCAL_STORE_OK);
+    assert(pico_local_recipe_delete(&app.network,"checkpoint",0)==PICO_LOCAL_STORE_OK);
     assert(!pico_recipe_session_restore(&app.recipe,&app.state.recipe) && outputs_off());
     int checkpoint_file=find_file("/local/resume.a");
     assert(checkpoint_file>=0);

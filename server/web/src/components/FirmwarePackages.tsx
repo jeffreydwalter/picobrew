@@ -192,6 +192,7 @@ export function MachineFirmwareDialog({
     setVerificationError('')
     try {
       updates.setData(await api<FirmwareUpdates>('/firmware/updates', { method: 'POST' }))
+      firmware.reload()
     } catch (error) {
       setVerificationError(errorMessage(error))
     } finally {
@@ -380,6 +381,9 @@ export function MachineFirmwareDialog({
                 </form>
               </details>
             )}
+            {machine?.revised_package_id && !items.has(machine.revised_package_id) && (
+              <p>Check for updates to look for the revised build of {machine.current_version}.</p>
+            )}
             <Field label="Firmware version">
               <select
                 value={id || ''}
@@ -393,9 +397,11 @@ export function MachineFirmwareDialog({
                   <option key={key} value={key}>
                     {v.firmware_version}
                     {v.display_variant ? ' · ' + v.display_variant.toUpperCase() : ''}
+                    {key === machine?.revised_package_id ? ' · Revised build' : ''}
                     {(versionCounts.get(v.firmware_version) ?? 0) > 1
                       ? ` · ${packageSources[v.source]} (${key.slice(0, 12)})`
-                      : v.firmware_version === machine?.current_version
+                      : key !== machine?.revised_package_id &&
+                          v.firmware_version === machine?.current_version
                         ? ' · Current version'
                         : ''}
                   </option>

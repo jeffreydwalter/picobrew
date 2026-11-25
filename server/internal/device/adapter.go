@@ -18,8 +18,8 @@ type Adapter interface {
 	Recipes(context.Context) ([]domain.MachineRecipe, error)
 	Recipe(context.Context, string) (domain.MachineRecipe, error)
 	CreateRecipe(context.Context, domain.MachineRecipe) error
-	PutRecipe(context.Context, domain.MachineRecipe) error
-	DeleteRecipe(context.Context, string) error
+	PutRecipe(context.Context, domain.MachineRecipe, *domain.MachineRecipe) error
+	DeleteRecipe(context.Context, string, *domain.MachineRecipe) error
 	Command(context.Context, domain.Command) error
 	Settings(context.Context) (map[string]any, error)
 	UpdateSettings(context.Context, map[string]any) error
@@ -83,6 +83,10 @@ func existsError() error {
 	return &Error{StatusCode: 409, Code: "recipe_exists", Message: "This recipe ID is already on the machine. Review the existing program before replacing it."}
 }
 
+func recipeChanged() error {
+	return &Error{StatusCode: 409, Code: "recipe_changed", Message: "The installed recipe changed. Reload it before trying again."}
+}
+
 func invalid(message string) error {
 	return &Error{StatusCode: 400, Code: "invalid_request", Message: message}
 }
@@ -103,6 +107,29 @@ func validLabel(value string, max int) bool {
 }
 
 func validateRecipe(recipe domain.MachineRecipe) error {
+	if recipe.ZPak != nil {
+		if !recipeID.MatchString(recipe.ID) || !validLabel(recipe.Name, 31) || recipe.ZProgram != nil || recipe.ZCloud != nil {
+			return invalid("invalid PicoPak identity or conflicting program")
+		}
+		for _, step := range recipe.Steps {
+			if !validLabel(step.Name, 21) {
+				return invalid("invalid PicoPak step name")
+			}
+		}
+		if err := recipe.ZPak.Validate(recipe.Steps); err != nil {
+			return invalid(err.Error())
+		}
+		return nil
+	}
+	if recipe.ZCloud != nil {
+		if !recipeID.MatchString(recipe.ID) {
+			return invalid("invalid Z cloud recipe ID")
+		}
+		if err := recipe.ValidateZCloud(); err != nil {
+			return invalid(err.Error())
+		}
+		return nil
+	}
 	if recipe.ZProgram != nil {
 		if !recipeID.MatchString(recipe.ID) || len(recipe.Steps) != 0 || recipe.Name != recipe.ZProgram.Name {
 			return invalid("check the Z program identity and schedule")
@@ -161,9 +188,9 @@ func validateSettings(settings map[string]any) error {
 			if value != "en" && value != "es" && value != "fr" {
 				return invalid("Language must be en, es or fr")
 			}
-		case "detailed_status":
+		case "detailed_status", "auto_cycle":
 			if _, ok := value.(bool); !ok {
-				return invalid("Detailed status must be a boolean")
+				return invalid("Display preferences must be boolean")
 			}
 		default:
 			return invalid("Unknown preference")

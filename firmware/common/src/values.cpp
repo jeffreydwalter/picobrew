@@ -33,9 +33,15 @@ bool valid_text(const char* value, std::size_t capacity) {
     }
     return false;
 }
-bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker) {
+bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker, bool z_cloud, bool z_pak) {
     if (!valid_id(recipe.id) || !valid_text(recipe.name, sizeof(recipe.name)) ||
         !recipe.step_count || recipe.step_count > RecipeStepCapacity) return false;
+    const auto& kit=recipe.pak;
+    if(kit.recipe_id && (!z_pak || recipe.z_program || recipe.z_cloud_water_ml || !kit.beer_id ||
+       kit.abv < -1 || kit.ibu < -1 || kit.selected_abv < -1 || kit.selected_abv>10 ||
+       kit.selected_ibu < -1 || kit.selected_ibu>10))return false;
+    bool allow_abv=false,allow_ibu=false;
+    if (recipe.z_cloud_water_ml && (!z_cloud || recipe.z_program || recipe.z_cloud_water_ml > 16163)) return false;
     if (recipe.z_program && (!z_program_maker || !valid_text(recipe.name, 21))) return false;
     for (unsigned i = 0; i < recipe.step_count; ++i) {
         const RecipeStep& s = recipe.steps[i];
@@ -49,9 +55,26 @@ bool recipe_valid(const Recipe& recipe, bool zero_minutes, bool z_program_maker)
                        !z.has_time || z.drain_seconds > 7200) return false;
             continue;
         }
-        if (!valid_text(s.name, sizeof(s.name)) || s.location < 1 || s.location > 6 ||
-            (s.target_f && (s.target_f < 60 || s.target_f > 212)) ||
+        if(kit.recipe_id){
+            if(s.pak.action>1||s.location<1||s.location>6||s.pak.minimum < -1||s.pak.minimum>599||
+               s.pak.maximum < -1||s.pak.maximum>599)return false;
+            if(!s.pak.action && s.pak.minimum>=0 && s.pak.maximum>=0){
+                if(s.location==2)allow_abv=true;
+                if(s.location>=3)allow_ibu=true;
+            }
+        }
+        // An active sub-60 F source step requires an acknowledged chiller
+        // connection. The Z has no way to refrigerate the wort by itself.
+        if (s.target_f && s.target_f < 60 &&
+            ((recipe.z_cloud_water_ml && s.location!=6 && (!i || recipe.steps[i-1].location!=6)) ||
+             (kit.recipe_id && !s.pak.action && (!i || !recipe.steps[i-1].pak.action)))) return false;
+        if (!valid_text(s.name, sizeof(s.name)) || (!recipe.z_cloud_water_ml && s.location < 1) || s.location > 6 ||
+            (s.target_f && (s.target_f < ((recipe.z_cloud_water_ml || kit.recipe_id) ? 32 : 60) || s.target_f > 212)) ||
             s.minutes > 599 || (!s.minutes && !zero_minutes) || s.drain_minutes > 120) return false;
+    }
+    if(kit.recipe_id){
+        if(kit.selected_abv>=0 && kit.selected_abv!=kit.abv && (!allow_abv||kit.abv<1||kit.abv>9))return false;
+        if(kit.selected_ibu>=0 && kit.selected_ibu!=kit.ibu && (!allow_ibu||kit.ibu<1||kit.ibu>9))return false;
     }
     return true;
 }
@@ -132,6 +155,63 @@ bool parse_z_step(Json& json, RecipeStep& step) {
     return seen == (Name | Type | Time | Location | Temp | Drain);
 }
 
+bool pak_steps(Json& json,Recipe& recipe,unsigned& count){
+    if(!json.token('[')||json.peek(']'))return false;
+    do{
+        if(count>=RecipeStepCapacity||!json.token('{')||json.peek('}'))return false;
+        auto& step=recipe.steps[count++].pak;
+        unsigned seen=0;
+        do{
+            char key[40];std::int64_t value;
+            if(!json.key(key))return false;
+            unsigned bit=!std::strcmp(key,"action")?1:!std::strcmp(key,"min_time")?2:!std::strcmp(key,"max_time")?4:0;
+            if(!bit||(seen&bit)||!json.integer(0,bit==1?1:599,value))return false;
+            if(bit==1)step.action=value;else if(bit==2)step.minimum=value;else step.maximum=value;
+            seen|=bit;
+        }while(json.next('}'));
+        if(!json.token('}')||!(seen&1))return false;
+    }while(json.next(']'));
+    return json.token(']');
+}
+bool parse_z_pak(Json& json,Recipe& recipe,unsigned& count){
+    if(!json.token('{')||json.peek('}'))return false;
+    auto& p=recipe.pak;unsigned seen=0;
+    do{
+        char key[40];if(!json.key(key))return false;
+        const char* const keys[]={"recipe_id","beer_id","abv","ibu","selected_abv","selected_ibu","step_options"};
+        unsigned field=0;while(field<7&&std::strcmp(key,keys[field]))++field;
+        if(field==7||(seen&(1u<<field)))return false;
+        seen|=1u<<field;
+        if(field==6){if(!pak_steps(json,recipe,count))return false;continue;}
+        std::int64_t value;
+        if(!json.integer(field<2?1:field<4?-1:0,field<2?UINT32_MAX:field<4?127:10,value))return false;
+        switch(field){
+        case 0:p.recipe_id=value;break;case 1:p.beer_id=value;break;
+        case 2:p.abv=value;break;case 3:p.ibu=value;break;
+        case 4:p.selected_abv=value;break;case 5:p.selected_ibu=value;break;
+        }
+    }while(json.next('}'));
+    const unsigned required=(1u<<0)|(1u<<1)|(1u<<2)|(1u<<3)|(1u<<6);
+    return json.token('}')&&(seen&required)==required;
+}
+bool parse_z_cloud(Json& json, Recipe& recipe) {
+    if (!json.token('{') || json.peek('}')) return false;
+    unsigned seen = 0;
+    do {
+        char key[40];
+        if (!json.key(key)) return false;
+        if (!std::strcmp(key, "start_water_ml") && !(seen & 1)) {
+            std::int64_t amount;
+            if (!json.integer(1, 16163, amount)) return false;
+            recipe.z_cloud_water_ml = static_cast<std::uint16_t>(amount);
+            seen |= 1;
+        } else if (!std::strcmp(key, "is_beer") && !(seen & 2)) {
+            if (!json.boolean(recipe.is_beer)) return false;
+            seen |= 2;
+        } else return false;
+    } while (json.next('}'));
+    return json.token('}') && seen == 3;
+}
 bool parse_z_program(Json& json, Recipe& recipe) {
     if (!json.token('{') || json.peek('}')) return false;
     unsigned seen = 0;
@@ -183,10 +263,10 @@ void z_program_json(Writer& writer, const Recipe& recipe) {
 }
 }
 
-bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only) {
+bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only, std::uint32_t& revision) {
     if (!valid_id(id) || !json.token('{') || json.peek('}')) return false;
     copy(recipe.id, sizeof(recipe.id), id);
-    unsigned seen = 0;
+    unsigned seen = 0, pak_count = 0;
     do {
         char key[40]; unsigned bit = 0;
         if (!json.key(key)) return false;
@@ -195,9 +275,18 @@ bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only)
             if (!json.string(supplied, sizeof(supplied)) || std::strcmp(supplied, id)) return false;
         } else if (!std::strcmp(key, "create_only")) {
             bit = 8; if (!json.boolean(create_only)) return false;
+        } else if (!std::strcmp(key, "if_revision") || !std::strcmp(key, "revision")) {
+            std::int64_t number;
+            bit = 32; if (!json.integer(1, UINT32_MAX, number)) return false;
+            revision = static_cast<std::uint32_t>(number);
         } else if (!std::strcmp(key, "name")) {
             bit = 2; if (!json.string(recipe.name, sizeof(recipe.name))) return false;
+        } else if (!std::strcmp(key,"z_pak")) {
+            bit=128; if((seen&80)||!parse_z_pak(json,recipe,pak_count))return false;
+        } else if (!std::strcmp(key, "z_cloud")) {
+            bit = 64; if ((seen & 144) || !parse_z_cloud(json, recipe)) return false;
         } else if (!std::strcmp(key, "z_program")) {
+            if (seen & 192) return false;
             bit = 16; if ((seen & 6) || !parse_z_program(json, recipe)) return false;
         } else if (!std::strcmp(key, "steps")) {
             bit = 4;
@@ -212,7 +301,7 @@ bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only)
                     if (!std::strcmp(name, "name")) {
                         field = 1; if (!json.string(step.name, sizeof(step.name))) return false;
                     } else if (!std::strcmp(name, "location")) {
-                        field = 2; if (!json.integer(1, 6, number)) return false; step.location = number;
+                        field = 2; if (!json.integer(0, 6, number)) return false; step.location = number;
                     } else if (!std::strcmp(name, "target_f")) {
                         field = 4; if (!json.integer(0, 212, number)) return false; step.target_f = number;
                     } else if (!std::strcmp(name, "minutes")) {
@@ -230,7 +319,7 @@ bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only)
         if (seen & bit) return false;
         seen |= bit;
     } while (json.next('}'));
-    return json.token('}') && json.done() && ((seen & 22) == 6 || (seen & 22) == 16);
+    return json.token('}') && json.done() && (!recipe.pak.recipe_id || pak_count==recipe.step_count) && !(create_only && revision) && ((seen & 22) == 6 || (seen & 22) == 16);
 }
 bool parse_command(Json& json, Command& command) {
     if (!json.token('{') || json.peek('}')) return false;
@@ -273,10 +362,30 @@ unsigned error(Writer& writer, Result result) {
 void reading(Writer& writer, Reading value) {
     if (value.valid) writer.number(value.value); else writer.text("null");
 }
-void recipe_json(Writer& writer, const Recipe& recipe) {
-    writer.text("{\"id\":"); writer.quote(recipe.id);
+void recipe_json(Writer& writer, const Recipe& recipe, std::uint32_t revision) {
+    writer.format("{\"revision\":%lu,\"id\":", static_cast<unsigned long>(revision)); writer.quote(recipe.id);
     if (recipe.z_program) {
         writer.text(",\"z_program\":"); z_program_json(writer, recipe); writer.text("}"); return;
+    }
+    if (recipe.pak.recipe_id) {
+        const auto& p=recipe.pak;
+        writer.format(",\"z_pak\":{\"recipe_id\":%lu,\"beer_id\":%lu,\"abv\":%d,\"ibu\":%d",
+                      static_cast<unsigned long>(p.recipe_id),static_cast<unsigned long>(p.beer_id),p.abv,p.ibu);
+        if(p.selected_abv>=0)writer.format(",\"selected_abv\":%d",p.selected_abv);
+        if(p.selected_ibu>=0)writer.format(",\"selected_ibu\":%d",p.selected_ibu);
+        writer.text(",\"step_options\":[");
+        for(unsigned i=0;i<recipe.step_count;++i){
+            const auto& opt=recipe.steps[i].pak;if(i)writer.text(",");
+            writer.format("{\"action\":%u",unsigned(opt.action));
+            if(opt.minimum>=0)writer.format(",\"min_time\":%d",opt.minimum);
+            if(opt.maximum>=0)writer.format(",\"max_time\":%d",opt.maximum);
+            writer.text("}");
+        }
+        writer.text("]}");
+    }
+    if (recipe.z_cloud_water_ml) {
+        writer.format(",\"z_cloud\":{\"start_water_ml\":%u,\"is_beer\":", recipe.z_cloud_water_ml);
+        writer.boolean(recipe.is_beer); writer.text("}");
     }
     writer.text(",\"name\":"); writer.quote(recipe.name);
     writer.text(",\"steps\":[");
@@ -293,7 +402,8 @@ void settings_json(Writer& writer, const Settings& settings, std::uint32_t field
     writer.text("{"); bool comma = false;
     if (fields & TemperatureUnit) { writer.format("\"temperature_unit\":\"%c\"", settings.temperature_unit); comma = true; }
     if (fields & Language) { if (comma) writer.text(","); writer.text("\"language\":"); writer.quote(settings.language); comma = true; }
-    if (fields & DetailedStatus) { if (comma) writer.text(","); writer.text("\"detailed_status\":"); writer.boolean(settings.detailed_status); }
+    if (fields & DetailedStatus) { if (comma) writer.text(","); writer.text("\"detailed_status\":"); writer.boolean(settings.detailed_status); comma = true; }
+    if (fields & AutoCycle) { if (comma) writer.text(","); writer.text("\"auto_cycle\":"); writer.boolean(settings.auto_cycle); }
     writer.text("}");
 }
 }}}

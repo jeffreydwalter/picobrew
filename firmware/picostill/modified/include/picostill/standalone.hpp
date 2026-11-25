@@ -33,10 +33,12 @@ public:
     // Call after the recovered board GPIO/I2C initialization. No constructor
     // starts an output. Missing hardware/storage leaves status/stop available.
     void begin(bool hardware_ready, const char* uid);
+    void link_nonce(std::uint32_t nonce) { boot_nonce_ = nonce; }
+    bool brewer_link(const PicoHttpRequest&, PicoHttpResponse&, char*, std::size_t);
     void storage_ready(bool value) noexcept { storage_ready_ = value; }
     void wireless_capable(bool available) { wireless_ = available; }
     void poll();
-    bool idle() const noexcept { return !controller.running(); }
+    bool idle() const noexcept { return !controller.running() && !lease_[0]; }
     picobrew::standalone::DeviceServices services() noexcept;
     picobrew::standalone::Result execute(const picobrew::standalone::Command& command);
     picobrew::standalone::Result snapshot(picobrew::standalone::Snapshot& snapshot);
@@ -49,6 +51,10 @@ public:
     void console_message(const char*) override;
 private:
     bool wireless_ = false;
+    char lease_[17] = {}, owner_[13] = {};
+    std::uint32_t lease_date_=0, lease_sequence_=0, boot_nonce_=0;
+    bool link_running_=false;
+    void expire_link();
     picobrew::standalone::Engine* engine_ = nullptr;
     picobrew::standalone::Settings settings_;
     char uid_[32] = {}, command_[32] = {};

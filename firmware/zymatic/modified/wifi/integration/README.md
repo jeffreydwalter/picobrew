@@ -1,6 +1,6 @@
 # Zymatic foreground Wi-Fi scheduling
 
-The experimental compact and extended images start the listener from the original six-item Home menu after the stock Wi-Fi setup has associated and acquired an address. Home shares the HTTP parser with the Ethernet service. The scheduler selects a single transport and discards a previous transport's client state when the interface changes.
+The compact and extended images start the listener from the original six-item Home menu after the stock Wi-Fi setup has associated and acquired an address. Home shares the HTTP parser with the Ethernet service. The scheduler selects a single transport and discards a previous transport's client state when the interface changes.
 
 When the operator chooses a menu item, the scheduler keeps that choice while a pending radio transaction finishes. The original action runs once, with the stock driver in control of the radio. The extended image also serves the local website during the physical About pairing prompt. Before the next About screen queries the network, it passes the radio back to the stock driver. Normal brewing and its outbound session traffic use the stock driver.
 
@@ -8,7 +8,7 @@ If the radio stalls, Home can continue with the commissioned offline recipe. The
 
 ## Wi-Fi during a recipe
 
-Both experimental profiles can serve a read-only website and API during the recipe's programmed pause (route 6). The stock firmware switches off its four outputs before the pause. The original code still decides when to prompt the operator. The physical dial confirms or cancels. A pending browser request cannot make that choice. The Hub can recognize this interval from authenticated status as `recipe_pause` with `busy` set to true. [Pause hooks and request policy](pause.py)
+Both profiles can serve a read-only website and API during the recipe's programmed pause (route 6). The stock firmware switches off its four outputs before the pause. The original code still decides when to prompt the operator. The physical dial confirms or cancels. A pending browser request cannot make that choice. The Hub can recognize this interval from authenticated status as `recipe_pause` with `busy` set to true. [Pause hooks and request policy](pause.py)
 
 The stock driver retains the radio throughout heating, recirculation and draining. A physical filter removal can occur on any control pass. The stock code reads the switch twice, saves and switches off the four outputs, sends error 8, waits for the physical switch, sends error 208 and restores the saved outputs. The filter wait has its own input loop. The normal brew button poll cannot finish a pending HTTP transaction from inside that loop. The OEM log sender also takes a pointer into a temporary stack frame. It advances the recording time even when the send returns failure. The normal sample and signal-strength checks become due after 60,000 and 425,000 ms respectively. [Original firmware instruction tests](../tests/cc3000_oem.cjs) · [Sample lifetime and filter sequence](../tests/cc3000_hot_brew.cjs)
 

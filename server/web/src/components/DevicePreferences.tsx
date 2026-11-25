@@ -4,6 +4,7 @@ import { api, errorMessage } from '../lib/api'
 import { isAccessory, preferenceFields } from '../lib/capabilities'
 import type { DeviceSettings } from '../types'
 import { Button, ErrorBanner, Field, Loading, Modal } from './ui'
+import { PicoStillLink } from './PicoStillLink'
 import { HubConnectionSettings } from './HubConnectionSettings'
 
 export function DevicePreferences({ id, onClose }: { id: string; onClose: () => void }) {
@@ -75,6 +76,16 @@ export function DevicePreferences({ id, onClose }: { id: string; onClose: () => 
                 </Field>
               )}
             </div>
+            {fields.includes('auto_cycle') && (
+              <label className="check-field">
+                <input
+                  type="checkbox"
+                  checked={form.auto_cycle === true}
+                  onChange={(event) => setForm({ ...form, auto_cycle: event.target.checked })}
+                />
+                Automatically cycle brew status screens
+              </label>
+            )}
             {fields.includes('detailed_status') && (
               <label className="check-field">
                 <input
@@ -99,6 +110,9 @@ export function DevicePreferences({ id, onClose }: { id: string; onClose: () => 
             : 'Connect the machine to change its display preferences.'}
         </p>
       ) : null}
+      {device?.model === 'z-series' && device.capabilities?.picostill_brewer_link_v1 && (
+        <PicoStillLink brewer={device} />
+      )}
       {device && <HubConnectionSettings device={device} />}
     </Modal>
   )

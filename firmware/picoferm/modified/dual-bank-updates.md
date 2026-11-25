@@ -22,6 +22,12 @@ The bootstrap and both applications use the repository's pinned Arduino ESP8266 
 
 ## Installing over Wi-Fi
 
+Early 1.0.0 builds and the battery-saving 1.0.0 build have different image digests.
+The updater in the early builds rejects another image with the same version before
+writing the inactive bank. For an existing paired PicoFerm, choose **Install** in the Hub’s USB setup. The Hub needs the same device’s original backup and saved key. It checks the bootstrap, both application banks and their boot records against published images. An active trial, unknown bytes in reserved space or a different key stops the installation.
+
+The Hub saves a separate private copy of the live flash, writes the replacement to the inactive bank, and reads the whole flash back before committing the new boot record. It keeps the previous confirmed bank, sensor data, pairing, Wi-Fi settings and RF calibration. If interrupted, repeat **Install** with the same Hub data directory and release. The Hub checks the interrupted writes against its saved copy. A verified USB installation selects the replacement directly. First boot and physical operation still require verification.
+
 1. The authenticated Hub reads `GET /api/v1/firmware/ota`, verifies the PicoFerm UID, confirmed running image and bootstrap fingerprint, and chooses the opposite bank from the package.
 2. When the machine is idle, `POST /enter` reserves it for the update. The current application stays in memory and reports recovery mode. `POST /begin` validates the target identity, version, size and SHA-256. The reply includes a 16-character session ID and the next offset.
 3. `POST /chunk` accepts up to 1,024 bytes of hex-encoded data per call, with four-byte-aligned offset and length. The receiver erases only the inactive bank's sectors and verifies every write by readback. Repeating an identical chunk returns the current offset. A conflicting or out-of-order chunk fails. The client can reconnect to the same running session, or start over at offset zero following a power cycle. `POST /abort` and a two-minute inactive session return the machine to normal operation.

@@ -120,7 +120,10 @@ func (p *pico) installESP(ctx context.Context, uid string, pkg firmware.UpdatePa
 	if err != nil {
 		return err
 	}
-	if info.Mode == "application" && info.Version == pkg.FirmwareVersion {
+	if info.Mode == "application" && pkg.ReplacesPackageID != "" && info.Version != pkg.FirmwareVersion {
+		return otaFailure("The installed firmware version changed before the update")
+	}
+	if info.Mode == "application" && info.Version == pkg.FirmwareVersion && !pkg.ReplacesRunningImage(info.RunningSHA) {
 		app, err := espImage(pkg, info.RunningBank)
 		if err != nil || (prior != "selecting" && prior != "confirming") || !app.running(info, pkg.FirmwareVersion) {
 			return otaFailure("The device already reports this version or a different image with the same version")

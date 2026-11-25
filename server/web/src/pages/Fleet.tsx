@@ -1,4 +1,5 @@
 import './fleet.scss'
+import {BrewGroupManager, BrewInvitations} from '../components/BrewGroups'
 import { careTasksDue } from '../components/MachineCare'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -108,7 +109,8 @@ export default function Fleet({
       />
       {updates.data?.notices?.map((n) => (
         <p key={n.device_id} role="status">
-          {n.name} has firmware {n.version} available.{' '}
+          {n.name} has {n.revised ? 'a revised build of firmware' : 'firmware'} {n.version}{' '}
+          available.{' '}
           <Button variant="secondary" onClick={() => setFirmwareID(n.device_id)}>
             View firmware
           </Button>
@@ -117,6 +119,8 @@ export default function Fleet({
       {firmwareID && (
         <MachineFirmwareDialog deviceID={firmwareID} onClose={() => setFirmwareID('')} />
       )}
+      <BrewGroupManager devices={devices}/>
+      <BrewInvitations devices={devices}/>
       {devices.length ? (
         <div className="brewery-list">
           {ordered.map((device) => (

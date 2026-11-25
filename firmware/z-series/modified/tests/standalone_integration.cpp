@@ -1,3 +1,5 @@
+#include "zseries/board_settings.hpp"
+#include "esp32_ota_target.hpp"
 #include "zseries/standalone.hpp"
 #include "zseries/program_recipe_json.hpp"
 #include "zseries/program_runtime_heater.hpp"
@@ -7,6 +9,8 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 using namespace zseries::oem;
@@ -21,7 +25,25 @@ struct World {
     std::vector<std::vector<std::uint8_t>> frames;
     std::map<unsigned,bool> pins;
     std::vector<HeadWifiNetwork> access_points;
-    bool reject_network=false;
+    bool reject_network=false,reject_save=false;
+    unsigned switches=0;std::uint32_t wired_ip=0;
+    std::string still_request, still_response;
+    std::size_t response_offset=0;
+    unsigned still_chunk=53;
+    api::TelemetryIo still_io(){
+        api::TelemetryIo io;io.context=this;
+        io.begin=[](void* p,const char* host,std::uint16_t port){auto& w=self(p);w.still_request.clear();w.response_offset=0;
+            return !std::strcmp(host,"still.local")&&port==80;};
+        io.poll_connect=[](void*){return 1;};
+        io.send=[](void* p,const std::uint8_t* data,std::size_t size){auto& w=self(p);
+            unsigned count=static_cast<unsigned>(std::min<std::size_t>(size,w.still_chunk));w.still_request.append(reinterpret_cast<const char*>(data),count);return int(count);};
+        io.receive=[](void* p,std::uint8_t* data,std::size_t size){auto& w=self(p);
+            const auto left=w.still_response.size()-w.response_offset;
+            if(!left)return int(PICO_HTTP_IO_AGAIN);
+            const auto count=std::min<std::size_t>(w.still_chunk,std::min(size,left));
+            std::memcpy(data,w.still_response.data()+w.response_offset,count);w.response_offset+=count;return int(count);};
+        io.close=[](void*){};return io;
+    }
     std::uint32_t pending_pair=0;
     unsigned approved_pair=0, cancelled_pair=0;
     int scan_result=-1;
@@ -44,7 +66,7 @@ struct World {
             w.files[name]=std::vector<std::uint8_t>(data,data+size);return api::StorageResult::Ok;};
         io.remove=[](void* p,const char* name){return self(p).files.erase(name)?api::StorageResult::Ok:api::StorageResult::Missing;};return io;
     }
-    explicit World(const std::map<std::string,std::vector<std::uint8_t>>* restored=nullptr){
+    explicit World(const std::map<std::string,std::vector<std::uint8_t>>* restored=nullptr,bool wired=false){
         if(restored)files=*restored;
         head.bind_settings(core.eeprom.data);std::strcpy(core.identifier.data(),"112233445566");
         core.ports.context=this;core.ports.millis=[](void* p){return self(p).now;};
@@ -94,10 +116,14 @@ struct World {
         h.display_io.spi_bytes=[](void* p,const std::uint8_t*,std::size_t size){assert(size==4096);++self(p).displays;};
         h.display_setup.context=this;h.display_setup.report_information=[](void*){};h.display_setup.register_commands=[](void*){};
         h.display_delay.context=this;h.display_delay.milliseconds=[](void* p,std::uint32_t value){self(p).now+=value;};
-        zseries::standalone::Ports ports;ports.context=this;ports.millis=core.ports.millis;ports.storage=storage();
+        zseries::standalone::Ports ports;ports.context=this;ports.millis=core.ports.millis;ports.storage=storage();ports.group_boot_nonce=0x89ab1257u;ports.still_io=still_io();
         ports.http_poll=[](void* p,std::uint32_t){++self(p).http_polls;};
         ports.serial_poll=[](void*){};ports.save_network=[](void* p,const char*,const char*){return !self(p).reject_network;};ports.reconnect_network=[](void*){return true;};
-        ports.lan_ready=[](void* p,std::uint32_t){return self(p).lan;};ports.save_configuration=[](void*){return true;};
+        ports.lan_ready=[](void* p,std::uint32_t){return self(p).lan;};ports.save_configuration=[](void* p){return !self(p).reject_save;};
+        if(wired){
+            ports.wired_address=[](void* p){return self(p).wired_ip;};
+            ports.apply_interface=[](void* p){++self(p).switches;};
+        }
         ports.pair_prompt=[](void* p,std::uint32_t,char code[9]){
             std::strcpy(code,"f82f8f33");return self(p).pending_pair;};
         ports.pair_decide=[](void* p,std::uint32_t,std::uint32_t serial,bool allow){
@@ -128,7 +154,8 @@ struct World {
         PicoHttpRequest request{};PicoHttpResponse response{};char arena[4096]{};
         request.method=method;request.auth_configured=request.authenticated=true;std::strcpy(request.path,path);
         if(body){request.body_length=std::strlen(body);assert(request.body_length<sizeof arena);std::memcpy(arena,body,request.body_length);}
-        request.body=arena;assert(engine.handle(request,response,arena,sizeof arena));
+        request.body=arena;
+        assert(adapter.picostill_http(request,response,arena,sizeof arena)||adapter.group_http(request,response,arena,sizeof arena)||engine.handle(request,response,arena,sizeof arena));
         if(response.status!=expected){std::fprintf(stderr,"HTTP %s got%u expected%u: %.*s\n",path,response.status,expected,int(response.body_length),response.body);std::abort();}
         return std::string(reinterpret_cast<const char*>(response.body),response.body_length);
     }
@@ -225,11 +252,28 @@ void input_order(){World w;assert(w.head.encoder.state.menu.count==5&&w.head.enc
     assert(w.head.encoder_events.pending&&!w.head.button_events.pending);assert(w.adapter.execute(input).status==409);
     w.adapter.poll();assert(!w.head.button_events.pending);w.head_tick();assert(w.head.encoder.state.menu.selected==1);
     w.adapter.poll();assert(w.head.button_events.pending);w.head_tick();assert(w.head.ui_events.pending);
-    assert(w.head.ui_events.value.command==UiCommand::StartSousVideWithKeg);
-    w.head.ui_events.pending=false;assert(w.adapter.show_home());w.head.ui.transient.active=true;w.head.ui.transient.deadline=w.now+1000;
+    assert(w.head.ui_events.value.command==UiCommand::SousVideMenu);w.head_tick();
+    const auto& options=w.head.screens.menu_data;
+    assert(options.count==3&&options.items[0].event.command==UiCommand::StartSousVideWithKeg);
+    assert(options.items[1].event.command==UiCommand::StartSousVideWithoutKeg&&options.items[2].event.command==UiCommand::Back);
+    assert(!w.core.core.commands.pending);
+    assert(w.adapter.show_home());w.head.ui.transient.active=true;w.head.ui.transient.deadline=w.now+1000;
     input.delta=0;input.click=true;assert(w.adapter.execute(input).status==202);w.head_tick();w.head_tick();
     assert(!w.head.ui.transient.active&&!w.head.ui.transient.deadline&&w.alarms>0);
     assert(w.head.screens.menu_data.count==1); // Empty catalogue retains Back.
+}
+void sous_vide_programs(){
+    for(bool keg:{false,true}){
+        World w;
+        const auto name=keg?"sous-vide":"sous-vide-no-keg";
+        assert(w.request(PICO_HTTP_GET,"/api/v1",nullptr,200).find(name)!=std::string::npos);
+        assert(w.command(name).status==202);w.adapter.poll();
+        assert(w.head.ui_events.pending&&w.head.ui_events.value.command==(keg?UiCommand::StartSousVideWithKeg:UiCommand::StartSousVideWithoutKeg));
+        w.head_tick();assert(w.core.core.commands.pending);
+        assert(w.core.core.commands.value.program_id==(keg?6:5));
+        assert(w.dispatch());assert(w.core.core.state.id==CoreStateId::Starting);
+        assert(w.core.core.state.program_id==(keg?6:5));
+    }
 }
 void offline_and_reservation(){World w;w.core.core.state.id=CoreStateId::Booting;w.core.core.state.state_date=1;w.core.core.state.azure_enabled=true;
     assert(w.adapter.service_stage(CoreTickStage::Azure,w.now));assert(w.core.core.state.id==CoreStateId::Idle&&w.core.core.state.offline&&!w.core.core.state.azure_enabled);
@@ -241,8 +285,29 @@ void offline_and_reservation(){World w;w.core.core.state.id=CoreStateId::Booting
     assert(w.core.post(duplicate));assert(w.dispatch());assert(w.writes==before&&w.core.core.state.id==CoreStateId::Running);
 }
 void settings_and_display(){World w;
-    auto output=w.request(PICO_HTTP_PATCH,"/api/v1/settings","{\"temperature_unit\":\"C\",\"language\":\"fr\",\"detailed_status\":true}",200);
+    // Exercise the production board settings backend on the protected layout (no EEPROM partition).
+    zseries::standalone::BoardSettings board(w.storage());
+    assert(board.load()&&!board.wired());
+    EepromData original;original.use_ethernet=1;original.boiler=BoilerType::Small;
+    auto bytes=encode_eeprom(original);
+    w.files["zboard.seed"]={bytes.begin(),bytes.end()};
+    assert(board.load()&&board.wired());
+    auto board_io=board.backend();
+    original.use_ethernet=0;auto wireless=encode_eeprom(original);
+    board_io.write_data(board_io.context,wireless);assert(board_io.commit(board_io.context));
+    zseries::standalone::BoardSettings reread(w.storage());assert(reread.load()&&!reread.wired());
+    auto io=reread.backend();EepromBytes actual;io.read_data(io.context,actual);assert(decode_eeprom(actual).boiler==BoilerType::Small);
+    w.fail_write=1;io.write_data(io.context,bytes);assert(!io.commit(io.context));assert(!reread.wired());w.fail_write=0;
+    World broken;broken.files["zboard.seed"]={0xff,0xff};zseries::standalone::BoardSettings bad(broken.storage());assert(!bad.load());
+    auto output=w.request(PICO_HTTP_PATCH,"/api/v1/settings","{\"temperature_unit\":\"C\",\"language\":\"fr\",\"detailed_status\":true,\"auto_cycle\":false}",200);
     assert(!w.core.eeprom.data.use_imperial&&w.core.eeprom.data.language==LanguageType::French&&w.core.eeprom.data.show_detail);
+    assert(w.core.eeprom.data.slideshow_cycle_static&&output.find("\"auto_cycle\":false")!=std::string::npos);
+    HeadUiEvent setting;setting.command=UiCommand::Settings;assert(w.head.receive_ui(setting));w.head_tick();
+    bool cycle=false;for(std::size_t i=0;i<w.head.screens.menu_data.count;++i)
+        if(w.head.screens.menu_data.items[i].event.command==UiCommand::ConfigureSlideshowCycle)cycle=true;
+    assert(cycle);
+    setting.command=UiCommand::SetAutoCycle;assert(w.head.receive_ui(setting));w.head_tick();
+    assert(!w.core.eeprom.data.slideshow_cycle_static);
     auto services=w.adapter.services();api::Display first;assert(services.display(services.context,first).ok());assert(first.total_bytes==4096&&first.width==128&&first.height==64);
     std::uint8_t page[1024];assert(services.read_display(services.context,first.revision,1024,page,sizeof page).ok());
     auto old=page[0];w.head.display.pixels[1024]^=0xff;assert(services.read_display(services.context,first.revision,1024,page,sizeof page).ok()&&page[0]==old);
@@ -279,6 +344,48 @@ void running_hold(World& w,bool heated=true){
     runtime.requested_pumps=heated?0x70:0x60;runtime.requested_valve=2;runtime.filter_required=true;
     w.core.heater.state.target_celsius=heated?66.5:0;w.core.heater.state.started=heated;
     w.core.core.state.id=CoreStateId::Running;w.adapter.poll();
+}
+void dedicated_session_controls(){
+    World w;auto& runtime=w.core.runtime;
+    auto availability=[&](bool pause,bool resume){
+        const auto json=w.request(PICO_HTTP_GET,"/api/v1/status",nullptr,200);
+        assert(json.find(pause?"\"can_pause\":true":"\"can_pause\":false")!=std::string::npos);
+        assert(json.find(resume?"\"can_resume\":true":"\"can_resume\":false")!=std::string::npos);
+    };
+    availability(false,false);
+    running_hold(w);
+    availability(true,false);
+    assert(w.command("resume").status==409);
+    assert(w.command("pause").status==202);
+    assert(w.command("pause").status==409);
+    // A fill/setup prompt can arrive after HTTP accepts but before Runtime acts.
+    runtime.state.screen=9;
+    assert(w.adapter.service_stage(CoreTickStage::Runtime,w.now));
+    assert(!runtime.state.paused);
+    availability(false,false);
+    runtime.state.screen=0;
+    assert(w.command("pause").status==202);
+    assert(w.adapter.service_stage(CoreTickStage::Runtime,w.now));
+    for(unsigned i=0;i<60&&runtime.state.instruction.opcode!=OpCode::WaitUser;++i)
+        assert(w.adapter.service_stage(CoreTickStage::Runtime,++w.now));
+    assert(runtime.state.instruction.opcode==OpCode::WaitUser&&runtime.state.pause_reason==unsigned(PauseReason::User));
+    availability(false,true);
+    assert(w.command("pause").status==409);
+    for(auto reason:{PauseReason::StepFilter,PauseReason::PicoStillError,PauseReason::StillT2Overtemp}){
+        runtime.state.pause_reason=unsigned(reason);
+        availability(false,false);assert(w.command("resume").status==409);
+    }
+    runtime.state.pause_reason=unsigned(PauseReason::User);w.core.msp_state.errors=4;
+    assert(w.command("resume").status==409&&w.core.msp_state.errors==4);
+    w.core.msp_state.errors=0;
+    RuntimeCommand other;other.id=RuntimeCommandId::Stop;
+    assert(w.core.runtime_commands.put(other));
+    assert(w.command("resume").status==409&&w.core.runtime_commands.value.id==RuntimeCommandId::Stop);
+    w.core.runtime_commands.pending=false;
+    assert(w.command("resume").status==202);
+    assert(w.command("resume").status==409);
+    assert(w.adapter.service_stage(CoreTickStage::Runtime,++w.now));
+    assert(runtime.state.instruction.opcode!=OpCode::WaitUser);
 }
 void recovery_restart(){World before;running_hold(before);
     auto persisted=before.files;World after(&persisted);api::Snapshot snapshot;assert(after.adapter.snapshot(snapshot).ok());
@@ -358,6 +465,16 @@ void sensor_fault_cutoff(){
     }
 }
 void buffered_coffee(){
+    {World w;
+        w.request(PICO_HTTP_POST,"/api/v1/commands",R"({"command":"coffee"})",202);
+        w.adapter.poll();w.head_tick();
+        const auto& menu=w.head.screens.menu_data;
+        for(auto mode:{UiCommand::CoffeeColdBrewTweak,UiCommand::CoffeeHotTweak,UiCommand::CoffeeHybridTweak,UiCommand::CoffeeCustomTweak}){
+            bool present=false;for(unsigned n=0;n<menu.count;++n)present|=menu.items[n].event.command==mode;
+            assert(present);
+        }
+        assert(w.core.core.state.id==CoreStateId::Idle&&!w.core.core.commands.pending);
+    }
     for(unsigned previous=0;previous<2;++previous){World w;
         if(previous)assert(w.adapter.load_recipe(recipe(),false).ok());
         w.head.core_events.pending=false;
@@ -461,7 +578,25 @@ void physical_pairing(){
     assert(w.head.receive_ui(stale));w.head_tick();
     assert(menu.count==2&&w.approved_pair==1&&w.pending_pair==20);
     w.pending_pair=0;w.adapter.poll();assert(menu.count==1);press();
-    select("Machine details");  // Original About presentation still reachable.
+    w.core.eeprom.data.boiler=BoilerType::Small;
+    w.core.msp_state.version_major=1;w.core.msp_state.version_minor=7;
+    w.head.observed.flash_bytes=4*1024*1024;
+    select("Machine details");
+    const auto& details=w.head.screens.scroll_data;
+    const std::string expected[]={"Pico Z / ESP32",std::string("Firmware: ")+picobrew::esp32_ota::Version,
+        "UID: 112233445566","Boiler: Small","MSP: 1.7","Flash: 4 MiB","Hub reporting off"};
+    assert(w.head.encoder.state.paragraph.enabled&&details.count==sizeof expected/sizeof expected[0]);
+    for(unsigned i=0;i<details.count;++i)assert(expected[i]==details.lines[i].data());
+    assert(w.head.receive_encoder(-1));w.head_tick();
+    assert(w.head.encoder.state.paragraph.offset>0);press();select("Back");select("Exit");
+    w.request(PICO_HTTP_PUT,"/api/v1/telemetry",R"({"enabled":true,"host":"brew-hub","port":8080})",200);
+    w.core.msp_state.id=Z_MSP_UNKNOWN;w.head.observed.flash_bytes=0;
+    select("Settings");select("About");select("Machine details");
+    assert(!std::strcmp(details.lines[4].data(),"MSP: Unknown"));
+    assert(!std::strcmp(details.lines[5].data(),"Flash: Unknown"));
+    assert(!std::strcmp(details.lines[6].data(),"Hub reporting on"));
+    press();select("Back");
+    select("About");  // The details scroll's Back returns through About and Settings.
 }
 void native_network_menus(){World w;
     const auto check=[&](){assert(w.head.screens.menu_data.count==4);
@@ -529,6 +664,115 @@ void stable_wifi_picker_and_local_lease(){
     assert(!std::strcmp(wifi.state.requested.ssid.data(),"saved")&&!w.core.system_error);
     assert(menu.count==1&&menu.items[0].event.command==UiCommand::ConfigureNetworkAsBack);
 }
+void wired_interface_selection(){
+    World w(nullptr,true);
+    auto select=[&](UiCommand cmd){HeadUiEvent event;event.command=cmd;assert(w.head.receive_ui(event));w.head_tick();};
+    auto title=[&](const char* expected){assert(!std::strcmp(w.head.screens.state.title.data(),expected));};
+    auto listed=[&](UiCommand cmd){const auto& menu=w.head.screens.menu_data;
+        return std::any_of(menu.items.begin(),menu.items.begin()+menu.count,[&](const decltype(menu.items)::value_type& item){return item.event.command==cmd;});};
+    select(UiCommand::ConfigureNetwork);title("Network");assert(listed(UiCommand::ConfigureEthernet));
+    select(UiCommand::ConfigureEthernet);title("Ethernet");assert(listed(UiCommand::EthernetConnect));
+    std::strcpy(w.core.eeprom.data.wifi_ssid.data(),"saved-wifi");
+    w.reject_save=true;select(UiCommand::EthernetConnect);title("Save failed");
+    assert(!w.core.eeprom.data.use_ethernet&&!w.switches);
+    w.reject_save=false;w.core.runtime.state.id=RuntimeStateId::Running;
+    select(UiCommand::EthernetConnect);title("Machine busy");assert(!w.switches);
+    w.core.runtime.state.id=RuntimeStateId::Standby;
+    select(UiCommand::EthernetConnect);title("Waiting for Ethernet");
+    assert(w.core.eeprom.data.use_ethernet&&w.switches==1&&!listed(UiCommand::EthernetConnect));
+    w.wired_ip=0x2A00000a;assert(w.adapter.tick_wifi(w.now)&&w.core.network==2);
+    select(UiCommand::ConfigureEthernet);title("10.0.0.42");
+    w.wired_ip=0;assert(w.adapter.tick_wifi(w.now)&&w.core.network==0);
+    select(UiCommand::ConfigureNetworkAsBack);title("Network");
+    assert(listed(UiCommand::WiFiReconnect)&&!listed(UiCommand::WiFiScan));
+    select(UiCommand::WiFiReconnect);assert(!w.core.eeprom.data.use_ethernet&&w.switches==2);
+    assert(!std::strcmp(w.core.eeprom.data.wifi_ssid.data(),"saved-wifi"));
+    assert(listed(UiCommand::WiFiScan)&&!w.core.system_error);
+}
+std::string test_file(const char* path){
+    std::ifstream in(path,std::ios::binary);assert(in);
+    return {std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};
+}
+void compare_archived_program(const std::string& source,const std::string& json,bool pak,double boiling){
+    {
+        World w;const char* path="/api/v1/recipes/archived";
+        assert(w.request(PICO_HTTP_GET,"/api/v1",nullptr,200).find("\"z_cloud_program_v1\":true")!=std::string::npos);
+        const auto stored=w.request(PICO_HTTP_PUT,path,json.c_str(),201);
+        World reopened(&w.files);assert(reopened.request(PICO_HTTP_GET,path,nullptr,200)==stored);
+        reopened.core.temperatures.estimated_boil_celsius=boiling;
+        reopened.request(PICO_HTTP_POST,"/api/v1/commands",R"({"command":"brew","recipe_id":"archived"})",202);
+        reopened.adapter.poll();
+        api::Recipe saved;assert(reopened.engine.recipe_get("archived",saved).ok());
+        ProgramBuffer original;auto bytes=source;
+        ProgramParameters tweaks;tweaks.abv=saved.pak.selected_abv;tweaks.ibu=saved.pak.selected_ibu;
+        assert(parse_http_recipe(original,&bytes[0],bytes.size(),pak?HttpRecipeFormat::PicoPak:HttpRecipeFormat::Zymatic,SessionType::LocalBrew,saved.pak.recipe_id,
+            tweaks,RecipeEnvironment(101325,boiling)).ready);
+        auto& program=reopened.core.program;
+        const auto& expected=original.record().view;const auto& got=program.record().view;
+        assert(got.code_size==expected.code_size&&got.string_count==expected.string_count);
+        for(std::size_t i=0;i<got.code_size;++i)assert(got.code[i].opcode==expected.code[i].opcode&&got.code[i].argument==expected.code[i].argument);
+        for(std::size_t i=1;i<got.string_count;++i)assert(std::strcmp(got.strings[i],expected.strings[i])==0);
+        assert(program.stats.duration_seconds==original.stats.duration_seconds);
+        assert(program.stats.maximum_temperature_added_seconds==original.stats.maximum_temperature_added_seconds);
+        assert(program.parameters.water.value==original.parameters.water.value);
+        assert(reopened.dispatch()&&reopened.core.commands.session.parameters.water.value==original.parameters.water.value);
+        zseries::standalone::BrewRecovery recovery;
+        assert(recovery.load(reopened.storage()).ok()&&recovery.present());
+        if(pak){
+            assert(recovery.recipe().pak.recipe_id==saved.pak.recipe_id&&recovery.recipe().pak.beer_id==saved.pak.beer_id);
+            assert(recovery.recipe().pak.selected_abv==tweaks.abv&&recovery.recipe().pak.selected_ibu==tweaks.ibu);
+            assert(program.record().unique_id==saved.pak.recipe_id&&got.code[0].opcode==OpCode::Setup&&(got.code[0].argument&0x111)==0x111);
+            assert(original.parameters.water.value==6.81);
+        }else assert(recovery.recipe().z_cloud_water_ml==std::lround(1000.0*original.parameters.water.value));
+    }
+}
+void reject_pak_changes(){
+    World w;const char* path="/api/v1/recipes/kit";
+    const std::string body=R"({"name":"Kit","steps":[{"name":"Mash","location":2,"target_f":152,"minutes":10}],"z_pak":{"recipe_id":8,"beer_id":4,"abv":5,"ibu":5,"step_options":[{"action":0,"min_time":1,"max_time":50}]}})";
+    const auto original=w.request(PICO_HTTP_PUT,path,body.c_str(),201);
+    auto invalid=[&](const char* from,const char* to){
+        auto edited=body;auto pos=edited.find(from);assert(pos!=std::string::npos);
+        edited.replace(pos,std::strlen(from),to);w.request(PICO_HTTP_PUT,path,edited.c_str(),400);
+        assert(w.request(PICO_HTTP_GET,path,nullptr,200)==original);
+    };
+    invalid("\"recipe_id\":8","\"recipe_id\":0");invalid("\"beer_id\":4","\"beer_id\":0");
+    invalid("\"action\":0","\"action\":4");invalid("\"min_time\":1","\"min_time\":620");
+    invalid("\"abv\":5","\"abv\":128");invalid("\"ibu\":5","\"ibu\":5,\"selected_ibu\":8");
+    invalid("\"abv\":5","\"abv\":-1,\"selected_abv\":10");
+    invalid("\"location\":2","\"location\":0");invalid("\"target_f\":152","\"target_f\":55");
+    invalid("\"action\":0,\"min_time\":1,\"max_time\":50","\"action\":0},{\"action\":0");
+    invalid("\"name\":\"Kit\"","\"name\":\"Kit\",\"z_cloud\":{\"start_water_ml\":12110,\"is_beer\":true}");
+}
+void compare_pak_corpus(const char* input){
+    std::ifstream stream(input);std::string row;
+    while(std::getline(stream,row)){
+        auto tab=row.find('\t');assert(tab!=std::string::npos);
+        compare_archived_program(row.substr(0,tab),row.substr(tab+1),true,93.);
+    }
+    assert(stream.eof());
+}
+void original_native_state(){
+    World w;PicoHttpRequest req{};PicoHttpResponse res{};char arena[1200]{};
+    std::strcpy(req.path,"/api/v1/status");
+    assert(!w.adapter.native_state_http(req,res,arena,sizeof arena));
+    std::strcpy(req.path,"/api/v1/z/state");req.method=PICO_HTTP_GET;
+    auto request=[&](unsigned cap){assert(w.adapter.native_state_http(req,res,arena,cap));return res.status;};
+    assert(request(sizeof arena)==503);req.auth_configured=true;assert(request(sizeof arena)==401);req.authenticated=true;
+    req.method=PICO_HTTP_POST;assert(request(sizeof arena)==405);req.method=PICO_HTTP_GET;
+    w.core.network=1;w.core.wifi.state.rssi=-61;w.core.msp_state.valve_position=6;w.core.msp_state.pumps=0x30;
+    w.core.runtime.state.flags=1;w.core.runtime.state.pause_reason=2;w.core.runtime.state.elapsed_seconds=67;
+    w.core.runtime.state.step_name="Hop one";assert(request(sizeof arena)==200&&res.body_length==std::strlen(arena));
+    std::string out(arena);
+    for(const char* field:{"\"UsePicoPakMode\":1","\"Location\":3","\"ValvePosition\":6","\"KegPumpOn\":1","\"DrainPumpOn\":1",
+                           "\"PauseReason\":2","\"rssi\":-61","\"SecondsEllapsed\":67","\"StepName\":\"Hop one\""})assert(out.find(field)!=std::string::npos);
+    assert(request(30)==503);
+    std::string oversized(128,'x');w.core.runtime.state.step_name=oversized.c_str();
+    assert(request(sizeof arena)==503);w.core.runtime.state.step_name=nullptr;
+    assert(request(sizeof arena)==200&&std::string(arena).find("\"StepName\":null")!=std::string::npos);
+    w.core.runtime.state.pause_reason=18;assert(request(sizeof arena)==503);
+    w.core.runtime.state.pause_reason=0;w.core.network=2;assert(request(sizeof arena)==200);
+    assert(std::strstr(arena,"\"rssi\":0"));
+}
 void rejected_resume_retains_checkpoint(){World before;running_hold(before);World after(&before.files);
     api::Command resume;std::strcpy(resume.name,"resume-interrupted");resume.confirm=true;
     assert(after.adapter.execute(resume).status==202);after.fail_write=1;assert(after.dispatch());
@@ -544,16 +788,433 @@ void recovery_preflight_has_no_diagnostics(){World w;running_hold(w);
     runtime.stack.clear();runtime.state.instruction={static_cast<OpCode>(0xffffffffu),0};
     assert(!checkpoint.capture(runtime,66.5,w.now,0).ok());assert(w.assertions==assertions&&w.now==now);
 }
+constexpr const char* group_path = "/api/v1/group-brew";
+const char* rinse_invite = R"({"op":"offer","id":"1000000000000001","from":"Pico Z","action":"rinse"})";
+const char* accept_rinse = R"({"op":"accept","id":"1000000000000001"})";
+std::string group_recipe_offer(std::uint32_t revision, const char* id = "1000000000000002") {
+    return std::string(R"({"op":"offer","id":")") + id + R"(","from":"Kitchen","action":"brew","recipe_id":"native","revision":)" + std::to_string(revision) + "}";
 }
-int main(int argc,char** argv){assert(argc==2);const std::string test=argv[1];
-    if(test=="maker")maker_program();else if(test=="recipe")owned_recipe();else if(test=="storage")storage_preflight();else if(test=="unheated")no_target();
+void physical_group_button(World& w, unsigned row) {
+    if (row) { assert(w.head.receive_encoder(-1)); w.head_tick(); }
+    CoreButtonEvent click;click.id=1;click.argument=1;
+    assert(w.head.receive_button(click)); w.head_tick(); w.head_tick();
+}
+void kit_strength_on_dial(){
+    auto kit=recipe();
+    kit.pak.recipe_id=83;kit.pak.beer_id=29;kit.pak.abv=4;kit.pak.ibu=5;kit.pak.selected_ibu=7;
+    for(unsigned i=0;i<2;++i){
+        auto& step=kit.steps[i];step.location=i+2;step.minutes=10;step.target_f=i?200:148;
+        step.pak.minimum=3;step.pak.maximum=20;
+    }
+    const auto pick=[](World& w,UiCommand command){
+        const auto& menu=w.head.screens.menu_data;
+        for(unsigned i=0;i<menu.count;++i)if(menu.items[i].event.command==command){
+            assert(w.head.receive_ui(menu.items[i].event));w.head_tick();return;
+        }
+        assert(false&&"Expected native menu command");
+    };
+    const auto open=[](World& w){
+        assert(w.adapter.show_recipes());assert(w.head.receive_ui(w.head.screens.menu_data.items[0].event));w.head_tick();
+    };
+    for(bool change:{false,true}){
+        World w;assert(w.engine.recipe_store(kit).ok());const auto before=w.engine.recipe_revision();
+        open(w);assert(w.head.screens.menu_data.count==4);
+        assert(w.head.numeric.state.parameters.abv==-1&&w.head.numeric.state.parameters.ibu==7);
+        pick(w,UiCommand::PicoPakRecipeTweakAbv);
+        assert(w.head.encoder.state.strength.enabled&&w.head.encoder.state.strength.value==4);
+        if(change){assert(w.head.receive_encoder(3));w.head_tick();}
+        const int chosen= w.head.encoder.state.strength.value;
+        if(change)assert(chosen!=4);
+        physical_group_button(w,0);
+        assert(w.head.numeric.state.parameters.abv==chosen);
+        pick(w,UiCommand::Exit);
+        assert(w.head.screens.menu_data.count==2&&!w.core.core.commands.pending);
+        open(w);assert(w.head.numeric.state.parameters.abv==-1&&w.head.numeric.state.parameters.ibu==7);
+        pick(w,UiCommand::PicoPakRecipeTweakAbv);
+        if(change){assert(w.head.receive_encoder(3));w.head_tick();}
+        physical_group_button(w,0);
+        const auto frames=w.frames.size();pick(w,UiCommand::PicoPakRecipeLoadTweaked);
+        assert(w.frames.size()==frames&&!w.core.core.commands.pending&&!w.core.heater.state.started);
+        const int expected=change?chosen:-1;
+        // Some native displays receive the ready message on the next tick.
+        w.head_tick();pick(w,UiCommand::StartLoadedProgram);
+        assert(w.dispatch()); // Dispatcher posts the buffered native StartProgram.
+        if(w.core.core.commands.pending)assert(w.dispatch());
+        assert(w.core.core.state.id==CoreStateId::Starting);
+        const auto group=w.request(PICO_HTTP_GET,group_path,nullptr,200);
+        assert(group.find("\"action\":\"brew\"")!=std::string::npos);
+        assert((group.find("\"selected_abv\":"+std::to_string(chosen))!=std::string::npos)==change);
+        assert(group.find("selected_ibu")==std::string::npos);
+        api::Recipe stored;assert(w.engine.recipe_get(kit.id,stored).ok());
+        assert(w.engine.recipe_revision()==before&&stored.pak.selected_abv==-1&&stored.pak.selected_ibu==7);
+        zseries::standalone::BrewRecovery recovered;assert(recovered.load(w.storage()).ok()&&recovered.present());
+        ProgramBuffer restored;assert(recovered.restore(restored,101325).ok());
+        assert(recovered.recipe().pak.selected_abv==expected&&recovered.recipe().pak.selected_ibu==7);
+        assert(restored.parameters.abv==expected&&restored.parameters.ibu==7&&restored.parameters.water.value==6.81);
+        const auto& run=w.core.program.record().view;const auto& resume=restored.record().view;
+        assert(run.code_size==resume.code_size);
+        for(unsigned i=0;i<run.code_size;++i)
+            assert(run.code[i].opcode==resume.code[i].opcode&&run.code[i].argument==resume.code[i].argument);
+        auto& runtime=w.core.runtime;assert(run.code[0].opcode==OpCode::Setup);
+        assert(runtime.dispatch(run.code[0])==RuntimeResult::Ok);
+        unsigned next_prompt=16;
+        while(runtime.stack.size()){
+            Instruction op;assert(runtime.stack.pop(op)==RuntimeResult::Ok);
+            if(op.opcode==OpCode::ShowScreen)assert(op.argument==next_prompt++);
+        }
+        assert(next_prompt==24&&!w.core.heater.state.started);
+    }
+    World peer;assert(peer.engine.recipe_store(kit).ok());
+    auto fields=[&](const char* extra){
+        auto payload=group_recipe_offer(peer.engine.recipe_revision());payload.pop_back();payload+=extra;return payload+"}";
+    };
+    const auto offered=fields(R"(,"selected_abv":0,"selected_ibu":5)");
+    peer.request(PICO_HTTP_POST,group_path,fields(R"(,"selected_abv":11)").c_str(),400);
+    auto routine=std::string(rinse_invite);routine.pop_back();routine+=R"(,"selected_abv":0})";
+    peer.request(PICO_HTTP_POST,group_path,routine.c_str(),400);
+    const auto invitation=peer.request(PICO_HTTP_POST,group_path,offered.c_str(),200);
+    assert(invitation.find("\"selected_abv\":0")!=std::string::npos&&invitation.find("\"selected_ibu\":5")!=std::string::npos);
+    assert(!peer.core.core.commands.pending&&!peer.core.heater.state.started); // no start until accepted at this brewer.
+    peer.request(PICO_HTTP_POST,group_path,fields(R"(,"selected_abv":9,"selected_ibu":5)").c_str(),409);
+    physical_group_button(peer,1);assert(peer.dispatch());
+    zseries::standalone::BrewRecovery confirmed;assert(confirmed.load(peer.storage()).ok()&&confirmed.present());
+    assert(confirmed.recipe().pak.selected_abv==0&&confirmed.recipe().pak.selected_ibu==5);
+    api::Recipe local;assert(peer.engine.recipe_get(kit.id,local).ok()&&local.pak.selected_abv==-1&&local.pak.selected_ibu==7);
+    assert(peer.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"source\":null")!=std::string::npos);
+    World incompatible;assert(incompatible.engine.recipe_store(recipe()).ok());
+    auto bad=group_recipe_offer(incompatible.engine.recipe_revision());bad.pop_back();bad+=R"(,"selected_abv":1})";
+    incompatible.request(PICO_HTTP_POST,group_path,bad.c_str(),409);assert(!incompatible.core.core.commands.pending);
+    World stale;assert(stale.engine.recipe_store(kit).ok());open(stale);
+    kit.steps[0].pak.minimum=-1;assert(!stale.engine.recipe_store(kit).ok()); // Slot writes require idle home.
+    HeadUiEvent old_load;
+    for(unsigned i=0;i<stale.head.screens.menu_data.count;++i)
+        if(stale.head.screens.menu_data.items[i].event.command==UiCommand::PicoPakRecipeLoadTweaked)old_load=stale.head.screens.menu_data.items[i].event;
+    assert(old_load.command==UiCommand::PicoPakRecipeLoadTweaked&&stale.adapter.show_home());
+    assert(stale.engine.recipe_store(kit).ok());assert(stale.head.receive_ui(old_load));stale.head_tick();
+    assert(!stale.core.core.commands.pending);
+    open(stale);assert(stale.head.screens.menu_data.count==3);
+    for(unsigned i=0;i<3;++i)assert(stale.head.screens.menu_data.items[i].event.command!=UiCommand::PicoPakRecipeTweakAbv);
+}
+void group_brew() {
+    World origin, target;
+    auto r = recipe();
+    assert(origin.engine.recipe_store(r).ok() && target.engine.recipe_store(r).ok());
+    assert(origin.request(PICO_HTTP_GET,"/api/v1",nullptr,200).find("\"group_brewing_v1\":true")!=std::string::npos);
+    assert(origin.adapter.load_recipe(r,true).ok());
+    assert(origin.request(PICO_HTTP_GET,group_path,nullptr,200)=="{\"source\":null,\"invite\":null}");
+    assert(origin.dispatch());
+    const auto offered = origin.request(PICO_HTTP_GET,group_path,nullptr,200);
+    assert(offered.find("\"id\":\"89ab125700000001\"")!=std::string::npos &&
+           offered.find("\"recipe_id\":\"native\"")!=std::string::npos &&
+           offered.find("\"action\":\"brew\"")!=std::string::npos);
+    const auto post = group_recipe_offer(target.engine.recipe_revision());
+    const auto frames = target.frames.size();
+    const auto first=target.request(PICO_HTTP_POST,group_path,post.c_str(),200);
+    assert(first.find("\"state\":\"pending\"")!=std::string::npos);
+    assert(!target.core.core.commands.pending && !target.core.core.state.runtime_start_pending && target.frames.size()==frames);
+    assert(target.head.encoder.state.menu.selected==0 && !std::strcmp(target.head.screens.menu_data.items[0].text.data(),"Decline"));
+    const auto stale_click=target.head.screens.menu_data.items[1].event;
+    assert(target.request(PICO_HTTP_POST,group_path,post.c_str(),200)==first);
+    physical_group_button(target,0);
+    assert(target.request(PICO_HTTP_POST,group_path,post.c_str(),200).find("\"declined\"")!=std::string::npos);
+    assert(!target.core.core.commands.pending);
+    const auto another=group_recipe_offer(target.engine.recipe_revision(),"1000000000000003");
+    target.request(PICO_HTTP_POST,group_path,another.c_str(),200);
+    assert(target.head.receive_ui(stale_click));target.head_tick();
+    assert(!target.core.core.commands.pending);
+    physical_group_button(target,1);
+    assert(target.core.core.commands.pending && target.dispatch() && target.core.core.state.id==CoreStateId::Starting);
+    auto accepted=target.request(PICO_HTTP_GET,group_path,nullptr,200);
+    assert(accepted.find("\"source\":null")!=std::string::npos && accepted.find("\"state\":\"accepted\"")!=std::string::npos);
+    target.request(PICO_HTTP_POST,group_path,R"({"op":"accept","id":"1000000000000003"})",200);
+    assert(!target.core.core.commands.pending);
+    origin.now+=120000;
+    assert(origin.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"source\":null")!=std::string::npos);
+}
+constexpr const char* pairing_path="/api/v1/picostill";
+const std::string still_key(64,'b');
+std::string pairing(const std::string& uid="001122334455") {
+    return "{\"host\":\"still.local\",\"port\":80,\"uid\":\""+uid+"\",\"key\":\""+still_key+"\"}";
+}
+void still_response(World& w,const char* lease,bool clean,bool active,const char* uid="001122334455"){
+    std::string json=std::string("{\"uid\":\"")+uid+"\",\"lease\":\""+lease+"\",\"healthy\":true,\"clean\":"+
+        (clean?"true":"false")+",\"active\":"+(active?"true":"false")+
+        ",\"pump\":true,\"fan\":false,\"celsius\":[22.1,25.2,31.5,20.4],\"pressure_psi\":12.34}";
+    w.still_response="HTTP/1.1 200 OK\r\nContent-Length: "+std::to_string(json.size())+"\r\nConnection: close\r\n\r\n"+json;
+    for(unsigned i=0;i<40;++i)assert(w.adapter.service_stage(CoreTickStage::PicoStill,++w.now));
+    w.still_response.clear();
+}
+void pair_still(World& w){
+    assert(w.request(PICO_HTTP_PUT,pairing_path,pairing().c_str(),202).find("\"checking\":true")!=std::string::npos);
+    still_response(w,"",true,false);
+    assert(w.still_request.find("Authorization: Bearer "+still_key)!=std::string::npos);
+    auto state=w.request(PICO_HTTP_GET,pairing_path,nullptr,200);
+    assert(state.find("\"verified\":true")!=std::string::npos && state.find(still_key)==std::string::npos);
+}
+void issue_still(World& w,StillCommandId id){PicoStillCommand cmd;cmd.id=id;w.core.still.commands.put(cmd);assert(w.adapter.service_stage(CoreTickStage::PicoStill,++w.now));}
+void still_pairing(){
+    World w;assert(w.command("picostill-manual").status==409);
+    w.request(PICO_HTTP_PUT,pairing_path,pairing("invalid").c_str(),400);
+    pair_still(w);World reboot(&w.files);
+    auto saved=reboot.request(PICO_HTTP_GET,pairing_path,nullptr,200);
+    assert(saved.find("\"paired\":true")!=std::string::npos&&saved.find("\"verified\":false")!=std::string::npos);
+    reboot.request(PICO_HTTP_PUT,pairing_path,pairing("123456123456").c_str(),202);
+    still_response(reboot,"",true,false);
+    saved=reboot.request(PICO_HTTP_GET,pairing_path,nullptr,200);
+    assert(saved.find("\"uid\":\"001122334455\"")!=std::string::npos&&saved.find("Could not verify")!=std::string::npos);
+    reboot.request(PICO_HTTP_PATCH,pairing_path,"{\"session_logging\":false}",200);
+    assert(reboot.core.eeprom.data.still_session_mode==SessionMode::Offline);
+    assert(reboot.request(PICO_HTTP_DELETE,pairing_path,nullptr,200).find("\"paired\":false")!=std::string::npos);
+    World removed(&reboot.files);assert(removed.command("picostill-boil-point").status==409);
+}
+void still_session(){
+    World w;pair_still(w);w.request(PICO_HTTP_PATCH,pairing_path,"{\"session_logging\":true}",200);
+    CoreCommand start;start.id=CoreCommandId::StartProgram;start.program_id=unsigned(ZProgramId::PicoStillManual);
+    assert(w.core.post(start)&&w.dispatch());
+    assert(w.core.core.state.id==CoreStateId::Starting);
+    w.engine.poll();assert(w.request(PICO_HTTP_GET,"/api/v1/history",nullptr,200).find("PICOSTILL")!=std::string::npos);
+    issue_still(w,StillCommandId::Stop); // Native standby wake, before StillScan.
+    issue_still(w,StillCommandId::Scan);const char* token="abcdef1200000001";
+    still_response(w,token,false,false);
+    assert(w.core.still.state.id==PicoStillStateId::PendingCleanedAck);
+    assert(w.still_request.find("\"op\":\"claim\"")!=std::string::npos);
+    issue_still(w,StillCommandId::Start);assert(w.core.still.state.id==PicoStillStateId::PendingCleanedAck);
+    issue_still(w,StillCommandId::CleanedAck);still_response(w,token,true,false);
+    assert(w.core.still.state.id==PicoStillStateId::PendingStart);
+    issue_still(w,StillCommandId::Start);assert(w.core.still.state.id==PicoStillStateId::Starting);
+    w.core.runtime.state.id=RuntimeStateId::Running;const auto index=w.core.runtime.stack.size();
+    assert(w.adapter.service_stage(CoreTickStage::Runtime,w.now)&&w.core.runtime.stack.size()==index);
+    still_response(w,token,false,true);assert(w.core.still.state.id==PicoStillStateId::Running);
+    const auto& observed=w.core.runtime.observed;
+    assert(observed.still_sample_present&&std::fabs(observed.still_t3-31.5)<1e-6);
+    assert(w.core.still_samples.current.pump_running&&!w.core.still_samples.current.fan_running);
+    assert(std::fabs(w.core.still_samples.current.pressure-12.34)<1e-5);
+    w.request(PICO_HTTP_DELETE,pairing_path,nullptr,409);
+    w.core.heater.state.enabled=w.core.heater.state.started=true;w.core.msp_state.pumps=0x70;
+    issue_still(w,StillCommandId::FanOn);w.now+=3001;assert(w.adapter.service_stage(CoreTickStage::PicoStill,w.now));
+    assert(w.adapter.stopped()&&w.core.still.state.id==PicoStillStateId::Error&&!w.core.heater.state.enabled&&!w.core.msp_state.pumps);
+    still_response(w,"",false,false);
+    assert(w.still_request.find("\"op\":\"stop\"")!=std::string::npos);
+    assert(w.request(PICO_HTTP_GET,pairing_path,nullptr,200).find("\"sample\":null")!=std::string::npos);
+}
+void still_native_programs(){
+    for(const auto id:{ZProgramId::PicoStillManual,ZProgramId::PicoStillBoilPoint}){
+        World w;pair_still(w);
+        w.request(PICO_HTTP_PATCH,pairing_path,R"({"session_logging":false})",200);
+        const char* name=id==ZProgramId::PicoStillManual?"picostill-manual":"picostill-boil-point";
+        assert(w.command(name).status==202);w.adapter.poll();
+        for(unsigned i=0;i<10&&!w.core.core.commands.pending;++i)w.head_tick();
+        assert(w.dispatch()&&w.core.core.state.program_id==unsigned(id));
+        api::Snapshot snapshot;assert(w.adapter.snapshot(snapshot).ok()&&!snapshot.recording);
+        RuntimeCommand start;start.id=RuntimeCommandId::Start;start.program_id=unsigned(id);
+        assert(w.core.post_runtime(start));w.core.core.state.id=CoreStateId::Running;
+        unsigned prompts=0;bool claimed=false,started=false;
+        for(unsigned i=0;i<180&&!started;++i){
+            const auto command=w.core.still.commands.pending?w.core.still.commands.value.id:StillCommandId::None;
+            assert(w.adapter.service_stage(CoreTickStage::PicoStill,++w.now));
+            if(command==StillCommandId::Scan){
+                assert(prompts>=5&&!claimed);still_response(w,"0000111100002222",true,false);claimed=true;
+            }else if(command==StillCommandId::Start){
+                const auto stack=w.core.runtime.stack.size();
+                assert(claimed&&w.core.still.state.id==PicoStillStateId::Starting);
+                assert(w.adapter.service_stage(CoreTickStage::Runtime,w.now)&&stack==w.core.runtime.stack.size());
+                still_response(w,"0000111100002222",true,true);
+                assert(w.core.still.state.id==PicoStillStateId::Running);started=true;break;
+            }
+            const auto op=w.core.runtime.state.instruction.opcode;
+            if(op==OpCode::WaitUser||op==OpCode::GetTemp){
+                RuntimeCommand answer;answer.id=op==OpCode::GetTemp?RuntimeCommandId::SetTemperature:RuntimeCommandId::Resume;
+                answer.temperature=52;assert(w.core.post_runtime(answer));++prompts;
+            }
+            assert(w.adapter.service_stage(CoreTickStage::Runtime,++w.now));
+            assert(!w.core.heater.state.started&&!w.pins[OriginalHeaterEnablePin]&&!w.pins[23]);
+            assert(!(w.core.msp_state.pumps&0x70u));
+        }
+        if(!started)std::fprintf(stderr,"id%u state%u op%u prompts%u claim%d assertion%u\n",unsigned(id),unsigned(w.core.runtime.state.id),unsigned(w.core.runtime.state.instruction.opcode),prompts,claimed,w.core.runtime.assertion_line);
+        assert(started);
+        assert(w.command("stop").ok()&&w.adapter.stopped());still_response(w,"",false,false);
+        assert(w.still_request.find("\"op\":\"stop\"")!=std::string::npos);
+    }
+}
+std::string owner_offer(unsigned id,const std::string& coffee=""){
+    return std::string(R"({"op":"offer","id":"1000000000000001","from":"Pico Z","action":"z_program","program_id":)")+
+           std::to_string(id)+coffee+"}";
+}
+void group_owner_programs(){
+    for(unsigned id:{2,3,4,5,6,7,26,27}){
+        World source,target;
+        if(id==7||id==26){
+            target.request(PICO_HTTP_POST,group_path,owner_offer(id).c_str(),409);
+            pair_still(source);pair_still(target);
+        }
+        assert(target.request(PICO_HTTP_GET,"/api/v1",nullptr,200).find("\"group_z_programs_v1\":true")!=std::string::npos);
+        CoreCommand begin;begin.id=CoreCommandId::StartProgram;begin.program_id=id;
+        assert(source.core.post(begin)&&source.dispatch());
+        const auto wire=source.request(PICO_HTTP_GET,group_path,nullptr,200);
+        assert(wire.find("\"action\":\"z_program\",\"program_id\":"+std::to_string(id)+",\"program_name\":")!=std::string::npos);
+        const auto pending=target.request(PICO_HTTP_POST,group_path,owner_offer(id).c_str(),200);
+        assert(pending.find("\"state\":\"pending\"")!=std::string::npos&&!target.core.core.commands.pending);
+        assert(target.core.core.state.id==CoreStateId::Idle&&!target.core.heater.state.started);
+        physical_group_button(target,1);assert(target.core.core.commands.pending&&target.dispatch());
+        assert(target.core.core.state.program_id==id&&target.core.core.state.id==CoreStateId::Starting);
+        assert(target.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"source\":null")!=std::string::npos);
+    }
+    for(unsigned id:{20,21,22,23}){
+        World source,target;
+        CoreCommand load;load.id=CoreCommandId::CoffeeProgramLoad;
+        auto& p=load.program_parameters;p.id=static_cast<ZProgramId>(id);
+        p.water={4.2,Unit::Gallon};p.temperature={92,Unit::Celsius};
+        p.time={900,Unit::Second};p.intensity={13,Unit::Intensity};
+        assert(source.core.post(load)&&source.dispatch());
+        CoreCommand start;start.id=CoreCommandId::StartProgram;start.program_id=24;
+        assert(source.core.post(start)&&source.dispatch());
+        double liters=0,degrees_f=0;
+        assert(quantity_in(p.water,Unit::Liter,liters)&&quantity_in(p.temperature,Unit::Fahrenheit,degrees_f));
+        char values[160];std::snprintf(values,sizeof values,",\"water_l\":%.17g,\"temperature_f\":%.17g,\"intensity\":13,\"time_seconds\":900",liters,degrees_f);
+        const auto source_group=source.request(PICO_HTTP_GET,group_path,nullptr,200);
+        assert(source_group.find(values)!=std::string::npos);
+        if(id==23){
+            assert(std::strlen(source.core.program.record().view.name)>=32);
+            source.engine.poll();const auto history=source.request(PICO_HTTP_GET,"/api/v1/history",nullptr,200);
+            assert(history.find("Custom ")!=std::string::npos&&history.find("15 min @197F")!=std::string::npos);
+        }
+        assert(source_group.find("\"program_id\":"+std::to_string(id)+",")!=std::string::npos);
+        const auto offer=owner_offer(id,values);
+        target.request(PICO_HTTP_POST,group_path,offer.c_str(),200);
+        std::string conflict=offer;conflict.replace(conflict.find("900"),3,"600");
+        target.request(PICO_HTTP_POST,group_path,conflict.c_str(),409);
+        physical_group_button(target,1);
+        assert(target.core.core.state.id==CoreStateId::Idle&&!target.core.core.commands.pending&&!target.core.heater.state.started);
+        assert(target.head.numeric.state.parameters.water.value==liters&&target.head.numeric.state.parameters.temperature.value==degrees_f);
+        const auto& a=source.core.program.record().view;const auto& b=target.core.program.record().view;
+        assert(a.code_size==b.code_size);
+        for(unsigned i=0;i<a.code_size;++i)assert(a.code[i].opcode==b.code[i].opcode&&a.code[i].argument==b.code[i].argument);
+        target.head_tick();assert(target.head.screens.menu_data.items[0].event.command==UiCommand::StartLoadedProgram);
+        physical_group_button(target,0);assert(target.dispatch());
+        assert(target.core.core.state.id==CoreStateId::Starting&&target.core.core.state.program_id==24);
+        assert(target.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"source\":null")!=std::string::npos);
+    }
+}
+void group_owner_validation(){
+    World w;
+    for(unsigned id:{0,1,8,9,10,11,12,13,14,15,16,17,18,19,24,25,28,255})
+        w.request(PICO_HTTP_POST,group_path,owner_offer(id).c_str(),400);
+    const std::string valid=R"(,"water_l":15.5,"temperature_f":195,"intensity":7,"time_seconds":420)";
+    for(const std::pair<std::string,std::string>& edit:std::vector<std::pair<std::string,std::string>>{
+        {"15.5","16.1"},{"195","201"},{"7,","0,"},{"420","121"},{"420","0"},{"420","5401"}}){
+        auto fields=valid;fields.replace(fields.find(edit.first),edit.first.size(),edit.second);
+        w.request(PICO_HTTP_POST,group_path,owner_offer(23,fields).c_str(),400);
+    }
+    w.request(PICO_HTTP_POST,group_path,owner_offer(23).c_str(),400);
+    w.request(PICO_HTTP_POST,group_path,owner_offer(3,valid).c_str(),400);
+    w.request(PICO_HTTP_POST,group_path,owner_offer(3,R"(,"program_name":"spoof")").c_str(),400);
+    w.request(PICO_HTTP_POST,group_path,owner_offer(3,R"(,"recipe_id":"native")").c_str(),400);
+    assert(w.core.core.state.id==CoreStateId::Idle&&!w.core.core.commands.pending);
+    World occupied;occupied.request(PICO_HTTP_POST,group_path,owner_offer(20,valid).c_str(),200);
+    CoreEvent boot;boot.type=CoreEventType::StateTransition;assert(occupied.head.core_events.put(boot));
+    occupied.request(PICO_HTTP_POST,group_path,accept_rinse,409);
+    assert(!occupied.core.core.commands.pending);
+    occupied.head.core_events.pending=false;physical_group_button(occupied,1);occupied.head_tick();
+    assert(occupied.head.screens.menu_data.items[0].event.command==UiCommand::StartLoadedProgram);
+    for(bool missing:{false,true}){
+        World review;review.request(PICO_HTTP_POST,group_path,owner_offer(23,valid).c_str(),200);physical_group_button(review,1);review.head_tick();
+        if(missing){
+            review.core.safeties.filter_missing=true;physical_group_button(review,0);assert(review.dispatch());
+            assert(review.core.core.state.id==CoreStateId::Idle&&!review.core.heater.state.started);
+        }else{
+            physical_group_button(review,1);assert(review.core.core.state.id==CoreStateId::Idle&&!review.core.core.commands.pending);
+            CoreCommand own;own.id=CoreCommandId::StartProgram;own.program_id=2;assert(review.core.post(own)&&review.dispatch());
+            assert(review.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"program_id\":2,")!=std::string::npos);
+        }
+    }
+}
+void group_routines() {
+    for (const auto id : {ZProgramId::Rinse,ZProgramId::Clean}) {
+        World source,target;
+        CoreCommand command;command.id=CoreCommandId::StartProgram;command.program_id=static_cast<unsigned>(id);
+        assert(source.core.post(command) && source.dispatch());
+        const char* name=id==ZProgramId::Rinse?"rinse":"clean";
+        assert(source.request(PICO_HTTP_GET,group_path,nullptr,200).find(std::string("\"action\":\"")+name+"\"")!=std::string::npos);
+        std::string offer=rinse_invite;offer.replace(offer.find("rinse"),5,name);
+        target.request(PICO_HTTP_POST,group_path,offer.c_str(),200);
+        target.request(PICO_HTTP_POST,group_path,accept_rinse,200);
+        assert(target.dispatch() && target.core.core.state.program_id==static_cast<unsigned>(id));
+        assert(target.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"source\":null")!=std::string::npos);
+    }
+    World z;
+    auto r=recipe();r.z_program=true;r.steps[0].z.has_time=true;r.steps[0].z.target_c=65.5;r.steps[0].z.seconds=73;
+    r.steps[1].z.pause=true;r.steps[1].location=0;
+    assert(z.engine.recipe_store(r).ok());
+    auto offer=group_recipe_offer(z.engine.recipe_revision());
+    z.request(PICO_HTTP_POST,group_path,offer.c_str(),200);
+    z.request(PICO_HTTP_POST,group_path,R"({"op":"accept","id":"1000000000000002"})",200);
+    assert(z.dispatch() && z.core.core.state.program_id==24);
+    zseries::standalone::BrewRecovery checkpoint;assert(checkpoint.load(z.storage()).ok() && checkpoint.present());
+    assert(checkpoint.recipe().z_program && checkpoint.recipe().steps[0].z.seconds==73 && checkpoint.recipe().steps[1].z.pause);
+}
+void group_interlocks() {
+    World w;
+    assert(w.engine.recipe_store(recipe()).ok());
+    // Source labels and commands cannot be supplied as executable programs.
+    w.request(PICO_HTTP_POST,group_path,R"({"op":"offer","id":"1000000000000000","from":"Other","action":"stop"})",400);
+    w.request(PICO_HTTP_POST,group_path,R"({"op":"offer","id":"1000000000000000","from":"Other","action":"rinse","action":"clean"})",400);
+    const auto old=group_recipe_offer(w.engine.recipe_revision()+1);
+    w.request(PICO_HTTP_POST,group_path,old.c_str(),409);
+    w.adapter.stop("requested");w.request(PICO_HTTP_POST,group_path,rinse_invite,409);w.core.runtime_commands.pending=false;
+    assert(w.command("clear-stop").ok());
+    w.core.msp_state.errors=1;w.request(PICO_HTTP_POST,group_path,rinse_invite,409);w.core.msp_state.errors=0;
+    auto staged=group_recipe_offer(w.engine.recipe_revision());
+    w.request(PICO_HTTP_POST,group_path,staged.c_str(),200);
+    auto replacement=recipe();std::strcpy(replacement.name,"Different");assert(w.engine.recipe_store(replacement).status==409);
+    w.request(PICO_HTTP_POST,group_path,R"({"op":"withdraw","id":"1000000000000002"})",200);
+    assert(w.engine.recipe_store(replacement).ok());
+    w.request(PICO_HTTP_POST,group_path,group_recipe_offer(w.engine.recipe_revision()-1,"1000000000000004").c_str(),409);
+    assert(!w.core.core.commands.pending);
+    w.request(PICO_HTTP_POST,group_path,rinse_invite,200);
+    w.core.safeties.filter_missing=true;w.request(PICO_HTTP_POST,group_path,accept_rinse,409);
+    w.core.safeties.filter_missing=false;
+    api::Command click;std::strcpy(click.name,"encoder");click.click=true;assert(w.adapter.execute(click).status==409);
+    const auto first=w.now;w.now+=119000;w.request(PICO_HTTP_POST,group_path,rinse_invite,200);
+    w.now=first+120000;w.adapter.poll();w.request(PICO_HTTP_POST,group_path,accept_rinse,409);
+    assert(w.request(PICO_HTTP_POST,group_path,rinse_invite,200).find("\"expired\"")!=std::string::npos);
+    assert(!w.core.core.commands.pending);
+    World short_offer;
+    short_offer.now=UINT32_MAX-20;
+    short_offer.request(PICO_HTTP_POST,group_path,R"({"op":"offer","id":"1000000000000001","from":"Kitchen","action":"rinse","ttl_ms":30})",200);
+    short_offer.now+=25;
+    short_offer.request(PICO_HTTP_POST,group_path,R"({"op":"offer","id":"1000000000000001","from":"Kitchen","action":"rinse","ttl_ms":120000})",200);
+    short_offer.now+=5;
+    short_offer.request(PICO_HTTP_POST,group_path,accept_rinse,409);
+    assert(short_offer.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"expired\"")!=std::string::npos && !short_offer.core.core.commands.pending);
+    World withdraw;
+    withdraw.request(PICO_HTTP_POST,group_path,rinse_invite,200);
+    withdraw.request(PICO_HTTP_POST,group_path,R"({"op":"withdraw","id":"1000000000000001"})",200);
+    withdraw.request(PICO_HTTP_POST,group_path,accept_rinse,409);
+    assert(!withdraw.core.core.commands.pending);
+    World auth;
+    PicoHttpRequest req{};req.method=PICO_HTTP_POST;std::strcpy(req.path,group_path);
+    req.body=rinse_invite;req.body_length=std::strlen(rinse_invite);PicoHttpResponse res{};char out[512];
+    assert(auth.adapter.group_http(req,res,out,sizeof out) && res.status==503);
+    req.auth_configured=true;
+    assert(auth.adapter.group_http(req,res,out,sizeof out) && res.status==401);
+    assert(auth.request(PICO_HTTP_GET,group_path,nullptr,200)=="{\"source\":null,\"invite\":null}");
+    World fault;fault.request(PICO_HTTP_POST,group_path,rinse_invite,200);fault.request(PICO_HTTP_POST,group_path,accept_rinse,200);
+    fault.core.safeties.filter_missing=true;assert(fault.dispatch() && fault.core.core.state.id==CoreStateId::Idle);
+    assert(fault.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"unavailable\"")!=std::string::npos);
+}
+}
+int main(int argc,char** argv){if(argc==4&&!std::strcmp(argv[1],"original-z")){for(double boil:{100.,93.})compare_archived_program(test_file(argv[2]),test_file(argv[3]),false,boil);return 0;}
+    if(argc==3&&!std::strcmp(argv[1],"pak-corpus")){compare_pak_corpus(argv[2]);return 0;}assert(argc==2);const std::string test=argv[1];
+    if(test=="group-owner")group_owner_programs();else if(test=="group-owner-invalid")group_owner_validation();else if(test=="kit-dial")kit_strength_on_dial();else if(test=="still-programs")still_native_programs();else if(test=="still-pairing")still_pairing();else if(test=="still-session")still_session();else if(test=="pak-input")reject_pak_changes();else if(test=="group-brew")group_brew();else if(test=="group-routines")group_routines();else if(test=="group-interlocks")group_interlocks();
+    else if(test=="maker")maker_program();else if(test=="recipe")owned_recipe();else if(test=="storage")storage_preflight();else if(test=="unheated")no_target();
     else if(test=="stop")stop_guard();else if(test=="input")input_order();else if(test=="offline")offline_and_reservation();
     else if(test=="settings")settings_and_display();else if(test=="status")status_fields();
-    else if(test=="recovery")recovery_restart();else if(test=="recovery-pause")recovery_unheated_and_pause();
+    else if(test=="session-controls")dedicated_session_controls();else if(test=="recovery")recovery_restart();else if(test=="recovery-pause")recovery_unheated_and_pause();
     else if(test=="recovery-corrupt")recovery_corruption_and_discard();else if(test=="recovery-end")recovery_failure_and_terminal_state();
     else if(test=="sensor-fault")sensor_fault_cutoff();else if(test=="coffee-buffer")buffered_coffee();
     else if(test=="recipe-menu")recipe_menu_and_retired_manual_command();else if(test=="standby-start")standby_remote_start();else if(test=="step-indices")recipe_step_indices();
-    else if(test=="wifi-picker")stable_wifi_picker_and_local_lease();
+    else if(test=="wired-network")wired_interface_selection();
+    else if(test=="sous-vide")sous_vide_programs();else if(test=="native-state")original_native_state();else if(test=="wifi-picker")stable_wifi_picker_and_local_lease();
     else if(test=="pairing")physical_pairing();
     else if(test=="network-menus")native_network_menus();else if(test=="recovery-rejected")rejected_resume_retains_checkpoint();
     else if(test=="recovery-preflight")recovery_preflight_has_no_diagnostics();else return 2;

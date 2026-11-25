@@ -355,7 +355,9 @@ test('community catalog preserves source schedules through copy, bulk transfer a
     expect(recipeID).toBeTruthy()
     await expect(page.getByLabel('Batch size (L)', { exact: true })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Add grain', exact: true })).toHaveCount(0)
-    await expect(page.getByLabel('Step 1 hold (min)', { exact: true })).toHaveValue('0')
+    await expect(page.getByRole('heading', { name: 'Z PicoPak adapter' })).toBeVisible()
+    await expect(page.getByRole('cell', { name: 'Reach target', exact: true }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Edit as a standard Pico program' })).toBeVisible()
     await page
       .getByLabel('Program notes', { exact: true })
       .fill('Copied source schedule, reviewed in browser.')
@@ -386,7 +388,11 @@ test('community catalog preserves source schedules through copy, bulk transfer a
     const after = await (await request.get(`/api/v1/devices/${deviceID}/recipes`)).json()
     expect(
       after.recipes.find((program: { id: string }) => program.id === original.native_program.id)
-    ).toEqual(original.native_program)
+    ).toEqual({
+      id: original.native_program.id,
+      name: original.native_program.name,
+      steps: original.native_program.steps,
+    })
     for (const existing of before.recipes) expect(after.recipes).toContainEqual(existing)
     const device = await (await request.get(`/api/v1/devices/${deviceID}`)).json()
     expect(device.status.busy).toBe(false)

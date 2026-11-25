@@ -40,7 +40,8 @@ def main():
                     for name,fields in {'brew':['recipe_id'],'encoder':['delta','click'],'calibrate':['confirm'],'resume-interrupted':['confirm'],'set-sampling-interval':['value'],'set-pump':['enabled'],'set-fan':['channel','level','enabled']}.items():
                         if name in descriptors: descriptors[name]={'allowed':fields,'required':[] if name=='encoder' else fields[:2] if name=='set-fan' else fields}
                     info = {'api_version':1,'mode':'standalone','model':model,'model_name':{'z-series':'Pico Z','picoferm':'PicoFerm','picostill':'PicoStill'}[model],'model_family':model,'firmware_version':'1.2.0-fixture','commands':allowed,'command_fields':descriptors,'settings_fields':['temperature_unit','language','detailed_status'] if brewing else ['temperature_unit'],'recipe_capacity':16 if brewing else 0,'step_capacity':15 if brewing else 0,'front_panel':brewing,'telemetry_forwarding':True,'capabilities':{'recipes':brewing,'brewing':brewing,'heating':brewing,'front_panel':brewing,'temperature':True,'pressure':not brewing,'battery':model=='picoferm','fermentation':model=='picoferm','pump':model!='picoferm','fans':model=='picostill'}}
-                    info['z_program_maker']=brewing
+                    info['z_program_maker']=brewing;info['z_state_v1']=brewing
+                    info['z_picopak_v1']=brewing;info['z_cloud_program_v1']=brewing;info['group_brewing_v1']=brewing
                     info['zero_minute_steps']=brewing
                     info['history_sample_interval_ms']=720000 if model=='picoferm' else 15000
                     saved_recipes={}
@@ -56,6 +57,7 @@ def main():
                     hub_launch=width==390
                     ticket="43"*32 if hub_launch else None
                     claims=0
+                    invite={'id':'0123456789abcdef','state':'pending','action':'brew','recipe_id':'kit','selected_abv':0,'selected_ibu':8,'from':'Test brewer'}
                     def route_api(route):
                         nonlocal ticket,claims
                         request=route.request;path=request.url.split('/api/v1',1)[1];requests.append((request.method,path))
@@ -77,6 +79,11 @@ def main():
                             else:result={'api_key':KEY};ticket=None
                         elif path=='': result=info
                         elif path=='/status':result=status
+                        elif path=='/group-brew' and brewing:
+                            if request.method=='POST':
+                                assert request.post_data_json=={'op':'decline','id':invite['id']}
+                                invite['state']='declined'
+                            result={'source':None,'invite':invite if not status['recovery']['available'] and status['recovery']['valid'] else None}
                         elif path=='/settings':result={'temperature_unit':'F','language':'en','detailed_status':False} if brewing else {'temperature_unit':'F'}
                         elif path=='/recipes':
                             result={'capacity':16,'recipes':[{'id':key,'name':program['Name'],'steps':len(program['Steps'])} for key,program in saved_recipes.items()]}
@@ -85,8 +92,11 @@ def main():
                             if request.method=='PUT':
                                 payload=request.post_data_json
                                 assert payload.get('create_only') == (True if key not in saved_recipes else None)
+                                assert 'revision' not in payload
+                                assert payload.get('if_revision') == (1 if key in saved_recipes else None)
                                 saved_recipes[key]=payload['z_program']
-                            result={'id':key,'z_program':saved_recipes[key]}
+                            result={'id':key,'revision':1,'z_program':saved_recipes[key]}
+                        elif path=='/z/state' and brewing:result={'WortTemp':20.0,'Location':1,'PauseReason':0}
                         elif path=='/telemetry':result={'enabled':False,'host':'','port':8080,'status':{'state':'disabled'}}
                         elif path=='/commands':
                             body=request.post_data_json;commands.append(body);result={'accepted':True,'command':body['command']};code=202
@@ -178,6 +188,21 @@ def main():
                         expect(page.locator('#recoveryPanel')).to_be_hidden()
                         assert commands[-1]=={'command':'discard-interrupted'}
                         expect(page.locator('#runProgram')).to_be_enabled()
+                        expect(page.locator('#groupDetail')).to_contain_text('Test brewer')
+                        expect(page.locator('#groupDetail')).to_contain_text('Strength 0/10 · Bitterness 8/10')
+                        assert ('POST','/group-brew') not in requests
+                        page.locator('#declineGroup').click()
+                        expect(page.locator('#groupInvite')).to_be_hidden()
+                        invite.clear()
+                        invite.update(id='cab0000000000022',state='pending',action='z_program',program_id=22,
+                                      program_name='Hot coffee',water_l=3.78541,temperature_f=176,intensity=9,time_seconds=1200)
+                        invite['from']='Z stack'
+                        expect(page.locator('#groupDetail')).to_contain_text('Hot coffee',timeout=10000)
+                        expect(page.locator('#groupDetail')).to_contain_text('20 min · Intensity 9/15')
+                        expect(page.locator('#joinGroup')).to_have_text('Review on brewer')
+                        assert requests.count(('POST','/group-brew'))==1
+                        page.locator('#declineGroup').click()
+                        expect(page.locator('#groupInvite')).to_be_hidden()
                         page.locator('[data-tab="recipes"]').click()
                         page.locator('#newRecipe').click()
                         expect(page.locator('#zProgramOptions')).to_be_visible()
@@ -226,7 +251,7 @@ def main():
                             expect(page.locator('#notice')).to_contain_text(re.compile('unsupported|repeated|conflicting'))
                             expect(page.locator('#recipeName')).to_have_value(original['Name'])
                         page.once('dialog',lambda d:d.accept())
-                        import_wire(json.dumps({'id':'native-id','z_program':original}))
+                        import_wire(json.dumps({'id':'native-id','revision':42,'z_program':original}))
                         expect(page.locator('#recipeId')).to_have_value('native-id')
                         page.locator('#saveRecipe').click()
                         expect(page.locator('#notice')).to_contain_text('Recipe saved')
@@ -240,6 +265,36 @@ def main():
                             page.locator('#exportRecipe').click()
                         exported=json.loads(native_download.value.path().read_text())
                         assert exported['steps']==[dict(base_step,target_f=0,minutes=0,drain_minutes=0)]
+                        cloud={'id':'archive','name':'Archived Z recipe','z_cloud':{'start_water_ml':13100,'is_beer':True},
+                               'steps':[dict(base_step,location=0,drain_minutes=2),dict(base_step,name='Connect chiller',location=6,minutes=0,drain_minutes=0),
+                                        dict(base_step,name='Chill',location=0,target_f=54,minutes=0,drain_minutes=0)]}
+                        page.once('dialog',lambda d:d.accept())
+                        import_wire(json.dumps(cloud))
+                        expect(page.locator('#cloudWater')).to_have_value('13.1')
+                        expect(page.locator('#steps select').first.locator('option:checked')).to_have_text('Keg circulation')
+                        expect(page.locator('#steps tr').nth(1).locator('[data-field=target_f]')).to_be_disabled()
+                        with page.expect_download() as captured:
+                            page.locator('#exportRecipe').click()
+                        assert json.loads(captured.value.path().read_text())==cloud
+                        page.locator('#cloudWater').fill('17')
+                        assert not page.locator('#cloudWater').evaluate('(e)=>e.checkValidity()')
+                        kit_step={'Name':'Mash','Action':0,'Location':2,'Temp':152,'Time':20,'Drain':2,'MinTime':25,'MaxTime':15}
+                        kit={'PicoRecipeID':1,'PicoBeerID':47,'Name':'Original kit','Abv':5,'Ibu':6,'Steps':[kit_step]}
+                        for step in [{k:v for k,v in kit_step.items() if k!='Drain'},dict(kit_step,Temp=55)]:
+                            import_wire(json.dumps(dict(kit,Steps=[step])))
+                            expect(page.locator('#notice')).to_contain_text('unsupported')
+                        page.once('dialog',lambda d:d.accept())
+                        import_wire(json.dumps(kit))
+                        expect(page.locator('#kitStrength')).to_be_visible()
+                        expect(page.locator('#kitBitterness')).to_be_hidden()
+                        expect(page.locator('#steps select').first).to_be_disabled()
+                        page.locator('#kitStrength').select_option('8')
+                        with page.expect_download() as adapter_download:
+                            page.locator('#exportRecipe').click()
+                        adapter=json.loads(adapter_download.value.path().read_text())
+                        assert adapter['z_pak']=={'recipe_id':1,'beer_id':47,'abv':5,'ibu':6,'selected_abv':8,
+                                                 'step_options':[{'action':0,'min_time':25,'max_time':15}]}
+                        assert adapter['steps']==[dict(base_step,minutes=20,drain_minutes=2)]
                         page.locator('[data-tab="overview"]').click()
                         status['ready']=False
                         expect(page.locator('#runProgram')).to_be_disabled()
@@ -252,9 +307,15 @@ def main():
                         expect(pause_button).to_be_disabled()
                         expect(resume_button).to_be_disabled()
                         status['state']='Running'
+                        expect(pause_button).to_be_disabled()
+                        expect(resume_button).to_be_disabled()
+                        status.update(can_pause=True,can_resume=False)
                         expect(pause_button).to_be_enabled()
+                        expect(resume_button).to_be_disabled()
+                        status.update(can_pause=False,can_resume=True)
                         expect(resume_button).to_be_enabled()
-                        status['state']='Stopping'
+                        expect(pause_button).to_be_disabled()
+                        status.update(state='Stopping',can_pause=False,can_resume=False)
                         expect(pause_button).to_be_disabled()
                         expect(resume_button).to_be_disabled()
                     else:
@@ -335,6 +396,21 @@ def main():
                     options=page.locator('#apiEndpoint option').all_text_contents()
                     assert any('/display/{offset}' in option for option in options)==brewing
                     if not brewing:assert not any('/recipes' in option or '/display' in option for option in options)
+                    page.locator('[data-tab="history"]').click()
+                    if brewing:
+                        page.locator('#captureToggle').click()
+                        expect(page.locator('#captureSummary')).to_contain_text(re.compile(r'[1-9] sample'))
+                        page.locator('#captureToggle').click()
+                        with page.expect_download() as capture:
+                            page.locator('#captureDownload').click()
+                        capture_file=json.loads(Path(capture.value.path()).read_text())
+                        assert capture_file['device_uid']=='fixture-device' and capture_file['interval_seconds']==5
+                        assert capture_file['samples'][0]['status']['device_uid']=='fixture-device'
+                        assert capture_file['samples'][0]['captured_at'].endswith('Z')
+                        assert capture_file['samples'][0]['native']['Location']==1
+                        assert 'GET /api/v1/z/state' in options
+                    else:
+                        expect(page.locator('#statusCapture')).to_be_hidden()
                     assert not errors, errors
                     checks.append({'model':model,'viewport':width,'requests':len(requests),'commands':commands,'errors':errors})
                     context.close()

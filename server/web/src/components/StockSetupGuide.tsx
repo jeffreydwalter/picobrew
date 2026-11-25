@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { RefreshCw, Usb } from 'lucide-react'
 import { useHub } from '../context'
+import type { MachineRecipe } from '../types'
 import { api, errorMessage } from '../lib/api'
 import { Button, ErrorBanner, Field, Loading, Modal } from './ui'
 import { usbLabel, usbModels, type USBAction } from './USBInstructions'
@@ -20,6 +21,7 @@ interface Job {
   confirmation?: string
   device_id?: string
   pairing_ready?: boolean
+  offline_program?: { id: string }
 }
 interface Discovery {
   available: boolean
@@ -36,23 +38,27 @@ const active = (job: Job) => job.state === 'running' || job.state === 'waiting'
 
 export function StockSetupGuide({
   onClose,
-  model: lockedModel,
+  model: restoreModel,
+  program,
   display: initialDisplay,
   deviceID,
 }: {
   onClose: () => void
   model?: string
+  program?: MachineRecipe
   display?: string
   deviceID?: string
 }) {
   const hub = useHub()
+  const lockedModel = program ? 'zymatic' : restoreModel
+  const [file, setFile] = useState<File>()
   const [discovery, setDiscovery] = useState<Discovery>()
   const [refresh, setRefresh] = useState(0)
   const [reading, setReading] = useState(true)
   const [port, setPort] = useState('')
   const [model, setModel] = useState(lockedModel || '')
   const [display, setDisplay] = useState(initialDisplay || '')
-  const [action, setAction] = useState<USBAction>(lockedModel ? 'restore' : 'install')
+  const [action, setAction] = useState<USBAction>(restoreModel ? 'restore' : 'install')
   const [job, setJob] = useState<Job>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -60,6 +66,7 @@ export function StockSetupGuide({
   useEffect(() => {
     const controller = new AbortController()
     setReading(true)
+    setFile(undefined)
     setError('')
     api<Discovery>('/usb/devices', { signal: controller.signal })
       .then((result) => {
@@ -78,7 +85,7 @@ export function StockSetupGuide({
         if (
           result.job &&
           result.job.id !== dismissed.current &&
-          (active(result.job) || !deviceID || result.job.device_id === deviceID)
+          (active(result.job) || (!program && (!deviceID || result.job.device_id === deviceID)))
         )
           setJob(result.job)
       })
@@ -89,7 +96,7 @@ export function StockSetupGuide({
         if (!controller.signal.aborted) setReading(false)
       })
     return () => controller.abort()
-  }, [refresh, lockedModel, deviceID])
+  }, [refresh, lockedModel, deviceID, program])
   useEffect(() => {
     if (!job || !active(job) || busy) return
     const controller = new AbortController()
@@ -129,31 +136,65 @@ export function StockSetupGuide({
     setBusy(true)
     setError('')
     try {
-      setJob(await api<Job>(path, { method: 'POST', body }))
+      const data = typeof body === 'function' ? await body() : body
+      setJob(await api<Job>(path, { method: 'POST', body: data }))
     } catch (e) {
       setError(errorMessage(e))
     } finally {
       setBusy(false)
     }
   }
-  const start = () =>
-    change('/usb/jobs', {
+  async function installationInput() {
+    let offlineProgram: unknown
+    if (selectedModel === 'zymatic' && action === 'install') {
+      if (program) offlineProgram = { ...program, model: 'zymatic' }
+      else if (file) {
+        if (file.size > 65536) throw new Error('Choose a Zymatic program JSON file under 64 KiB.')
+        try {
+          offlineProgram = JSON.parse(await file.text())
+        } catch {
+          throw new Error('Choose a readable Zymatic offline program JSON file.')
+        }
+        if (
+          !offlineProgram ||
+          typeof offlineProgram !== 'object' ||
+          !('model' in offlineProgram) ||
+          offlineProgram.model !== 'zymatic'
+        )
+          throw new Error('Choose an offline program exported for the Zymatic.')
+      }
+    }
+    return {
       action,
       model: selectedModel,
       port,
       ...(selectedModel === 'pico-c' ? { display } : {}),
       ...(deviceID ? { device_id: deviceID } : {}),
-    })
-  const anotherDevice = Boolean(deviceID && job && job.device_id !== deviceID)
+      ...(offlineProgram ? { offline_program: offlineProgram } : {}),
+    }
+  }
+  const start = () => change('/usb/jobs', installationInput)
+  const anotherDevice = Boolean(
+    job &&
+    ((deviceID && job.device_id !== deviceID) ||
+      (program &&
+        (job.action !== 'install' ||
+          job.model !== 'zymatic' ||
+          job.offline_program?.id !== program.id)))
+  )
   const paired =
     !anotherDevice && job?.state === 'complete' && job.action === 'install' && job.pairing_ready
   return (
     <Modal
-      title={lockedModel ? 'Restore original firmware' : 'USB setup and recovery'}
+      title={restoreModel ? 'Restore original firmware' : 'USB setup and recovery'}
       onClose={onClose}
       actions={
         <Button variant="secondary" onClick={onClose}>
-          {lockedModel ? 'Back to machine firmware' : 'Back to Add machine'}
+          {program
+            ? 'Back to recipe preview'
+            : restoreModel
+              ? 'Back to machine firmware'
+              : 'Back to Add machine'}
         </Button>
       }
     >
@@ -226,6 +267,7 @@ export function StockSetupGuide({
                 onChange={(e) => {
                   setPort(e.target.value)
                   setModel(lockedModel || '')
+                  setFile(undefined)
                 }}
               >
                 <option value="">Choose a connection</option>
@@ -255,6 +297,7 @@ export function StockSetupGuide({
                     onChange={(e) => {
                       setModel(e.target.value)
                       setDisplay('')
+                      setFile(undefined)
                     }}
                   >
                     <option value="">Choose your machine</option>
@@ -277,7 +320,13 @@ export function StockSetupGuide({
               )}
               {!lockedModel && selectedModel && (
                 <Field label="USB operation">
-                  <select value={action} onChange={(e) => setAction(e.target.value as USBAction)}>
+                  <select
+                    value={action}
+                    onChange={(e) => {
+                      setAction(e.target.value as USBAction)
+                      setFile(undefined)
+                    }}
+                  >
                     {Object.entries(actions).map(([key, label]) => (
                       <option value={key} key={key}>
                         {label}
@@ -286,6 +335,24 @@ export function StockSetupGuide({
                   </select>
                 </Field>
               )}
+              {selectedModel === 'zymatic' &&
+                action === 'install' &&
+                (program ? (
+                  <p>
+                    Offline recipe: <strong>{program.name}</strong>
+                  </p>
+                ) : (
+                  <Field
+                    label="Offline recipe (optional)"
+                    hint="Choose a Zymatic program exported from Recipes. Leave empty to keep the installed recipe or use American Brown Ale on first setup."
+                  >
+                    <input
+                      type="file"
+                      accept=".json,application/json"
+                      onChange={(e) => setFile(e.target.files?.[0])}
+                    />
+                  </Field>
+                ))}
               {selectedModel && (
                 <p className="help-text">
                   {action === 'restore'

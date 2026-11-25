@@ -118,7 +118,7 @@ func TestRecipeWriteReadbackAndSerialization(t *testing.T) {
 		}
 	})
 	writeDone, readDone := make(chan error, 1), make(chan error, 1)
-	go func() { writeDone <- p.PutRecipe(context.Background(), recipe) }()
+	go func() { writeDone <- p.PutRecipe(context.Background(), recipe, nil) }()
 	<-entered
 	go func() { _, err := p.Status(context.Background()); readDone <- err }()
 	close(release)
@@ -144,7 +144,7 @@ func TestRecipeReadbackMismatchIsUnknown(t *testing.T) {
 		other.Steps[0].Minutes++
 		replyJSON(w, 200, other)
 	})
-	err := deviceFailure(t, p.PutRecipe(context.Background(), nativeRecipe()))
+	err := deviceFailure(t, p.PutRecipe(context.Background(), nativeRecipe(), nil))
 	if !err.UnknownOutcome || err.Code != "verification_failed" {
 		t.Fatalf("incorrect verification result: %+v", err)
 	}
@@ -201,7 +201,7 @@ func TestDefiniteRejectionAndUnknownOutcomeNeverRetry(t *testing.T) {
 			connection, _, _ := w.(http.Hijacker).Hijack()
 			_ = connection.Close()
 		})
-		err := deviceFailure(t, p.DeleteRecipe(context.Background(), "Ale_01"))
+		err := deviceFailure(t, p.DeleteRecipe(context.Background(), "Ale_01", nil))
 		if !err.UnknownOutcome || calls.Load() != 1 {
 			t.Fatalf("lost mutation result was retried or treated as certain: %+v", err)
 		}
@@ -305,10 +305,10 @@ func TestRecipeInventoryAndDelete(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(recipes, []domain.MachineRecipe{nativeRecipe()}) {
 		t.Fatalf("recipe inventory: %+v %v", recipes, err)
 	}
-	if err := p.DeleteRecipe(context.Background(), "Ale_01"); err != nil {
+	if err := p.DeleteRecipe(context.Background(), "Ale_01", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.DeleteRecipe(context.Background(), "../other"); err == nil {
+	if err := p.DeleteRecipe(context.Background(), "../other", nil); err == nil {
 		t.Fatal("accepted path traversal")
 	}
 	want := []string{"GET /api/v1/recipes", "GET /api/v1/recipes/Ale_01", "DELETE /api/v1/recipes/Ale_01"}
@@ -582,5 +582,124 @@ func TestMaintenanceStatusFromFirmware(t *testing.T) {
 				t.Fatalf("maintenance = %#v, error = %v", status.Maintenance, err)
 			}
 		})
+	}
+}
+
+func TestReviewedRecipeChecksTheRevisionReadWithItsContents(t *testing.T) {
+	for _, method := range []string{http.MethodPut, http.MethodDelete} {
+		for _, tc := range []struct {
+			name                                        string
+			revision                                    uint32
+			changedBeforeRead, changedAfterRead, legacy bool
+			wantCode                                    string
+			wantWrites                                  int
+		}{
+			{"current", 43, false, false, false, "", 1},
+			{"other client already saved", 44, true, false, false, "recipe_changed", 0},
+			{"other client saved during write", 43, false, true, false, "recipe_changed", 1},
+			{"advertised but missing revision", 0, false, false, false, "invalid_response", 0},
+			{"older firmware", 0, false, false, true, "", 1},
+		} {
+			t.Run(method+"/"+tc.name, func(t *testing.T) {
+				original := nativeRecipe()
+				revised := original
+				revised.Name = "Reviewed change"
+				installed := original
+				if tc.changedBeforeRead {
+					installed.Name = "Other edit"
+				}
+				writes := 0
+				p := testPico(t, func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == "/api/v1" {
+						replyJSON(w, 200, map[string]any{"api_version": 1, "mode": "standalone", "recipe_capacity": 16, "recipe_conditional_write": !tc.legacy})
+						return
+					}
+					if r.Method == http.MethodGet {
+						replyJSON(w, 200, recipeSlot{installed, tc.revision})
+						return
+					}
+					writes++
+					if r.Method != method {
+						t.Errorf("unexpected method %s", r.Method)
+					}
+					var fields map[string]json.RawMessage
+					if r.ContentLength != 0 {
+						if err := json.NewDecoder(r.Body).Decode(&fields); err != nil {
+							t.Error(err)
+						}
+					}
+					if tc.legacy {
+						if fields["if_revision"] != nil {
+							t.Error("sent conditional write to legacy firmware")
+						}
+					} else if string(fields["if_revision"]) != "43" {
+						t.Errorf("wrong revision on write: %s", fields["if_revision"])
+					}
+					if tc.changedAfterRead {
+						replyJSON(w, 409, map[string]string{"error": "recipe_changed", "message": "Catalog changed"})
+						return
+					}
+					if method == http.MethodDelete {
+						w.WriteHeader(204)
+						return
+					}
+					installed = revised
+					replyJSON(w, 200, installed)
+				})
+				var err error
+				if method == http.MethodDelete {
+					err = p.DeleteRecipe(context.Background(), original.ID, &original)
+				} else {
+					err = p.PutRecipe(context.Background(), revised, &original)
+				}
+				if tc.wantCode == "" {
+					if err != nil {
+						t.Fatal(err)
+					}
+				} else if failure := deviceFailure(t, err); failure.Code != tc.wantCode || failure.UnknownOutcome {
+					t.Fatal(failure)
+				}
+				if writes != tc.wantWrites {
+					t.Errorf("sent %d writes, want %d", writes, tc.wantWrites)
+				}
+			})
+		}
+	}
+}
+
+func TestZNativeWriteRequiresConfirmedFormatAndMatchingReadback(t *testing.T) {
+	cloud := domain.MachineRecipe{ID: "archived", Name: "Archive", ZCloud: &domain.ZCloudProgram{StartWaterML: 13170, IsBeer: true},
+		Steps: []domain.MachineStep{{Name: "Pass through", TargetF: 152, Location: 0, Minutes: 4}, {Name: "Connect chiller", Location: 6, TargetF: 68}, {Name: "Chill", Location: 0, TargetF: 50, Minutes: 5}}}
+	minTime, maxTime, selected := 25, 15, 8
+	kit := domain.MachineRecipe{ID: "original", Name: "Original kit", Steps: []domain.MachineStep{{Name: "Mash", Location: 2, TargetF: 152, Minutes: 20}}, ZPak: &domain.ZPicoPak{RecipeID: 1, BeerID: 47, ABV: 5, IBU: 6, SelectedABV: &selected, StepOptions: []domain.ZPakStep{{MinTime: &minTime, MaxTime: &maxTime}}}}
+	mixed := kit
+	mixed.ZCloud = cloud.ZCloud
+	if validateRecipe(mixed) == nil {
+		t.Fatal("multiple program formats accepted")
+	}
+	for capability, r := range map[string]domain.MachineRecipe{"z_cloud_program_v1": cloud, "z_picopak_v1": kit} {
+		for _, capable := range []bool{false, true} {
+			writes := 0
+			p := testPico(t, func(w http.ResponseWriter, req *http.Request) {
+				if req.URL.Path == "/api/v1" {
+					replyJSON(w, 200, map[string]any{"mode": "standalone", "api_version": 1, "model": "z-series", "model_family": "z-series", "recipe_capacity": 16, "step_capacity": 15, "recipe_create_only": true, "zero_minute_steps": true, capability: capable})
+					return
+				}
+				if req.Method == "PUT" {
+					writes++
+					var got domain.MachineRecipe
+					if err := json.NewDecoder(req.Body).Decode(&got); err != nil || !reflect.DeepEqual(got, r) {
+						t.Errorf("program changed: %+v %v", got, err)
+					}
+					replyJSON(w, 201, map[string]any{})
+					return
+				}
+				replyJSON(w, 200, r)
+			})
+			err := p.CreateRecipe(context.Background(), r)
+			if capable && (err != nil || writes != 1) || !capable && (err == nil || writes != 0) {
+				t.Errorf("capability %t, writes %d, %v", capable, writes, err)
+			}
+		}
 	}
 }

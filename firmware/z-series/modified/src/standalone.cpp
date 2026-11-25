@@ -1,6 +1,9 @@
 #include "esp32_ota_target.hpp"
 #include "zseries/standalone.hpp"
 #include "recipe_record.hpp"
+#include "zseries/archive_program.hpp"
+#include "engine_internal.hpp"
+#include "zseries/local_http_state.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -23,10 +26,10 @@ constexpr std::uint32_t LocalRecipes = 0x10000, SelectLocalRecipe = 0x10001,
                         LocalAbout = 0x10008, LocalPairing = 0x10009,
                         LocalPairCancel = 0x1000a, LocalPairApprove = 0x1000b;
 const api::CommandDescriptor commands[] = {
-    {"brew",api::RecipeId,api::RecipeId},{"sous-vide",0,0},
-    {"cold-brew",0,0},{"rinse",0,0},{"clean",0,0},{"circulate",0,0},
+    {"brew",api::RecipeId,api::RecipeId},{"sous-vide",0,0},{"sous-vide-no-keg",0,0},
+    {"coffee",0,0},{"cold-brew",0,0},{"rinse",0,0},{"clean",0,0},{"circulate",0,0},
     {"drain",0,0},{"rack-beer",0,0},{"chill",0,0},{"utilities",0,0},
-    {"settings",0,0},{"stop",0,0},{"clear-stop",0,0},
+    {"settings",0,0},{"picostill-manual",0,0},{"picostill-boil-point",0,0},{"stop",0,0},{"clear-stop",0,0},
     {"pause",0,0},{"resume",0,0},{"encoder",api::Delta|api::Click,0},
     {"resume-interrupted",api::Confirm,api::Confirm},{"discard-interrupted",0,0}
 };
@@ -51,7 +54,33 @@ bool step(void* context,std::size_t index,LocalRecipeStep& out){
     out.seconds=static_cast<std::int32_t>(in.minutes)*60;out.drain_seconds=static_cast<std::int32_t>(in.drain_minutes)*60;
     return true;
 }
+bool cloud_step(void* context,std::size_t index,HttpRecipeStep& out){
+    const auto& recipe=*static_cast<const api::Recipe*>(context);
+    if(index>=recipe.step_count)return false;
+    const auto& step=recipe.steps[index];
+    out.name=step.name;out.location=step.location;
+    out.temperature_fahrenheit=step.target_f;out.temperature_scan_fahrenheit=step.target_f;
+    out.minutes=step.minutes;out.drain_minutes=step.drain_minutes;
+    out.action=step.pak.action;out.minimum_minutes=step.pak.minimum;out.maximum_minutes=step.pak.maximum;
+    return true;
+}
 ProgramBuildResult build(ProgramBuffer& buffer,const api::Recipe& recipe,double pressure,double boil){
+    if(recipe.z_cloud_water_ml || recipe.pak.recipe_id){
+        HttpRecipe input;
+        input.name=recipe.name;input.type_code=recipe.is_beer?"Beer":"Other";input.is_beer=recipe.is_beer;
+        input.start_water_liters=archive_water_liters(recipe.z_cloud_water_ml);
+        input.step_count=recipe.step_count;input.context=const_cast<api::Recipe*>(&recipe);input.step=cloud_step;
+        if(recipe.pak.recipe_id){
+            input.pico_abv=recipe.pak.abv;input.pico_ibu=recipe.pak.ibu;
+            ProgramParameters settings;settings.abv=recipe.pak.selected_abv;settings.ibu=recipe.pak.selected_ibu;
+            return build_http_recipe(buffer,input,HttpRecipeFormat::PicoPak,SessionType::LocalBrew,
+                recipe.pak.recipe_id,settings,RecipeEnvironment(pressure,boil));
+        }
+        // This source grammar uses the Z/Zymatic cloud compiler, even when the
+        // kit passed through a PicoPak library. The PicoPak compiler is distinct.
+        return build_http_recipe(buffer,input,HttpRecipeFormat::Zymatic,SessionType::LocalBrew,0,
+            ProgramParameters{},RecipeEnvironment(pressure,boil));
+    }
     oem::LocalRecipe input;input.name=recipe.name;input.is_beer=!recipe.z_program||recipe.is_beer;
     input.use_pico_pak_mode=recipe.z_program&&recipe.use_pico_pak;input.step_count=recipe.step_count;
     input.context=const_cast<api::Recipe*>(&recipe);input.step=step;
@@ -75,7 +104,23 @@ ProgramBuildResult build(ProgramBuffer& buffer,const api::Recipe& recipe,double 
     }
     return buffer.set_code(code.data(),count);
 }
-bool recordable(std::uint32_t id){return id==24||id==28||id==5||id==6||(id>=20&&id<=23);}
+}
+static void journal_name(char (&name)[32],const char* native){
+    // Custom Coffee's native title includes volume, minutes and target, and can
+    // overflow a journal entry. Keep all three values and the full OLED title.
+    static const char prefix[]="Custom Coffee ";
+    if(native&&std::strlen(native)>=sizeof name&&!std::strncmp(native,prefix,sizeof prefix-1))
+        ::snprintf(name,sizeof name,"Custom %s",native+sizeof prefix-1);
+    else copy(name,native);
+}
+static const char* session_command(std::uint32_t id,bool local_recipe){
+    if(id==7)return "picostill-manual";
+    if(id==26)return "picostill-boil-point";
+    return local_recipe?"brew":"program";
+}
+bool Adapter::recordable(std::uint32_t id) const {
+    if(id==7||id==26)return core_.eeprom.data.still_session_mode!=SessionMode::Offline;
+    return id==24||id==28||id==5||id==6||(id>=20&&id<=23);
 }
 Adapter::Adapter(CoreApplication& core,HeadApplication& head) noexcept:core_(core),head_(head){}
 const char* Adapter::text(const char* en,const char* es,const char* fr) const noexcept {
@@ -87,7 +132,7 @@ api::DeviceServices Adapter::services() noexcept {
     out.capabilities=[](void* p){api::Capabilities caps;
         if (static_cast<Adapter*>(p)->wireless_) caps.ota_protocol = "esp32-factory-v1";
         caps.flags=api::Recipes|api::Brewing|api::Heating|api::Pump|api::Temperature|api::Pressure|api::FrontPanel;
-        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.zero_minute_steps=true;caps.z_program_maker=true;caps.dedicated_pause_resume=true;return caps;};
+        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus|api::AutoCycle;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.group_brewing_v1=true;caps.group_z_programs_v1=true;caps.picostill_brewer_link_v1=true;caps.zero_minute_steps=true;caps.z_program_maker=true;caps.z_cloud_program_v1=true;caps.z_picopak_v1=true;caps.z_state_v1=true;caps.dedicated_pause_resume=true;return caps;};
     out.snapshot=[](void* p,api::Snapshot& value){return static_cast<Adapter*>(p)->snapshot(value);};
     out.execute=[](void* p,const api::Command& value){return static_cast<Adapter*>(p)->execute(value);};
     out.idle=[](void* p){return static_cast<Adapter*>(p)->idle();};
@@ -107,7 +152,7 @@ bool Adapter::bind(Ports ports,api::Engine& engine){
        !core_.msp.transport.transmit||!core_.msp.transport.receive||!core_.msp.transport.delay_ms)return false;
     const auto& sensor=core_.ports.sensor_bus;
     if(!sensor.begin_transmission||!sensor.write||!sensor.end_transmission||!sensor.request_from||!sensor.read||!sensor.delay_ms)return false;
-    ports_=ports;engine_=&engine;original_core_=core_.core.services;original_head_=head_.flow.services;original_head_core_=head_.core.services;original_ui_=head_.ui.services;
+    ports_=ports;still_peer_.io=ports.still_io;engine_=&engine;original_core_=core_.core.services;original_head_=head_.flow.services;original_head_core_=head_.core.services;original_ui_=head_.ui.services;
     original_gpio_=core_.ports.heater_gpio;original_msp_=core_.msp.transport;original_sensor_=sensor;
     auto& bus=core_.ports.sensor_bus;bus.context=this;
     bus.begin_transmission=[](void* p,std::uint8_t address){auto& s=*static_cast<Adapter*>(p);if(!s.sensor_failed_)s.original_sensor_.begin_transmission(s.original_sensor_.context,address);};
@@ -157,6 +202,8 @@ bool Adapter::begin(){
     core_.eeprom.data.azure_enabled=BoolOption::False;core_.core.state.offline=true;core_.core.state.azure_enabled=false;
     core_.azure.enabled=false;core_.registration.enabled=false;core_.session_logger.stop_requested=false;
     core_.local_server.enable(false);
+    load_still_address();
+    if(core_.eeprom.data.still_session_mode==SessionMode::Unknown)core_.eeprom.data.still_session_mode=SessionMode::Online;
     const auto recovered=recovery_.load(ports_.storage);
     if(!recovered.ok()&&engine_)engine_->event("recovery-error",recovered.error);
     // The composition selects verified modified network credentials. Original
@@ -171,17 +218,39 @@ void Adapter::sensor_failure(){
 }
 void ZSERIES_HEATER_IRAM Adapter::guarded_write(void* p,std::uint8_t pin,bool enabled){
     auto& self=*static_cast<Adapter*>(p);
-    if(self.inhibited_&&(pin==OriginalHeaterEnablePin||pin==self.core_.heater.output_pin))enabled=false;
+    if((self.inhibited_||self.still_output_hold_)&&(pin==OriginalHeaterEnablePin||pin==self.core_.heater.output_pin))enabled=false;
     self.original_gpio_.write_pin(self.original_gpio_.context,pin,enabled);
 }
 void Adapter::guarded_transmit(void* p,std::uint8_t address,const std::uint8_t* bytes,std::size_t size){
     auto& self=*static_cast<Adapter*>(p);
-    if(self.inhibited_&&size>=5&&bytes[0]==8&&
+    if((self.inhibited_||self.still_output_hold_)&&size>=5&&bytes[0]==8&&
        (bytes[2]==Z_MSP_PUMPS_SET||bytes[2]==Z_MSP_KEG_ON||bytes[2]==Z_MSP_DRAIN_ON||bytes[2]==Z_MSP_HEX_ON)){
         std::uint8_t stopped[6];const auto length=z_msp_app_frame(stopped,sizeof stopped,Z_MSP_PUMPS_SET,0,1);
         self.original_msp_.transmit(self.original_msp_.context,address,stopped,length);return;
     }
     self.original_msp_.transmit(self.original_msp_.context,address,bytes,size);
+}
+void Adapter::stop_pumps(){
+    if(core_.msp_state.id==Z_MSP_APP_RUNNING){std::uint8_t frame[6],response[9];
+        const auto size=z_msp_app_frame(frame,sizeof frame,Z_MSP_PUMPS_SET,0,1);
+        original_msp_.transmit(original_msp_.context,core_.msp.address,frame,size);
+        original_msp_.delay_ms(original_msp_.context,core_.msp.response_delay);
+        original_msp_.receive(original_msp_.context,core_.msp.address,response,sizeof response);
+        z_msp_apply_response(&core_.msp_state,response);}
+}
+// Native standby wake requests pump mask 0x40 and the running transition arms
+// heater enable before the operator has finished the Still setup screens.
+void Adapter::hold_still_outputs(){
+    {ControlGuard guard(core_.ports.control);still_output_hold_=1;
+        original_gpio_.write_pin(original_gpio_.context,OriginalHeaterEnablePin,false);
+        original_gpio_.write_pin(original_gpio_.context,core_.heater.output_pin,false);}
+    stop_pumps();
+}
+void Adapter::release_still_outputs(bool armed){
+    ControlGuard guard(core_.ports.control);
+    still_output_hold_=0;
+    if(armed&&!inhibited_&&core_.heater.state.enabled)
+        original_gpio_.write_pin(original_gpio_.context,OriginalHeaterEnablePin,true);
 }
 bool Adapter::stop(const char* reason){
     if(!bound_)return false;
@@ -190,17 +259,17 @@ bool Adapter::stop(const char* reason){
         core_.heater.pid.automatic=false;
         original_gpio_.write_pin(original_gpio_.context,OriginalHeaterEnablePin,false);
         original_gpio_.write_pin(original_gpio_.context,core_.heater.output_pin,false);}
+    close_still(false);
+    if(joined_program_||invite_state_==InviteState::Pending)finish_invite(InviteState::Unavailable);
+    joined_program_=0;
+    group_source_id_[0]=0;
+    session_input_=RuntimeCommandId::None;
     queued_=false;encoder_click_=false;core_.core.commands.pending=false;core_.runtime_commands.pending=false;
     core_.core.state.runtime_start_pending=false;core_.core.state.rinse_pending=false;
     if(begun_){RuntimeCommand stop;stop.id=RuntimeCommandId::Stop;core_.post_runtime(stop);}
     // The transport guard also covers future console/Runtime pump commands.
     // Send directly so an OEM moving-valve assertion cannot postpone cutoff.
-    if(core_.msp_state.id==Z_MSP_APP_RUNNING){std::uint8_t frame[6],response[9];
-        const auto size=z_msp_app_frame(frame,sizeof frame,Z_MSP_PUMPS_SET,0,1);
-        original_msp_.transmit(original_msp_.context,core_.msp.address,frame,size);
-        original_msp_.delay_ms(original_msp_.context,core_.msp.response_delay);
-        original_msp_.receive(original_msp_.context,core_.msp.address,response,sizeof response);
-        z_msp_apply_response(&core_.msp_state,response);}
+    stop_pumps();
     if(core_.core.state.id==CoreStateId::Starting)core_.core.transition(CoreStateId::Idle);
     if(engine_&&begun_){engine_->cancel_prepared_session();engine_->event("stop",reason);}native_prepared_=false;
     if(begun_){
@@ -215,7 +284,7 @@ bool Adapter::idle() const noexcept {
     // Native standby clears the screen and is an idle controller state. A
     // canonical remote start may wake it without a synthetic encoder action.
     const bool home=(core_.core.state.id==CoreStateId::Idle&&page_==Page::Home)||core_.core.state.id==CoreStateId::StandBy;
-    return begun_&&home&&core_.runtime.state.id==RuntimeStateId::Standby&&
+    return begun_&&home&&!still_session_&&still_peer_.op==StillPeer::None&&core_.runtime.state.id==RuntimeStateId::Standby&&
         !queued_&&!encoder_click_&&!core_.core.commands.pending&&!core_.runtime_commands.pending;
 }
 bool Adapter::wake_standby(){
@@ -233,7 +302,7 @@ bool Adapter::clear_stop(){
     return true;
 }
 api::Result Adapter::validate_recipe(const api::Recipe& recipe){
-    if(!api::detail::recipe_valid(recipe,true,true))return {400,"invalid_recipe","Recipe exceeds supported Z program bounds"};
+    if(!api::detail::recipe_valid(recipe,true,true,true,true))return {400,"invalid_recipe","Recipe exceeds supported Z program bounds"};
     ProgramBuffer temporary;
     if(build(temporary,recipe,101325,100)!=ProgramBuildResult::Ok)return {400,"invalid_recipe","Recipe cannot be represented by the native Z program"};
     return {};
@@ -246,7 +315,8 @@ api::Result Adapter::load_recipe(const api::Recipe& recipe,bool start){
     if(recovery_.present()&&!recovery_active_)return {409,"recovery_pending","Resume or discard the interrupted brew first"};
     if(build(core_.program,recipe,core_.auxiliary.pressure_pa,core_.temperatures.estimated_boil_celsius)!=ProgramBuildResult::Ok)
         return {400,"invalid_recipe","The current native recipe environment rejected this recipe"};
-    selected_recipe_=recipe;owned_recipe_=true;page_=Page::Original;
+    leave_group_coffee_review();
+    selected_recipe_=recipe;selected_revision_=engine_->recipe_revision();owned_recipe_=true;page_=Page::Original;
     if(start){if(!queue_program(static_cast<std::uint32_t>(ZProgramId::Buffered)))return busy();}
     else core_.publication.ready();
     return {202};
@@ -254,6 +324,33 @@ api::Result Adapter::load_recipe(const api::Recipe& recipe,bool start){
 bool Adapter::queue_program(std::uint32_t id){
     CoreCommand command;command.id=CoreCommandId::StartProgram;command.program_id=id;
     return core_.post(command);
+}
+// Dedicated browser buttons must never answer a setup prompt, skip a test, or
+// clear a controller fault. Those screens retain their native dial choices.
+bool Adapter::can_control_session(RuntimeCommandId command) const {
+    const auto& runtime=core_.runtime;
+    const auto& state=runtime.state;
+    if(still_session_&&((core_.still.commands.pending&&core_.still.commands.value.id==StillCommandId::Start)||
+       (core_.still.state.id==PicoStillStateId::Starting&&!still_active_)))return false;
+    if(!begun_||stopped()||core_.core.state.id!=CoreStateId::Running||state.id!=RuntimeStateId::Running||
+       core_.system_error||core_.msp_state.id!=Z_MSP_APP_RUNNING||core_.msp_state.errors||
+       (runtime.filter_required&&core_.safeties.filter_missing)||runtime.pause_reason(RuntimeCommandId::None)||
+       state.screen||session_input_!=RuntimeCommandId::None||core_.core.commands.pending||core_.runtime_commands.pending)return false;
+    if(command==RuntimeCommandId::Pause){
+        // The OEM defers inputs during valve travel; avoid queuing a command for
+        // a later step. Input widgets retain their own physical confirmations.
+        switch(state.instruction.opcode){
+        case OpCode::WaitUser:case OpCode::MspValve:case OpCode::GetDelay:
+        case OpCode::GetStepParams:case OpCode::GetTemp:case OpCode::GetTime:return false;
+        default:return !state.paused;
+        }
+    }
+    if(command!=RuntimeCommandId::Resume||state.instruction.opcode!=OpCode::WaitUser||
+       core_.core.state.session_type==SessionType::Circulate||!state.pause_reason||
+       state.pause_reason>=PauseReasonCount)return false;
+    // The original running menu omits Resume for these three pause reasons.
+    const auto reason=static_cast<PauseReason>(state.pause_reason);
+    return reason!=PauseReason::StepFilter&&reason!=PauseReason::PicoStillError&&reason!=PauseReason::StillT2Overtemp;
 }
 api::Result Adapter::execute(const api::Command& input){
     if(!std::strcmp(input.name,"stop"))return stop("requested")?api::Result(202):unavailable();
@@ -263,6 +360,7 @@ api::Result Adapter::execute(const api::Command& input){
     if(!std::strcmp(input.name,"resume-interrupted"))return resume_interrupted(input.confirm);
     if(!std::strcmp(input.name,"encoder")){
         if(input.delta<-100||input.delta>100||(!input.delta&&!input.click))return {400,"invalid_command","Provide encoder movement or a click"};
+        if(page_==Page::Group)return {409,"group_prompt","Use the group invitation or the physical dial"};
         if(page_==Page::Pairing)return {409,"physical_confirmation","Use the physical dial to confirm pairing"};
         if(encoder_click_||head_.encoder_events.pending||head_.button_events.pending)return busy();
         if(core_.core.state.id==CoreStateId::StandBy){
@@ -276,14 +374,16 @@ api::Result Adapter::execute(const api::Command& input){
     }
     if(stopped())return {409,"stopped","Clear the latched stop at the idle home screen first"};
     if(!std::strcmp(input.name,"pause")||!std::strcmp(input.name,"resume")){
-        if(core_.core.state.id!=CoreStateId::Running)return busy();
-        CoreCommand command;command.id=!std::strcmp(input.name,"pause")?CoreCommandId::Pause:CoreCommandId::Resume;
-        return core_.post(command)?api::Result(202):busy();
+        const auto command=!std::strcmp(input.name,"pause")?RuntimeCommandId::Pause:RuntimeCommandId::Resume;
+        if(!can_control_session(command))return {409,"session_control_unavailable","Use the current options on the brewer's front panel"};
+        session_input_=command;return {202};
     }
     if(!idle())return busy();
     if(core_.system_error||core_.msp_state.errors||core_.msp_state.id!=Z_MSP_APP_RUNNING)return unavailable();
     bool known=false;for(const auto& descriptor:commands)if(!std::strcmp(input.name,descriptor.name))known=true;
     if(!known)return {400,"invalid_command","This Z command is not supported"};
+    if((!std::strcmp(input.name,"picostill-manual")||!std::strcmp(input.name,"picostill-boil-point"))&&!still_address_.uid[0])
+        return {409,"pairing_required","Pair a PicoStill first"};
     queued_command_=input;queued_command_.recipe=nullptr;
     if(!std::strcmp(input.name,"brew")){
         if(!input.recipe)return {400,"invalid_recipe","An existing recipe is required"};
@@ -293,7 +393,7 @@ api::Result Adapter::execute(const api::Command& input){
     queued_=true;return {202};
 }
 void Adapter::poll(){
-    if(begun_)poll_recovery();
+    if(begun_){poll_recovery();poll_group();}
     if(page_==Page::Pairing){
         auto& menu=head_.screens.menu_data;
         if(!menu.count||static_cast<std::uint32_t>(menu.items[0].event.command)!=LocalPairCancel||
@@ -322,6 +422,8 @@ void Adapter::poll(){
     else {
         UiCommand command=UiCommand::None;
         if(!std::strcmp(name,"sous-vide"))command=UiCommand::StartSousVideWithKeg;
+        else if(!std::strcmp(name,"coffee"))command=UiCommand::CoffeeMenu;
+        else if(!std::strcmp(name,"sous-vide-no-keg"))command=UiCommand::StartSousVideWithoutKeg;
         else if(!std::strcmp(name,"cold-brew"))command=UiCommand::CoffeeColdBrewTweak;
         else if(!std::strcmp(name,"rinse"))command=UiCommand::StartRinse;
         else if(!std::strcmp(name,"clean"))command=UiCommand::StartClean;
@@ -329,6 +431,8 @@ void Adapter::poll(){
         else if(!std::strcmp(name,"drain"))command=UiCommand::StartDrain;
         else if(!std::strcmp(name,"rack-beer"))command=UiCommand::StartRack;
         else if(!std::strcmp(name,"chill"))command=UiCommand::StartChill;
+        else if(!std::strcmp(name,"picostill-manual"))command=UiCommand::StartPicoStillManual;
+        else if(!std::strcmp(name,"picostill-boil-point"))command=UiCommand::StartPicoStillBoilPoint;
         else if(!std::strcmp(name,"utilities"))command=UiCommand::Utilities;
         else if(!std::strcmp(name,"settings"))command=UiCommand::Settings;
         HeadUiEvent event;event.command=command;
@@ -360,6 +464,9 @@ bool Adapter::tick_wifi(std::uint32_t now){
             show_wifi_results(static_cast<std::int32_t>(count));
     }
     auto& wifi=core_.wifi;
+    if(core_.eeprom.data.use_ethernet&&ports_.wired_address){
+        core_.network=ports_.wired_address(ports_.context)?2:0;return true;
+    }
     // The OEM Checking state requires a vendor hostname to resolve. This
     // profile supplies a LAN service and qualifies the active station lease.
     if(wifi.state.id==WiFiStateId::Checking&&!wifi.state.requested.internet_expected){
@@ -391,6 +498,20 @@ bool Adapter::service_stage(CoreTickStage stage,std::uint32_t now){
         core_.refresh_observed();
         return ok;
     }
+    case CoreTickStage::PicoStill:if(begun_)tick_still(now);return true;
+    case CoreTickStage::Runtime:
+        if(session_input_!=RuntimeCommandId::None){
+            RuntimeCommand command;command.id=session_input_;session_input_=RuntimeCommandId::None;
+            if(can_control_session(command.id))core_.runtime_commands.put(command);
+            else if(engine_)engine_->event("session-control","The brewer's options changed before the command ran");
+        }
+        // The native StillStart opcode posts an accessory command before the
+        // next pump/valve instruction. Await the remote controller's ACK.
+        if(still_session_ && !stopped() &&
+           ((core_.still.commands.pending&&core_.still.commands.value.id==StillCommandId::Start)||
+            (core_.still.state.id==PicoStillStateId::Starting&&!still_active_)) &&
+           !(core_.runtime_commands.pending&&core_.runtime_commands.value.id==RuntimeCommandId::Stop))return true;
+        break;
     case CoreTickStage::Azure:return offline_policy(now);
     case CoreTickStage::HttpServer:ports_.http_poll(ports_.context,now);return true;
     case CoreTickStage::SerialCommand:ports_.serial_poll(ports_.context);return true;
@@ -427,7 +548,13 @@ void Adapter::observe_care(){
 bool Adapter::service_effect(const CoreAction& action,std::uint32_t& result){
     result=0;
     switch(action.effect){
-    case CoreEffect::SetNetwork:core_.network=action.argument&&ports_.lan_ready(ports_.context,action.argument)?action.argument:0;result=action.argument?core_.network!=0:1;return true;
+    case CoreEffect::EthernetConnect:return true; // MACRAW and DHCP advance outside the Core state machine.
+    case CoreEffect::EthernetAddress:result=ports_.wired_address?ports_.wired_address(ports_.context):0;return true;
+    case CoreEffect::SetNetwork:
+        if(core_.eeprom.data.use_ethernet&&ports_.wired_address){
+            core_.network=ports_.wired_address(ports_.context)?2:0;result=core_.network==action.argument;return true;
+        }
+        core_.network=action.argument&&ports_.lan_ready(ports_.context,action.argument)?action.argument:0;result=action.argument?core_.network!=0:1;return true;
     case CoreEffect::WifiConnect:{
         if(!action.credentials)return false;
         if(!ports_.save_network(ports_.context,action.credentials->ssid.data(),action.credentials->password.data())){
@@ -451,8 +578,9 @@ bool Adapter::service_effect(const CoreAction& action,std::uint32_t& result){
     case CoreEffect::DispatchCoreCommand:
         // Coffee and local recipes share the original mutable ProgramBuffer.
         // Its native id24 does not establish that it contains our saved beer.
-        if(action.command&&action.command->id==CoreCommandId::CoffeeProgramLoad&&core_.core.state.id==CoreStateId::Idle)
-            owned_recipe_=false;
+        if(action.command&&action.command->id==CoreCommandId::CoffeeProgramLoad&&core_.core.state.id==CoreStateId::Idle){
+            leave_group_coffee_review();owned_recipe_=false;
+        }
         if(action.command&&action.command->id==CoreCommandId::StartProgram){
             // The recovered dispatcher ignores StartProgram outside Idle.
             // Preserve that boundary before touching persistent history.
@@ -468,7 +596,23 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
     // A queued resume is consumed by this attempt, including storage rejection.
     // Keep the retained checkpoint reviewable if no native session starts.
     const bool requested_resume=resuming_;resuming_=false;
+    if(group_coffee_review_&&id!=static_cast<unsigned>(ZProgramId::Buffered))leave_group_coffee_review();
+    group_coffee_review_=false;
+    const bool joined=joined_program_!=0;
+    const bool matches_joined=joined_program_==id;
+    joined_program_=0;
+    // Acceptance only queues the native start. A new fault, removed filter or
+    // failed storage reservation must leave the Hub an accurate final result.
+    if(joined){
+        finish_invite(InviteState::Unavailable);
+        if(!matches_joined||!group_ready()||core_.safeties.filter_missing)return show_home();
+    }
     if(stopped()||id==static_cast<std::uint32_t>(ZProgramId::ManualBrew))return show_home();
+    const bool distilling=id==7||id==26;
+    if(still_checking_||still_peer_.op==StillPeer::Stop||still_session_||still_output_hold_)return show_home();
+    if(distilling&&(!still_address_.uid[0]||core_.system_error||core_.msp_state.errors||!recovery_.ready()||recovery_.present())){
+        engine_->event("session-error","PicoStill pairing, controller, or unresolved brew recovery");return show_home();
+    }
     const auto* program=core_.programs.find(id);
     if(!program)return false;
     const bool local_brew=id==24&&program->type==SessionType::LocalBrew;
@@ -477,7 +621,8 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
         if(!recovery_.ready()||(recovery_.present()&&!recovery_active_&&!(local_brew&&requested_resume))){
             engine_->event("session-error",recovery_.ready()?"recovery_pending":"recovery_storage");return show_home();}
         std::uint32_t token=session_token_+1;if(!token)++token;
-        const auto reserved=engine_->prepare_session(local_brew?"brew":"program",program->view.name,token);
+        char name[32];journal_name(name,program->view.name);
+        const auto reserved=engine_->prepare_session(session_command(id,local_brew),name,token);
         if(!reserved.ok()){engine_->event("session-error",reserved.error?reserved.error:"storage_error");return show_home();}
         session_token_=token;
         native_prepared_=true;
@@ -490,14 +635,26 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
     // The legacy builder uses 11.36 L to estimate heating time. Local API
     // recipes contain no starting water volume. Leave the session quantity
     // unspecified so the native loading screen gives its generic water prompt.
-    if(local_brew)core_.program.parameters.water={0,Unit::Liter};
+    if(local_brew&&!selected_recipe_.z_cloud_water_ml&&!selected_recipe_.pak.recipe_id)core_.program.parameters.water={0,Unit::Liter};
+    if(distilling)hold_still_outputs();
     const bool ok=original_core_.perform(original_core_.context,action,result);
-    if(ok&&core_.core.state.id==CoreStateId::Starting&&core_.core.state.program_id==id)care_recorded_=requested_resume;
+    if(ok&&core_.core.state.id==CoreStateId::Starting&&core_.core.state.program_id==id){
+        if(distilling){still_state(PicoStillStateId::Idle);still_session_=true;still_active_=false;still_error_="";}
+        care_recorded_=requested_resume;
+        group_source_id_[0]=0;
+        if(joined)finish_invite(InviteState::Accepted);
+        else if(!requested_resume)group_started(id,local_brew);
+    }
     if(recordable(id)&&(!ok||core_.core.state.id!=CoreStateId::Starting||core_.core.state.program_id!=id)){engine_->cancel_prepared_session();native_prepared_=false;}
     if(local_brew&&ok&&core_.core.state.id==CoreStateId::Starting){recovery_active_=true;recovery_date_=ports_.millis(ports_.context);recovery_instruction_=0;}
     return ok;
 }
 bool Adapter::handle_ui(const HeadUiAction& action){
+    if(action.effect==HeadUiEffect::About)return show_machine_details();
+    if(action.effect==HeadUiEffect::SetStillLogging){
+        if(still_session_||core_.core.state.id!=CoreStateId::Idle||!set_still_logging(action.first==1))return false;
+        return head_.synchronize()==HeadApplicationResult::Ok;
+    }
     if(action.effect==HeadUiEffect::NetworkConfiguration)return show_network();
     if(action.effect==HeadUiEffect::DispatchCoreCommand&&action.first==static_cast<std::uint32_t>(CoreCommandId::WiFiScan))
         return start_wifi_scan();
@@ -505,11 +662,12 @@ bool Adapter::handle_ui(const HeadUiAction& action){
     if(action.effect==HeadUiEffect::WifiDetails&&(!ports_.lan_ready(ports_.context,1)||core_.wifi.state.id!=WiFiStateId::Connected))
         return network_message(text("Wi-Fi offline","Wi-Fi desconectado","Wi-Fi deconnecte"));
     if(action.effect==HeadUiEffect::ConnectWifi)return ports_.reconnect_network(ports_.context)&&show_network();
-    if(action.effect==HeadUiEffect::SetImperial||action.effect==HeadUiEffect::SetLanguage||action.effect==HeadUiEffect::SetSlideshowDetail){
-        if(!engine_||core_.core.state.id!=CoreStateId::Idle||core_.runtime.state.id!=RuntimeStateId::Standby)return false;
+    if(action.effect==HeadUiEffect::SetImperial||action.effect==HeadUiEffect::SetLanguage||action.effect==HeadUiEffect::SetSlideshowDetail||action.effect==HeadUiEffect::SetStaticCycle){
+        if(!engine_)return false;
         api::Settings settings;read_settings(settings);std::uint32_t changed=0;
         if(action.effect==HeadUiEffect::SetImperial){settings.temperature_unit=action.first?'F':'C';changed=api::TemperatureUnit;}
         else if(action.effect==HeadUiEffect::SetSlideshowDetail){settings.detailed_status=action.first!=0;changed=api::DetailedStatus;}
+        else if(action.effect==HeadUiEffect::SetStaticCycle){settings.auto_cycle=action.first==0;changed=api::AutoCycle;}
         else {if(action.first>=LanguageTypeCount)return false;copy(settings.language,action.first==1?"fr":action.first==2?"es":"en");changed=api::Language;}
         const auto saved=engine_->preferences_store(settings,changed);
         if(!saved.ok()){engine_->event("settings-error",saved.error?saved.error:"storage_error");return false;}
@@ -518,13 +676,15 @@ bool Adapter::handle_ui(const HeadUiAction& action){
     return original_ui_.perform(original_ui_.context,action);
 }
 bool Adapter::show_home(){
+    leave_group_coffee_review();
     auto& screen=head_.screens;screen.clear_data();HeadUiEvent recipes;recipes.command=static_cast<UiCommand>(LocalRecipes);
     screen.menu_data.append(recipes,text("Brew Recipe","Preparar receta","Brasser une recette"));
     if(recovery_.present()&&!recovery_active_){HeadUiEvent resume;resume.command=static_cast<UiCommand>(LocalRecovery);
         screen.menu_data.append(resume,text("Resume interrupted","Reanudar interrumpido","Reprendre brassage"));}
     if((recovery_.present()&&!recovery_active_)||!recovery_.ready()){HeadUiEvent discard;discard.command=static_cast<UiCommand>(LocalDiscard);
         screen.menu_data.append(discard,text("Discard interrupted","Descartar pendiente","Abandonner reprise"));}
-    for(auto command:{UiCommand::StartSousVideWithKeg,UiCommand::CoffeeMenu,UiCommand::Utilities,UiCommand::Settings})screen.menu_data.append(command);
+    if(still_address_.uid[0])screen.menu_data.append(UiCommand::PicoStillMenu);
+    for(auto command:{UiCommand::SousVideMenu,UiCommand::CoffeeMenu,UiCommand::Utilities,UiCommand::Settings})screen.menu_data.append(command);
     if(stopped()){HeadUiEvent clear;clear.command=static_cast<UiCommand>(LocalClearStop);screen.menu_data.append(clear,text("Clear stop","Quitar parada","Effacer arret"));}
     const unsigned due=engine_?engine_->care_due():0;
     if(!stopped()&&(due&api::CleanDue))screen.menu_data.append(UiCommand::StartClean);
@@ -536,8 +696,9 @@ bool Adapter::show_home(){
 }
 bool Adapter::show_settings(){
     auto& screen=head_.screens;screen.clear_data();
-    for(auto command:{UiCommand::ConfigureNetwork,UiCommand::ConfigureUnits,UiCommand::ConfigureLanguage,UiCommand::ConfigureSlideshowDetail})
+    for(auto command:{UiCommand::ConfigureNetwork,UiCommand::ConfigureUnits,UiCommand::ConfigureLanguage,UiCommand::ConfigureSlideshowDetail,UiCommand::ConfigureSlideshowCycle})
         if(!screen.menu_data.append(command))return false;
+    if(still_address_.uid[0])screen.menu_data.append(UiCommand::ConfigurePicoStill);
     HeadUiEvent about;
     about.command=static_cast<UiCommand>(LocalAbout);
     if(!screen.menu_data.append(about,text("About","Acerca de","A propos"))||
@@ -556,6 +717,41 @@ bool Adapter::show_about(){
        !screen.menu_data.append(back,text("Back","Atras","Retour")))return false;
     page_=Page::Original;
     return screen.menu_screen(text("About","Acerca de","A propos"))==HeadScreenResult::Ok;
+}
+bool Adapter::show_machine_details(){
+    auto& screen=head_.screens;
+    screen.clear_data();
+    char line[40];
+    auto field=[&](const char* label,const char* value){
+        ::snprintf(line,sizeof line,"%s: %s",label,value);
+        return screen.scroll_data.append(line);
+    };
+    const char* unknown=text("Unknown","Desconocido","Inconnu");
+    if(!screen.scroll_data.append("Pico Z / ESP32")||
+       !field("Firmware",picobrew::esp32_ota::Version)||
+       !field("UID",core_.identifier[0]?core_.identifier.data():unknown))return false;
+    const auto boiler=core_.eeprom.data.boiler;
+    if(!field(text("Boiler","Caldera","Chaudiere"),
+              boiler==BoilerType::Big?text("Large","Grande","Grande"):
+              boiler==BoilerType::Small?text("Small","Pequena","Petite"):unknown))return false;
+    const auto& msp=head_.observed.msp;
+    char value[20];
+    ::snprintf(value,sizeof value,"%u.%u",unsigned(msp.version_major),unsigned(msp.version_minor));
+    if(!field("MSP",msp.id==Z_MSP_APP_RUNNING?value:unknown))return false;
+    const auto bytes=head_.observed.flash_bytes;
+    ::snprintf(value,sizeof value,"%lu MiB",static_cast<unsigned long>(bytes/1048576u));
+    if(!field("Flash",bytes?value:unknown))return false;
+    if(!screen.scroll_data.append(engine_&&engine_->forwarding_enabled()?
+        text("Hub reporting on","Envio al Hub activo","Envoi au Hub actif"):
+        text("Hub reporting off","Envio al Hub inactivo","Envoi au Hub inactif")))return false;
+    HeadScreenRequest request;
+    request.title=text("Machine details","Datos de maquina","Infos machine");
+    request.screen.layout=6;
+    request.custom_scroll=true;
+    request.scroll_alignment=DisplayTextAlignment::Left;
+    request.scroll_command=static_cast<UiCommand>(LocalAbout);
+    request.scroll_button=text("Back","Atras","Retour");
+    return screen.show(request)==HeadScreenResult::Ok;
 }
 bool Adapter::show_pairing(){
     if(!ports_.pair_prompt||!ports_.pair_decide)return show_about();
@@ -586,9 +782,37 @@ bool Adapter::show_pairing(){
 }
 bool Adapter::show_network(){
     auto& screen=head_.screens;screen.clear_data();
+    if(ports_.wired_address&&ports_.apply_interface){
+        if(!screen.menu_data.append(UiCommand::ConfigureEthernet,text("Ethernet","Ethernet","Ethernet")))return false;
+        if(core_.eeprom.data.use_ethernet){
+            return screen.menu_data.append(UiCommand::WiFiReconnect,text("Use Wi-Fi","Usar Wi-Fi","Utiliser Wi-Fi"))&&
+                screen.menu_data.append(UiCommand::Exit)&&screen.menu_screen(text("Network","Red","Reseau"))==HeadScreenResult::Ok;
+        }
+    }
     for(auto command:{UiCommand::WiFiScan,UiCommand::WiFiReconnect,UiCommand::WiFiDetails,UiCommand::Exit})
         if(!screen.menu_data.append(command))return false;
-    page_=Page::Original;return screen.menu_screen("Wi-Fi")==HeadScreenResult::Ok;
+    page_=Page::Original;return screen.menu_screen(ports_.wired_address?text("Network","Red","Reseau"):"Wi-Fi")==HeadScreenResult::Ok;
+}
+bool Adapter::show_ethernet(){
+    if(!ports_.wired_address||!ports_.apply_interface)return show_network();
+    auto& screen=head_.screens;screen.clear_data();
+    const auto address=ports_.wired_address(ports_.context);char ip[32]={};
+    if(address)::snprintf(ip,sizeof ip,"%u.%u.%u.%u",unsigned(address&255),unsigned(address>>8&255),unsigned(address>>16&255),unsigned(address>>24));
+    if(!core_.eeprom.data.use_ethernet&&!screen.menu_data.append(UiCommand::EthernetConnect,text("Use Ethernet","Usar Ethernet","Utiliser Ethernet")))return false;
+    return screen.menu_data.append(UiCommand::ConfigureNetworkAsBack,text("Back","Atras","Retour"))&&
+        screen.menu_screen(address?ip:core_.eeprom.data.use_ethernet?text("Waiting for Ethernet","Esperando Ethernet","Attente Ethernet"):"Ethernet")==HeadScreenResult::Ok;
+}
+bool Adapter::select_interface(bool wired){
+    if(!ports_.apply_interface)return show_network();
+    if(core_.core.state.id!=CoreStateId::Idle||core_.runtime.state.id!=RuntimeStateId::Standby||queued_||core_.core.commands.pending||core_.runtime_commands.pending)
+        return network_message(text("Machine busy","Maquina ocupada","Machine occupee"));
+    auto& value=core_.eeprom.data.use_ethernet;const auto previous=value;
+    if(bool(previous)!=wired){
+        value=wired;
+        if(!ports_.save_configuration(ports_.context)){value=previous;return network_message(text("Save failed","Error al guardar","Echec sauvegarde"));}
+        core_.network=0;ports_.apply_interface(ports_.context);
+    }
+    return wired?show_ethernet():show_network();
 }
 bool Adapter::network_message(const char* title){
     auto& screen=head_.screens;
@@ -716,13 +940,70 @@ bool Adapter::show_recipes(){
     HeadUiEvent back;back.command=static_cast<UiCommand>(LocalHome);screen.menu_data.append(back,text("Back","Atras","Retour"));
     page_=Page::Recipes;return screen.menu_screen(count?text("Local recipes","Recetas locales","Recettes locales"):text("No local recipes","Sin recetas","Aucune recette"))==HeadScreenResult::Ok;
 }
+bool Adapter::kit_adjustable(const api::Recipe& recipe,bool abv){
+    const auto target=abv?recipe.pak.abv:recipe.pak.ibu;
+    if(!recipe.pak.recipe_id||target<1||target>9)return false;
+    for(unsigned i=0;i<recipe.step_count;++i){
+        const auto& step=recipe.steps[i];
+        if(!step.pak.action&&step.pak.minimum>=0&&step.pak.maximum>=0&&
+           (abv?step.location==2:step.location>=3&&step.location<=6))return true;
+    }
+    return false;
+}
+api::Result Adapter::select_saved_recipe(std::size_t index){
+    api::Recipe recipe;
+    const auto read=engine_->recipe_get(recipe_ids_[index].data(),recipe);
+    if(!read.ok())return read;
+    const bool mash=kit_adjustable(recipe,true),hops=kit_adjustable(recipe,false);
+    if(!mash&&!hops)return load_recipe(recipe,false);
+    // Use the recovered strength and bitterness controls; the program stays on
+    // the brewer. Commit the operator's choices only to the new brew.
+    auto& reference=head_.ui.state.recipe;
+    reference=RecipeReference{};reference.id=recipe.pak.recipe_id;reference.kind=RecipeKind::PicoPak;
+    std::strcpy(reference.name.data(),recipe.name);reference.name_length=std::strlen(recipe.name);
+    reference.parameters.abv=mash?recipe.pak.abv:-1;
+    reference.parameters.ibu=hops?recipe.pak.ibu:-1;
+    auto& numeric=head_.numeric.state;
+    numeric.abv_pending=false;numeric.ibu_pending=false;numeric.parameters=ProgramParameters{};
+    numeric.parameters.abv=mash?recipe.pak.selected_abv:-1;
+    numeric.parameters.ibu=hops?recipe.pak.selected_ibu:-1;
+    kit_index_=index;kit_revision_=engine_->recipe_revision();
+    owned_recipe_=false;page_=Page::KitStrength;
+    if(!head_.ui_action(HeadUiAction(HeadUiEffect::RecipeStrengthScreen)))return unavailable();
+    return {};
+}
 bool Adapter::handle_head(HeadEventKind kind){
+    if(ports_.wired_address)head_.observed.ethernet_address=ports_.wired_address(ports_.context);
     // Background station scans are independent from the explicit picker.
     if(kind==HeadEventKind::Wifi&&head_.wifi_events.pending&&
        (head_.wifi_events.value.type==WifiEventType::ScanStarted||head_.wifi_events.value.type==WifiEventType::ScanCompleted)){
         CoreWifiEvent event;head_.wifi_events.take(event);return true;
     }
     if(kind==HeadEventKind::UiCommand&&head_.ui_events.pending){const auto event=head_.ui_events.value;const auto id=static_cast<std::uint32_t>(event.command);
+        if(event.command==UiCommand::PicoPakRecipeLoadTweaked||(page_==Page::KitStrength&&event.command==UiCommand::Exit)){
+            HeadUiEvent consumed;head_.ui_events.take(consumed);
+            if(page_!=Page::KitStrength)return true;
+            if(!head_.services.alarm||!head_.services.alarm(head_.services.context,false))return false;
+            head_.ui.transient.active=false;head_.ui.transient.deadline=0;
+            if(event.command==UiCommand::Exit)return show_recipes();
+            api::Recipe recipe;const auto& ref=head_.ui.state.recipe;
+            if(kit_revision_!=engine_->recipe_revision()||!engine_->recipe_get(recipe_ids_[kit_index_].data(),recipe).ok()||
+               event.recipe.kind!=RecipeKind::PicoPak||event.recipe.id!=recipe.pak.recipe_id)return show_recipes();
+            auto apply=[](std::int8_t& saved,int target,int selected){
+                if(target>=0&&(saved>=0||selected!=target))saved=static_cast<std::int8_t>(selected);
+            };
+            apply(recipe.pak.selected_abv,ref.parameters.abv,head_.numeric.state.parameters.abv);
+            apply(recipe.pak.selected_ibu,ref.parameters.ibu,head_.numeric.state.parameters.ibu);
+            const auto result=load_recipe(recipe,false);
+            if(result.ok())return true;
+            engine_->event("recipe-error",result.error);return show_recipes();
+        }
+        if(id==GroupDecline||id==GroupAccept){
+            HeadUiEvent consumed;head_.ui_events.take(consumed);
+            if(event.index==invite_ticket_&&group_screen())
+                respond_invite(group_invite_.id,id==GroupAccept?"accept":"decline");
+            return true;
+        }
         if(id>=LocalRecipes&&id<=LocalPairApprove){HeadUiEvent consumed;head_.ui_events.take(consumed);
             // Match HeadUiCommands::handle's shared menu-command prologue.
             if(!head_.services.alarm||!head_.services.alarm(head_.services.context,false))return false;
@@ -744,22 +1025,58 @@ bool Adapter::handle_head(HeadEventKind kind){
                 const auto result=id==LocalResume?resume_interrupted(true):discard_interrupted();
                 if(!result.ok()){engine_->event("recovery-error",result.error);return show_home();}return true;}
             if(event.index>=recipe_ids_.size()||!engine_)return false;
-            api::Recipe recipe;auto result=engine_->recipe_get(recipe_ids_[event.index].data(),recipe);
-            if(result.ok())result=load_recipe(recipe,false);
+            const auto result=select_saved_recipe(event.index);
             if(!result.ok()){engine_->event("recipe-error",result.error?result.error:"load_failed");return show_recipes();}return true;
         }
+        if(event.command==UiCommand::ConfigureEthernet||event.command==UiCommand::EthernetConnect||
+           (event.command==UiCommand::WiFiReconnect&&core_.eeprom.data.use_ethernet)){
+            HeadUiEvent consumed;head_.ui_events.take(consumed);
+            if(!head_.services.alarm||!head_.services.alarm(head_.services.context,false))return false;
+            head_.ui.transient.active=false;head_.ui.transient.deadline=0;
+            return event.command==UiCommand::ConfigureEthernet?show_ethernet():select_interface(event.command==UiCommand::EthernetConnect);
+        }
+        if(page_==Page::KitStrength&&(event.command==UiCommand::PicoPakRecipeTweakAbv||event.command==UiCommand::PicoPakRecipeTweakIbu))
+            return original_head_.handle_event(original_head_.context,kind);
         if(event.command!=UiCommand::WiFiSsidGetKey)page_=Page::Original;
-        if(event.command==UiCommand::Settings||event.command==UiCommand::ConfigureAzure||event.command==UiCommand::SetAzureEnabled||event.command==UiCommand::SetAzureDisabled||
-           event.command==UiCommand::ConfigureEthernet||event.command==UiCommand::EthernetConnect){
+        if(event.command==UiCommand::Settings||event.command==UiCommand::ConfigureAzure||event.command==UiCommand::SetAzureEnabled||event.command==UiCommand::SetAzureDisabled){
             HeadUiEvent consumed;head_.ui_events.take(consumed);
             if(!head_.services.alarm||!head_.services.alarm(head_.services.context,false))return false;
             head_.ui.transient.active=false;head_.ui.transient.deadline=0;return show_settings();}
     }
     return original_head_.handle_event(original_head_.context,kind);
 }
+bool Adapter::native_state_http(const PicoHttpRequest& request,PicoHttpResponse& response,char* arena,std::size_t cap){
+    if(std::strcmp(request.path,"/api/v1/z/state"))return false;
+    api::Result result;
+    std::size_t written=0;
+    if(!request.auth_configured)result={503,"api_key_not_provisioned","Provision the device key first"};
+    else if(!request.authenticated)result={401,"unauthorized","A valid device bearer key is required"};
+    else if(request.method!=PICO_HTTP_GET)result={405,"method_not_allowed","Use GET"};
+    else if(!begun_)result={503,"controller_unavailable","The brewer has not completed startup"};
+    else{
+        oem::LocalHttpState value;
+        char name[128];
+        {ControlGuard guard(core_.ports.control);
+            value=oem::local_http_state(core_.temperatures,core_.heater,core_.msp_state,core_.runtime,
+                core_.network==1?core_.wifi.state.rssi:0);
+            if(value.step_name){
+                const auto size=strnlen(value.step_name,sizeof name);
+                if(size==sizeof name)result={503,"native_state_unavailable","Native step name exceeds snapshot capacity"};
+                else{std::memcpy(name,value.step_name,size+1);value.step_name=name;}
+            }}
+        // The original serializer permits a truncated prefix; a JSON endpoint
+        // must only serve a complete document.
+        if(result.ok()&&(!oem::serialize_local_http_state(value,arena,cap,written)||written+1>=cap))
+            result={503,"native_state_unavailable","Native readings could not be serialized"};
+    }
+    if(!result.ok()){api::detail::Writer writer(arena,cap);api::detail::error(writer,result);written=writer.ok?writer.length:0;}
+    response.status=result.status;response.content_type="application/json";response.content_encoding=nullptr;
+    response.body=reinterpret_cast<const std::uint8_t*>(arena);response.body_length=written;return true;
+}
 api::Result Adapter::snapshot(api::Snapshot& out){
     out={};out.uptime_ms=ports_.millis?ports_.millis(ports_.context):0;
     out.ready=begun_&&!core_.system_error&&core_.msp_state.id==Z_MSP_APP_RUNNING&&!core_.msp_state.errors&&core_.core.state.id!=CoreStateId::Off&&core_.core.state.id!=CoreStateId::Booting&&core_.core.state.id!=CoreStateId::Error;
+    out.can_pause=can_control_session(RuntimeCommandId::Pause);out.can_resume=can_control_session(RuntimeCommandId::Resume);
     out.busy=!idle();out.stopped=stopped();out.stop_reason=stop_reason_;out.state=to_string(core_.core.state.id);
     out.device_state=static_cast<std::uint32_t>(core_.core.state.id);out.phase=static_cast<std::uint32_t>(core_.runtime.state.instruction.opcode);
     out.controller_status=static_cast<std::uint32_t>(core_.runtime.state.id);out.compartment=core_.runtime.requested_valve;
@@ -783,12 +1100,12 @@ api::Result Adapter::snapshot(api::Snapshot& out){
     // labels. Only the saved recipe string reference identifies an API step.
     const auto reference=core_.runtime.saved_step_reference;
     out.current_step=local_brew&&reference>=1&&reference<=out.step_count?static_cast<std::int32_t>(reference-1):-1;
-    copy(out.recipe_name,core_.commands.session.name.data());copy(out.step_name,core_.runtime.state.step_name);
+    journal_name(out.recipe_name,core_.commands.session.name.data());copy(out.step_name,core_.runtime.state.step_name);
     out.filter_known=out.ready;out.filter_inserted=!safety.filter_missing;
     const auto& menu=head_.encoder.state.menu;out.encoder_position=static_cast<std::int32_t>(menu.selected);out.encoder_max=menu.count?static_cast<std::int32_t>(menu.count-1):0;
     out.recording=recordable(core_.core.state.program_id)&&(core_.core.state.id==CoreStateId::Starting||core_.core.state.id==CoreStateId::Running||core_.core.state.id==CoreStateId::Stopping);
     if(out.recording)native_prepared_=false;
-    out.session_token=session_token_;out.command=out.recording?(core_.core.state.session_type==SessionType::LocalBrew?"brew":"program"):"";
+    out.session_token=session_token_;out.command=out.recording?session_command(core_.core.state.program_id,local_brew):"";
     recovery_.describe(out.recovery,!recovery_active_&&!resuming_);
     static const char* const pump_ids[]={"keg-pump","drain-pump","hex-pump"};
     static const char* const pump_labels[]={"Keg pump","Drain pump","HEX pump"};
@@ -798,10 +1115,11 @@ api::Result Adapter::snapshot(api::Snapshot& out){
 }
 api::Result Adapter::read_settings(api::Settings& out){
     out.temperature_unit=core_.eeprom.data.use_imperial?'F':'C';out.detailed_status=core_.eeprom.data.show_detail!=0;
+    out.auto_cycle=!core_.eeprom.data.slideshow_cycle_static;
     copy(out.language,text("en","es","fr"));return {};
 }
 api::Result Adapter::validate_settings(const api::Settings& value,std::uint32_t changed){
-    if(changed&~std::uint32_t(api::TemperatureUnit|api::Language|api::DetailedStatus))return {400,"invalid_settings","Unsupported setting"};
+    if(changed&~std::uint32_t(api::TemperatureUnit|api::Language|api::DetailedStatus|api::AutoCycle))return {400,"invalid_settings","Unsupported setting"};
     if((value.temperature_unit!='F'&&value.temperature_unit!='C')||(std::strcmp(value.language,"en")&&std::strcmp(value.language,"es")&&std::strcmp(value.language,"fr")))return {400,"invalid_settings","Unsupported preference value"};
     return {};
 }
@@ -810,6 +1128,7 @@ api::Result Adapter::apply_settings(const api::Settings& value,std::uint32_t cha
     auto& settings=core_.eeprom.data;
     if(changed&api::TemperatureUnit)settings.use_imperial=value.temperature_unit=='F';
     if(changed&api::DetailedStatus)settings.show_detail=value.detailed_status;
+    if(changed&api::AutoCycle)settings.slideshow_cycle_static=!value.auto_cycle;
     if(changed&api::Language)settings.language=!std::strcmp(value.language,"es")?LanguageType::Spanish:!std::strcmp(value.language,"fr")?LanguageType::French:LanguageType::English;
     head_.refresh_observed();if(page_==Page::Home&&!show_home())return unavailable();return {};
 }

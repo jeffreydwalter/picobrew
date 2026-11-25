@@ -97,11 +97,23 @@ def run(request, stream, emit, discover=devices):
         "job_id",
         "hub_host",
         "expected_uid",
+        "offline_program",
     }:
         raise UserError("The Hub sent an unsupported USB option.")
     action = request.get("action")
     if action not in ("list", "backup", "install", "restore"):
         raise UserError("Choose a supported USB operation.")
+    program = request.get("offline_program")
+    if "offline_program" in request:
+        if (action != "install" or request.get("model") != "zymatic" or not isinstance(program, dict)
+                or program.get("model") != "zymatic"):
+            raise UserError("An offline program requires a Zymatic installation.")
+        import offline_program
+
+        try:
+            offline_program.pack_program(program)
+        except ValueError as exc:
+            raise UserError(str(exc)) from None
     entries = discover()
     if action == "list":
         emit(
@@ -236,6 +248,7 @@ def _service(request, stream, emit, entries, action, model, port, display, data,
             key_file=key_path if action == "install" else None,
             hub_host=request.get("hub_host") or None,
             expected_uid=expected,
+            offline_program=request.get("offline_program"),
         )
         if job_key:
             import usb_stock

@@ -866,6 +866,10 @@ cancelled:
 
 bool pico_recipe_run(PicoRecipeRuntime *r, PicoRecipe *recipe, bool logging)
 {
+#if PICO_STANDALONE
+    bool group_brew = r->state->group_armed;
+    r->state->group_armed = false;
+#endif
     if (pico_local_cancelled()) {
 #if PICO_STANDALONE
         pico_history_finish(true);
@@ -878,6 +882,12 @@ bool pico_recipe_run(PicoRecipeRuntime *r, PicoRecipe *recipe, bool logging)
 #endif
         return false;
     }
+#if PICO_STANDALONE
+    if (group_brew && recipe->program->session_type == 0 && !r->recovery_phase) {
+        r->state->group_rinse = false;
+        r->state->group_started_ms = clock_ms(r);
+    }
+#endif
     bool cancelled = false;
     for (int32_t index = recipe->current_step; index < recipe->step_count; ++index) {
         recipe->current_step = index;
@@ -1366,6 +1376,9 @@ void pico_recipe_run_brew_program(PicoRecipeRuntime *r, PicoRecipe *recipe)
         return;
     }
     r->state->device_state = 3;
+#if PICO_STANDALONE
+    r->state->group_armed = true;
+#endif
     if (!pico_recipe_run(r, recipe, true))
         show(r, PICO_RECIPE_REQUIRE_FIRST_RINSE, 0, NULL);
     else {

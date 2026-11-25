@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import type { MachineRecipe, MachineStep, RecipeProvenance } from '../types'
-import { archivePause, externalURL, programTiming, routeLabel } from '../lib/programs'
+import { archivePause, externalURL, plannedHold, programTiming, routeLabel } from '../lib/programs'
+import { ZPicoPakFields } from './ZPicoPakFields'
 import { zDuration } from '../lib/zProgram'
 import { Button, Field, IconButton, SectionHeading } from './ui'
 
@@ -13,8 +14,15 @@ export function ProgramTable({
   model?: string
   archived?: boolean
 }) {
+  if (program.z_cloud) {
+    archived = true
+    model = 'z'
+  }
   return (
     <div className="table-scroll">
+      {program.z_cloud && (
+        <p>Starting water {(program.z_cloud.start_water_ml / 1000).toLocaleString()} L</p>
+      )}
       <table className="program-table">
         <thead>
           <tr>
@@ -51,25 +59,36 @@ export function ProgramTable({
           ))}
           {!program.z_program &&
             program.steps.map((step, index) => {
-              const path = routeLabel(step.location, model, archived)
+              const hold = plannedHold(program, index)
+              const kitPause = program.z_pak?.step_options[index]?.action === 1
+              const path = kitPause
+                ? 'Pause until operator continues'
+                : routeLabel(step.location, program.z_pak ? 'z' : model, !program.z_pak && archived)
               return (
                 <tr key={index}>
                   <td>
                     <span className="muted">{index + 1}. </span>
                     {step.name}
                   </td>
-                  {archived && archivePause(step.location, model) ? (
+                  {kitPause ||
+                  (archived && !program.z_pak && archivePause(step.location, model)) ? (
                     <td colSpan={4}>{path}</td>
                   ) : (
                     <>
                       <td>{path}</td>
-                      <td>{step.target_f === 0 ? 'Unheated' : `${step.target_f} °F`}</td>
                       <td>
-                        {step.minutes === 0
+                        {step.target_f === 0
+                          ? program.z_cloud || program.z_pak
+                            ? 'No new target'
+                            : 'Unheated'
+                          : `${step.target_f} °F`}
+                      </td>
+                      <td>
+                        {hold === 0
                           ? step.target_f === 0
                             ? 'Advance immediately'
                             : 'Reach target'
-                          : `${step.minutes} min`}
+                          : `${hold} min`}
                       </td>
                       <td>{step.drain_minutes} min</td>
                     </>
@@ -82,6 +101,8 @@ export function ProgramTable({
       <p className="help-text">
         {program.z_program?.Steps.length ?? program.steps.length} steps ·{' '}
         {programTiming(program, archived ? model : undefined)}. Heating time depends on the brewer.
+        {(program.z_pak || program.z_cloud) &&
+          ' The Z adjusts boiling steps for its measured boiling point.'}
       </p>
     </div>
   )
@@ -104,8 +125,15 @@ export function ProgramFields({
   model?: string
   archived?: boolean
 }) {
+  if (program.z_pak)
+    return (
+      <ZPicoPakFields program={program} onChange={onChange} library={!device}>
+        <ProgramTable program={program} model="z" />
+      </ZPicoPakFields>
+    )
   const stock = targetModel === 'zymatic'
-  const bounded = device || !!targetModel
+  const cloud = program.z_cloud
+  const bounded = device || !!targetModel || !!cloud
   const maxSteps = stock ? 25 : bounded ? 15 : 256
   function updateStep(index: number, patch: Partial<MachineStep>) {
     onChange({
@@ -135,7 +163,7 @@ export function ProgramFields({
                   ...program.steps,
                   {
                     name: 'New step',
-                    location: stock ? 1 : 2,
+                    location: stock || cloud ? 1 : 2,
                     target_f: 152,
                     minutes: 10,
                     drain_minutes: 0,
@@ -160,6 +188,36 @@ export function ProgramFields({
           maxLength={20}
         />
       </Field>
+      {cloud && (
+        <div className="form-grid">
+          <Field label="Starting water (L)">
+            <input
+              type="number"
+              min="0.001"
+              max="16.163"
+              step="0.001"
+              required
+              value={cloud.start_water_ml / 1000 || ''}
+              onChange={(e) =>
+                onChange({
+                  ...program,
+                  z_cloud: { ...cloud, start_water_ml: Math.round(Number(e.target.value) * 1000) },
+                })
+              }
+            />
+          </Field>
+          <label className="check-field">
+            <input
+              type="checkbox"
+              checked={cloud.is_beer}
+              onChange={(e) =>
+                onChange({ ...program, z_cloud: { ...cloud, is_beer: e.target.checked } })
+              }
+            />{' '}
+            Show beer setup instructions
+          </label>
+        </div>
+      )}
       <div className="recipe-steps">
         {program.steps.map((step, index) => (
           <div className="recipe-step" key={index}>
@@ -187,19 +245,22 @@ export function ProgramFields({
                     }}
                   >
                     {[0, 1, 2, 3, 4, 5, 6]
-                      .filter((n) => n !== 0 || (!device && !model?.startsWith('pico')))
+                      .filter((n) => n !== 0 || !!cloud || (!device && !model?.startsWith('pico')))
                       .map((n) => (
                         <option key={n} value={n}>
-                          {routeLabel(n, model, archived)}
+                          {routeLabel(n, cloud ? 'z' : model, archived || !!cloud)}
                         </option>
                       ))}
                   </select>
                 </Field>
-                <Field label={`Step ${index + 1} target (°F)`} hint="0 = unheated">
+                <Field
+                  label={`Step ${index + 1} target (°F)`}
+                  hint={cloud ? '0 = no new target' : '0 = unheated'}
+                >
                   <input
                     type="number"
                     min="0"
-                    disabled={stock && step.location === 6}
+                    disabled={(stock || !!cloud) && step.location === 6}
                     max={stock ? 207 : 212}
                     step="1"
                     value={step.target_f}
@@ -212,7 +273,7 @@ export function ProgramFields({
                   <input
                     type="number"
                     min="0"
-                    disabled={stock && step.location === 6}
+                    disabled={(stock || !!cloud) && step.location === 6}
                     max={stock ? 255 : bounded ? 599 : 43200}
                     step="1"
                     value={step.minutes}
@@ -223,7 +284,7 @@ export function ProgramFields({
                   <input
                     type="number"
                     min="0"
-                    disabled={stock && step.location === 6}
+                    disabled={(stock || !!cloud) && step.location === 6}
                     max={stock ? 255 : bounded ? 120 : 1440}
                     step="1"
                     value={step.drain_minutes}

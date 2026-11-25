@@ -537,6 +537,12 @@ void pico_recipe_c_drain_sequence(PicoRecipeRuntime *r, uint8_t *next, uint32_t 
  * intentionally retains the OEM mismatch with its 120-second steam loop. */
 void pico_recipe_rinse(PicoRecipeRuntime *r)
 {
+#if PICO_STANDALONE
+    /* Only explicit stand-alone rinses are group starts. The automatic
+     * post-brew rinse and cancelled preparation never invite another brewer. */
+    bool group = r->state->group_armed;
+    r->state->group_armed = false;
+#endif
     if (pico_local_cancelled())
         return;
     static const uint32_t instructions[] = {21, 13};
@@ -553,7 +559,15 @@ void pico_recipe_rinse(PicoRecipeRuntime *r)
     show(r, PICO_RECIPE_WAIT_FILTER_INSERTION, 0, NULL);
     show(r, PICO_RECIPE_INSTRUCTION_HEADER, 23, title);
     r->ops->report_state(r->context);
+#if PICO_STANDALONE
+    uint32_t rinse_start = clock_ms(r);
+    if (group) {
+        r->state->group_rinse = true;
+        r->state->group_started_ms = rinse_start;
+    }
+#else
     clock_ms(r);
+#endif
     uint8_t next = 1;
     move_to(r, next);
     show(r, PICO_RECIPE_CLEAR, 0, NULL);

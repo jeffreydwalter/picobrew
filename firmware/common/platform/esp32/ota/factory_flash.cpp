@@ -73,6 +73,15 @@ void FactoryFlash::inspect() {
     std::uint32_t recovery_size = 0;
     if (!inspect_image(factory_, RecoveryPrefix, nullptr, recovery_size) ||
         !inspect_image(running, same_partition(running, factory_) ? RecoveryPrefix : IdentityPrefix, Version, running_size_) || !hash_image(running, running_size_, running_digest_)) return;
+#ifdef PB_Z_WIRED_RECOVERY
+    // The preceding esp_image_verify checked the native image integrity.
+    // Legacy USB installations have the same public version but a Wi-Fi-only receiver.
+    char transport[sizeof(PB_Z_WIRED_RECOVERY)] = {};
+    const std::size_t offset = sizeof(esp_image_header_t)+sizeof(esp_image_segment_header_t)+sizeof(esp_app_desc_t)+64;
+    wired_recovery_ = recovery_size >= offset+sizeof(transport) &&
+        esp_partition_read(factory_,offset,transport,sizeof(transport))==ESP_OK &&
+        !std::memcmp(transport,PB_Z_WIRED_RECOVERY,sizeof(transport));
+#endif
     if (same_partition(running, factory_)) role_ = Role::Recovery;
     else if (same_partition(running, app_)) role_ = Role::Application;
 }

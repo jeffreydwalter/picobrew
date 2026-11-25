@@ -106,7 +106,7 @@ function setupApiExplorer({session, enqueue}) {
       return true;
     }).map(row=>{
       if(row[1]==='/api/v1/settings' && row[0]==='PATCH' && Array.isArray(info.settings_fields)) {
-        const defaults={temperature_unit:'F',language:'en',detailed_status:false};
+        const defaults={temperature_unit:'F',language:'en',detailed_status:false,auto_cycle:true};
         return [row[0],row[1],row[2],[['Supported preferences',Object.fromEntries(info.settings_fields.filter(name=>name in defaults).map(name=>[name,defaults[name]]))]]];
       }
       if(row[1]!=='/api/v1/commands')return row;
@@ -116,7 +116,10 @@ function setupApiExplorer({session, enqueue}) {
         return [PicoDevice.commandLabels[name] || name,payload];
       });return [row[0],row[1],row[2],examples];
     });
+    if(info.z_state_v1===true)operations.push(['GET','/api/v1/z/state','Read the Z Program Maker sensor and controller fields.']);
     if(info.model==='z-series' && PicoDevice.feature(info,'front_panel'))operations.push(['GET','/api/v1/display/{offset}','Read a page of the same grayscale display revision returned by /display.',null,[['offset','path',true,{type:'integer',minimum:1024,maximum:3072,default:1024}],['revision','query',true,{type:'integer',minimum:0,maximum:4294967295,default:0}]]]);
+    if(info.group_brewing_v1)operations.push(['GET','/api/v1/group-brew','Read the current group invitation and recent start.']);
+    if(info.model==='z-series' && info.picostill_brewer_link_v1)operations.push(['GET','/api/v1/picostill','Read the paired PicoStill and its active program readings.']);
     endpoint.replaceChildren();for(const [method,path] of operations)endpoint.add(new Option(method+' '+path,method+' '+path));
     if(Array.from(endpoint.options).some(option=>option.value===original))endpoint.value=original;
     select();

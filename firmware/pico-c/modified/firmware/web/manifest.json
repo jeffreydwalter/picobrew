@@ -23,12 +23,12 @@
       "payload": "app.js.gz",
       "content_type": "application/javascript; charset=utf-8",
       "content_encoding": "gzip",
-      "length": 7013,
+      "length": 7043,
       "max_size": 7680,
       "allocation_blocks": 2,
-      "sha256": "15f548135895c8756bdf67073725bc1987986a937bc55a53b37b9ab9baa28002",
-      "source_length": 21673,
-      "source_sha256": "e65918b997cc47f84a927cfbbb16e0218f2478b33ff8783ab660cfec5bf22c1c"
+      "sha256": "71c72df215e24d465744994565c0b7cf2bcfaa132c6595c619f32bdf93877073",
+      "source_length": 21789,
+      "source_sha256": "50742484a4b28940a9adb031b4e3416f5cdee17c1db57a2d7d01906c54314084"
     },
     {
       "source": "api-explorer.js",
@@ -36,12 +36,12 @@
       "payload": "api-explorer.js.gz",
       "content_type": "application/javascript; charset=utf-8",
       "content_encoding": "gzip",
-      "length": 3543,
+      "length": 3552,
       "max_size": 3584,
       "allocation_blocks": 1,
-      "sha256": "3f069fff004a58abd085b3b03627a61fda0ff5ac9c6f06df9276c7ede5090582",
-      "source_length": 9391,
-      "source_sha256": "f9927a8e953f99b35184aaf7e2cf46e16c81013b9250e64fa8c0910c0efe1f88"
+      "sha256": "c275649cc37bf70b163ca8a57473ca7ab6bca2f62047bfd52bf3a35c4833a804",
+      "source_length": 9418,
+      "source_sha256": "0665f20acf0e7cce8ddf2430395da5fa6e40aedd4f11395cb23ab8a95be5b37d"
     },
     {
       "source": "history.js",
@@ -49,12 +49,12 @@
       "payload": "history.js.gz",
       "content_type": "application/javascript; charset=utf-8",
       "content_encoding": "gzip",
-      "length": 7413,
+      "length": 7528,
       "max_size": 7680,
       "allocation_blocks": 2,
-      "sha256": "44a6fc8671480c9be83642d647be646ce729bc8012f0c3c5bb30b59db6c16dbb",
-      "source_length": 22339,
-      "source_sha256": "4184406ab99a989617d67553a158fe892613f17a310ac9b1e573390d3820cca7"
+      "sha256": "086dea352149908d4dcf47f579b58f6b55633ab99a144dc0cdc257d4a7d71cbf",
+      "source_length": 22644,
+      "source_sha256": "0fe7b42b3441e8bbf43a10e459aa809649cd5d1be4c507d9eef4742725b2fd23"
     },
     {
       "source": "style.css",

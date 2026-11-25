@@ -757,6 +757,25 @@ func TestPicoSOriginalReceiptOffersRevisedBuildOnce(t *testing.T) {
 	checkDenied()
 	prior.Model = "pico-s"
 	save(prior)
+	// The daily fleet notice must refer to the actual release in the selected
+	// catalog. A cached older archive with the same version is not a revision.
+	catalog := firmware.ReleaseCatalog{Settings: firmware.Settings{Repository: firmware.DefaultRepository}, ReleaseChannel: "stable", Checked: time.Now().UTC(),
+		Releases: []firmware.Release{{Candidate: pkg.Candidate, ArchiveSHA256: original, Kind: "standalone"}}}
+	checkNotice := func(id string, want bool) {
+		t.Helper()
+		catalog.Releases[0].ArchiveSHA256 = id
+		if _, err := s.db.Put("config", firmwareCatalogKey, catalog, -1); err != nil {
+			t.Fatal(err)
+		}
+		code, data := request(t, client, "GET", h.URL+"/api/v1/firmware/updates", "", nil, nil)
+		var view releaseView
+		if code != 200 || json.Unmarshal(data, &view) != nil || len(view.Notices) > 1 || (len(view.Notices) == 1) != want ||
+			want && (!view.Notices[0].Revised || view.Notices[0].DeviceID != registered.ID) {
+			t.Fatalf("wrong revision notice: %d %s", code, data)
+		}
+	}
+	checkNotice(original, false)
+	checkNotice(pkg.ID, true)
 	checkOffer(pkg.ID)
 	if code, data := install(); code != 202 {
 		t.Fatalf("eligible revision rejected: %d %s", code, data)
@@ -778,6 +797,7 @@ func TestPicoSOriginalReceiptOffersRevisedBuildOnce(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	checkNotice(pkg.ID, false)
 	checkDenied()
 }
 

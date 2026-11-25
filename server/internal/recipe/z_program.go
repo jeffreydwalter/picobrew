@@ -41,26 +41,44 @@ func ExportZProgram(r domain.Recipe, profile domain.Profile) ([]byte, error) {
 		return nil, fmt.Errorf("cannot compile this Z program: %v", plan.DeploymentBlockers)
 	}
 	native := plan.MachineRecipe
+	if native.ZPak != nil {
+		return nil, errors.New("the physical PicoPak setup, water and timing controls require standalone Z firmware")
+	}
+	if native.ZCloud != nil {
+		return nil, errors.New("stock Z Program Maker cannot represent cloud recipe water, heat and setup prompts; send the original schedule to standalone Z firmware")
+	}
 	p := native.ZProgram
 	if p == nil {
 		p = &domain.ZProgram{Name: r.Name, IsBeer: true}
-		heated := false
 		for _, s := range native.Steps {
 			hold, drain, location := s.Minutes*60, s.DrainMinutes*60, s.Location
 			temp := json.RawMessage("null")
 			if s.TargetF > 0 {
-				heated = true
 				temp, _ = json.Marshal(float64(s.TargetF-32) / 1.8)
-			} else if heated {
-				// The stock local builder skips ReachTarget here and may retain
-				// the previous step's PID. Standalone Z explicitly emits NoTarget.
-				return nil, fmt.Errorf("the stock Z program cannot turn off the previous heating target for %q; send this recipe to standalone Z firmware", s.Name)
 			}
 			p.Steps = append(p.Steps, domain.ZProgramStep{Name: s.Name, Type: 1, Time: &hold, Location: &location, Temp: temp, Drain: &drain})
 		}
 	}
 	if err := p.Validate(); err != nil {
 		return nil, err
+	}
+	// Z119's MoveValve restarts an active PID. A positive drain emits StopPid
+	// and clears that state; an operator pause stops outputs temporarily and
+	// retains the requested PID state for resume. Apply this to imported and
+	// translated recipes alike, before producing stock-compatible JSON.
+	heated := false
+	for _, step := range p.Steps {
+		if step.Type != 1 {
+			continue
+		}
+		var celsius float64
+		if err := json.Unmarshal(step.Temp, &celsius); err != nil {
+			return nil, err
+		}
+		if celsius <= 0 && heated {
+			return nil, fmt.Errorf("stock Z cannot turn off the previous heating target for %q; send this recipe to standalone Z firmware", step.Name)
+		}
+		heated = celsius > 0 && *step.Drain == 0
 	}
 	slots := 4
 	if p.IsMetric != nil {

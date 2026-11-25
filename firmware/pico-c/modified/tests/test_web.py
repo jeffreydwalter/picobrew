@@ -288,6 +288,24 @@ class BrowserWorkflow(unittest.TestCase):
             self.assertFalse(self.page.evaluate('document.documentElement.scrollWidth > innerWidth'))
         self.page.screenshot(path=str(self.output / 'ssd1309-mobile.png'),full_page=True)
 
+    def test_stale_editor_keeps_draft_and_newer_saved_recipe(self):
+        path = "/api/v1/recipes/house-ale"
+        self.connect()
+        self.page.locator('[data-tab="recipes"]').click()
+        self.page.locator(".recipe-item").filter(has_text="House ale").click()
+        expect(self.page.locator("#editorHeading")).to_have_text("Edit recipe")
+        self.page.locator("#recipeName").fill("My draft")
+        with LOCK:
+            backend.request("PUT", path, backend.recipe("Other brewer's edit"))
+        self.page.locator("#saveRecipe").click()
+        expect(self.page.locator("#notice")).to_contain_text("Reopen this recipe")
+        expect(self.page.locator("#recipeName")).to_have_value("My draft")
+        self.page.once("dialog", lambda dialog: dialog.accept())
+        self.page.locator("#deleteRecipe").click()
+        expect(self.page.locator("#notice")).to_contain_text("Reopen this recipe")
+        with LOCK:
+            self.assertEqual(backend.request("GET", path)[1]["name"], "Other brewer's edit")
+
     def test_import_rejects_unrepresentable_steps_before_touching_the_editor(self):
         self.connect()
         self.page.locator('[data-tab="recipes"]').click()
@@ -452,7 +470,7 @@ class BrowserWorkflow(unittest.TestCase):
         self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth"))
         self.page.screenshot(path=str(self.output / "overview-mobile.png"), full_page=True)
         self.page.locator('[data-tab="recipes"]').click()
-        document = dict(id="imported", **backend.recipe("Imported recipe"))
+        document = dict(id="imported", revision=42, **backend.recipe("Imported recipe"))
         self.page.locator("#importFile").set_input_files({"name": "recipe.json", "mimeType": "application/json",
                                                         "buffer": json.dumps(document).encode()})
         expect(self.page.locator("#recipeName")).to_have_value("Imported recipe")

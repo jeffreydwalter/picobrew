@@ -127,7 +127,7 @@ def verify_app_slots(flash, matches):
                 raise ValueError("Unrecognized application in stock flash partition " + part.name)
 
 
-def qualify_install_layout(flash):
+def qualify_install_layout(flash, *, preserve_z_eeprom=False):
     """Check that a reference package can retain NVS and all opaque data regions."""
     if len(flash) < 0x400000:
         raise ValueError("ESP32 reference layout requires at least 4 MiB of flash")
@@ -150,7 +150,8 @@ def qualify_install_layout(flash):
             continue
         if p == nvs[0] or (p.kind, p.subtype) == (1, 0):
             continue
-        if p.kind != 0 and (p.kind, p.subtype) != (1, 0x82):
+        z_eeprom = preserve_z_eeprom and p == Partition("eeprom", 1, 0x99, 0x290000, SECTOR)
+        if p.kind != 0 and (p.kind, p.subtype) != (1, 0x82) and not z_eeprom:
             raise ValueError("Reference layout would displace stock data partition " + p.name)
         if p.offset < 0x10000:
             raise ValueError("Stock partition overlaps reserved reference metadata")

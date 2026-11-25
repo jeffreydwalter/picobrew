@@ -34,6 +34,7 @@ def main():
         source_sha256={name:native.digest(ROOT/name) for name in files},
         ferm_boundary='Actual production Engine, VerifiedStorage and raw ESP8266 adapter with all five unmodified pinned SPIFFS C sources, GC=5/metadata=0. Exact eagle.flash.2m.ld 0xFB000 region, page=256, block=8192. Physical flash is a deterministic NOR memory model.',
         still_boundary='Production Engine and shared transaction run on the same SPIFFS C implementation rebuilt with ESP32 sdkconfig GC=10/metadata=4/magic-length=1, unaligned object tables (49-byte header), page=256/block=4096. Both historical default.csv 0x16F000 and selected modified reference 0x200000 regions are measured. This is a sizing model, not execution of the ESP32 SDK filesystem binary. The smaller Ferm-region Still case deliberately measures an unsuitable partition.',
+        z_boundary='Same ESP32 SPIFFS sizing geometry using the deployed 0x16F000 partition. Five sensors and four actuators including heater level match the Z recorder schema. All 16 catalog slots are written and read back with 15 steps each in cloud, full PicoPak strength/routing, then two 625-byte Program Maker generations. The catalog survives 4,224 sample writes, restart and subsequent session creation. The native file-system test uses a modeled Z device, not real flash or actuators.',
         hardware_tested=False,oem_partition_map_claimed=False)
     if args.write_report:
         path=ROOT/'analysis/spiffs-capacity-validation.json';path.parent.mkdir(exist_ok=True)
