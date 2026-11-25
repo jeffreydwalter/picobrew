@@ -81,8 +81,7 @@ def target(flash,original_length,parts,api_key):
     if flash[FS].strip(b'\xff') and flash[FS]!=parts['spiffs.bin']:
         raise ValueError('Existing flash data overlaps the proposed PicoFerm filesystem')
     app=parts['bank-0.bin']
-    body=struct.pack('<IIIII',0x31424650,0,1,len(app),zlib.crc32(app))
-    record=body+struct.pack('<II',zlib.crc32(body),0xfffffff8)
+    record=boot_record(0,1,app)
     out=bytearray(flash)
     out[:FS.start]=b'\xff'*FS.start
     out[:len(parts['bootstrap.bin'])]=parts['bootstrap.bin']
@@ -141,3 +140,76 @@ def migrate(current, original, wanted, key, legacy_applications):
             raise ValueError('Unexplained bytes occupy a future PicoFerm OTA bank')
         return wanted[:FS.start]+current[FS.start:]
     raise ValueError('The installed PicoFerm application differs from every published single-bank image')
+
+
+SECTOR = 0x1000
+CONFIRMED = 0xfffffff8
+TRIED = 0xfffffffc
+
+
+def boot_record(bank, generation, image):
+    header = struct.pack('<5I', 0x31424650, bank, generation, len(image), zlib.crc32(image))
+    record = header + struct.pack('<II', zlib.crc32(header), CONFIRMED)
+    return record.ljust(SECTOR, b'\xff')
+
+
+def update_plan(source, parts, retired):
+    """Identify a settled pair of banks and prepare an update confined to the spare bank."""
+    if (len(source) != 0x200000 or source[:SECTOR] != parts['bootstrap.bin'].ljust(SECTOR, b'\xff')
+            or source[BANKS[0] + BANK_SIZE:BANKS[1]].strip(b'\xff')):
+        raise ValueError('Unrecognized PicoFerm A/B layout')
+    records = []
+    for bank, base in enumerate(BANKS):
+        offset = (bank + 1) * SECTOR
+        record = source[offset:offset + SECTOR]
+        installed = source[base:base + BANK_SIZE]
+        if not record.strip(b'\xff') and not installed.strip(b'\xff'):
+            continue
+        magic, slot, gen, size, crc, hcrc, state = struct.unpack_from('<7I', record)
+        target = parts[f'bank-{bank}.bin']
+        recognized = {(len(target), sha(target))}
+        recognized.update((r['banks'][bank]['binary_bytes'], r['banks'][bank]['binary_sha256']) for r in retired)
+        if (magic != 0x31424650 or slot != bank or not gen or not 0 < size <= BANK_SIZE
+                or zlib.crc32(record[:20]) != hcrc or record[28:].strip(b'\xff')
+                or state not in (CONFIRMED, TRIED) or installed[size:].strip(b'\xff')
+                or zlib.crc32(installed[:size]) != crc or (size, sha(installed[:size])) not in recognized):
+            raise ValueError('PicoFerm bank or boot record is unknown, damaged, or awaiting a trial boot')
+        records.append((gen, bank, state))
+    settled = [r for r in records if r[2] == CONFIRMED]
+    if not settled or len({r[0] for r in records}) != len(records):
+        raise ValueError('No unambiguous confirmed PicoFerm application')
+    _, active, _ = max(settled)
+    active_image = parts[f'bank-{active}.bin']
+    if source[BANKS[active]:BANKS[active] + len(active_image)] == active_image:
+        return None
+    generation = max(r[0] for r in records)
+    if generation == 0xffffffff:
+        raise ValueError('PicoFerm boot generation is exhausted')
+    spare = 1 - active
+    image = parts[f'bank-{spare}.bin']
+    return (BANKS[spare], image.ljust(BANK_SIZE, b'\xff'),
+            (spare + 1) * SECTOR, boot_record(spare, generation + 1, image))
+
+
+def interrupted_write(source, current, plan):
+    """Recognize completed, erased, or partly programmed sectors of this particular update."""
+    base, bank, rec, record = plan
+    for start in range(0, FS.start, SECTOR):
+        old = source[start:start + SECTOR]
+        live = current[start:start + SECTOR]
+        if old == live:
+            continue
+        if start == rec:
+            wanted = record
+        elif base <= start < base + BANK_SIZE:
+            wanted = bank[start - base:start - base + SECTOR]
+        else:
+            return False
+        if old == wanted:
+            return False
+        # An interrupted erase leaves bits of the previous sector set. Programming
+        # clears erased bits towards the intended payload. Other contents are refused.
+        if live != wanted and not (all((a & b) == a for a, b in zip(old, live))
+                                   or all((a & b) == a for a, b in zip(wanted, live))):
+            return False
+    return True

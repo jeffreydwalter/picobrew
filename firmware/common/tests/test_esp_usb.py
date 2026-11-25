@@ -166,6 +166,82 @@ class USBTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"verified empty"):
                     usb.esp_provisioning.stage(damaged,profile,key)
 
+    def test_picoferm_dual_bank_reprovision_is_recoverable_and_preserves_live_data(self):
+        chip = device("picoferm")
+        before = chip.read()
+        key = "7c" * 32
+        _, old = usb.picoferm_ab_reference()
+        target = dict(old)
+        # Produce two distinct linked applications with valid native checksums.
+        for slot in (0, 1):
+            name = f"bank-{slot}.bin"
+            image = bytearray(old[name])
+            image[8000] ^= 1
+            image[-1] ^= 1
+            usb.usb_ab._decode(image, 4)
+            target[name] = bytes(image)
+        setup = lambda: usb.operation("install", "picoferm", chip, self.data,
+                                      ask=lambda _: chip.identity.mac, api_key=key)
+        setup()
+        path = usb.backup_path(self.data, chip.identity)
+        known = [{"banks": [{"binary_bytes": len(old[f"bank-{s}.bin"]),
+                             "binary_sha256": usb.sha(old[f"bank-{s}.bin"])} for s in (0, 1)]}]
+        chip.contents[-15:-12] = b"new"
+        abandoned = chip.read()
+        with patch.object(usb, "picoferm_ab_reference", return_value=("1.0.0", target)), \
+                patch.object(usb, "legacy_applications", return_value=known):
+            # Without a verified preimage, an occupied bank without a valid record is unknown.
+            chip.contents[0x83008] ^= 1
+            with self.assertRaisesRegex(ValueError, "unknown"):
+                setup()
+            chip.contents[:] = abandoned
+            with self.assertRaisesRegex(ValueError, "pairing"):
+                usb.operation("install", "picoferm", chip, self.data, api_key="7e"*32)
+            initial_writes = len(chip.writes)
+            real_write = chip.write
+            def torn_image(offset, data):
+                self.assertEqual(offset, 0x83000)
+                real_write(offset, data[:usb.SECTOR])
+                raise OSError("partial bank")
+            with patch.object(chip, "write", side_effect=torn_image), self.assertRaisesRegex(OSError, "partial"):
+                setup()
+            self.assertEqual(chip.contents[:0x83000], abandoned[:0x83000])
+            snap, = path.parent.glob("before-picoferm-*.bin")
+            self.assertEqual(usb.private_files.read_regular(snap, len(abandoned), private=True), abandoned)
+            # Changed private data since the first attempt must survive a retry.
+            chip.contents[-15:-12] = b"now"
+            def torn_selector(offset, data):
+                if offset == 0x2000:
+                    real_write(offset, data[:12].ljust(usb.SECTOR, b"\xff"))
+                    raise OSError("partial record")
+                real_write(offset, data)
+            with patch.object(chip, "write", side_effect=torn_selector), self.assertRaisesRegex(OSError, "partial"):
+                setup()
+            self.assertEqual(chip.contents[0x1000:0x2000], abandoned[0x1000:0x2000])
+            self.assertEqual(chip.contents[0x3000:0x83000], abandoned[0x3000:0x83000])
+            setup()
+            self.assertEqual(chip.writes[-1], 0x2000)
+            self.assertTrue(all(x == 0x2000 or 0x83000 <= x < usb.MIB for x in chip.writes[initial_writes:]))
+            record = usb.usb_ab.boot_record(1, 2, target["bank-1.bin"])
+            self.assertEqual(chip.contents[0x2000:0x3000], record)
+            self.assertEqual(chip.contents[0x83000:0x83000+len(target["bank-1.bin"])], target["bank-1.bin"])
+            self.assertEqual(chip.contents[usb.MIB:-15], abandoned[usb.MIB:-15])
+            self.assertEqual(chip.contents[-15:], b"now" + abandoned[-12:])
+            count = len(chip.writes)
+            setup()
+            self.assertEqual(len(chip.writes), count)
+            # Reprovision in the opposite direction, keeping confirmed bank B intact.
+            both = known + [{"banks": [{"binary_bytes": len(target[f"bank-{s}.bin"]),
+                                        "binary_sha256": usb.sha(target[f"bank-{s}.bin"])} for s in (0, 1)]}]
+            with patch.object(usb, "picoferm_ab_reference", return_value=("1.0.0", old)), \
+                    patch.object(usb, "legacy_applications", return_value=both):
+                setup()
+            self.assertEqual(chip.contents[0x1000:0x2000], usb.usb_ab.boot_record(0, 3, old["bank-0.bin"]))
+            self.assertEqual(chip.contents[0x2000:0x3000], record)
+        self.assertEqual(usb.load_original(path, chip.identity, "picoferm"), before)
+        self.run_action("restore", "picoferm", chip, ["RESTORE", chip.identity.mac])
+        self.assertEqual(chip.contents, before)
+
     def test_refuse_wrong_model_and_unknown_active_flash_before_any_write(self):
         for model, selection in (("picostill", "picoferm"), ("picostill", "z-series"), ("picoferm", "picoferm")):
             chip = device(model)

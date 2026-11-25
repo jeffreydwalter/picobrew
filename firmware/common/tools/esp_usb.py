@@ -280,9 +280,9 @@ def migrate_factory_layout(current, original, key, model):
     return version, bytes(target)
 
 
-def preserve_before_migration(path, image):
+def preserve_before_migration(path, image, prefix="before-repartition-"):
     # The stock capture must never be overwritten by a modified capture.
-    destination = path.with_name("before-repartition-"+sha(image)+".bin")
+    destination = path.with_name(prefix+sha(image)+".bin")
     try:
         saved = private_files.read_regular(destination,len(image),private=True)
     except FileNotFoundError:
@@ -301,6 +301,57 @@ def preserve_before_migration(path, image):
             finally: os.close(fd)
         saved = private_files.read_regular(destination,len(image),private=True)
     if saved != image: raise ValueError("Pre-migration capture failed readback")
+
+
+def reprovision_picoferm(path, device, current, parts, key, ask):
+    if not usb_ab.matches_key(current[usb_ab.FS], key):
+        raise ValueError("The PicoFerm key differs from the Hub's saved pairing")
+    previous = legacy_applications("picoferm-ab")
+    prefix = "before-picoferm-" + sha(parts["bank-0.bin"]) + "-"
+    try:
+        plan = usb_ab.update_plan(current, parts, previous)
+    except ValueError as invalid:
+        # A previous write may have stopped after beginning the spare bank or
+        # its boot record. Only resume a transaction from this MAC and package.
+        for candidate in path.parent.glob(prefix + "*.bin"):
+            digest = candidate.stem[len(prefix):]
+            if not re.fullmatch(r"[0-9a-f]{64}", digest):
+                continue
+            source = private_files.read_regular(candidate, len(current), private=True)
+            if sha(source) != digest:
+                raise ValueError("The saved PicoFerm migration capture failed verification")
+            if not usb_ab.matches_key(source[usb_ab.FS], key):
+                continue
+            saved_plan = usb_ab.update_plan(source, parts, previous)
+            if saved_plan and usb_ab.interrupted_write(source, current, saved_plan):
+                plan = saved_plan
+                break
+        else:
+            raise invalid
+    else:
+        if plan is None:
+            device.verify_identity()
+            print("The selected PicoFerm bank already runs the checked image.")
+            return
+        preserve_before_migration(path, current, prefix)
+
+    ident = device.identity
+    if ask(f"Type the device MAC {ident.mac} to confirm install: ").strip().lower() != ident.mac:
+        raise ValueError("Device confirmation did not match; cancelled before writing")
+    base, bank, rec, record = plan
+    staged = bytearray(current)
+    staged[base:base + len(bank)] = bank
+    device.verify_identity()
+    for start, data in changed_ranges(current, staged, 0):
+        device.write(start, bytes(data))
+    if device.read() != staged:
+        raise ValueError("PicoFerm spare bank verification failed. Repeat USB Install to resume.")
+    device.verify_identity()
+    staged[rec:rec + SECTOR] = record
+    device.write(rec, record)
+    if device.read() != staged:
+        raise ValueError("PicoFerm boot record verification failed. Repeat USB Install to resume.")
+    print("The complete flash and new boot selection were verified. Reset the PicoFerm.")
 
 
 def backup_path(root, identity):
@@ -415,7 +466,11 @@ def operation(action, model, device, root, ask=input, *, api_key=None):
                 if model == "z-series": preserve_before_migration(path,current)
                 print(f"USB setup will install {model} {version} with wireless recovery and retain its settings and history.")
                 return write_target(action, device, ident, current, target, ask)
-            if model == "picoferm" and picoferm_ab_reference() is not None:
+            ab = picoferm_ab_reference() if model == "picoferm" else None
+            if ab:
+                parts = ab[1]
+                if current[:SECTOR] == parts["bootstrap.bin"].ljust(SECTOR, b"\xff"):
+                    return reprovision_picoferm(path, device, current, parts, api_key, ask)
                 target = usb_ab.migrate(current, original, wanted, api_key, legacy_applications(model))
                 print(f"USB setup will retain the paired PicoFerm's settings and history for {version}.")
                 return write_target(action, device, ident, current, target, ask)
