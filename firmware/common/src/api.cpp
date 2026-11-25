@@ -32,7 +32,7 @@ unsigned Engine::Impl::discovery_json(Writer& writer) {
     writer.text("{"); identity_json(writer, identity);
     if (pico_http_pairing_available(false)) writer.text(",\"pairing_v1\":true");
     if (capabilities.ota_protocol) { writer.text(",\"ota_protocol\":"); writer.quote(capabilities.ota_protocol); }
-    if (capabilities.flags & Recipes) writer.text(",\"recipe_conditional_write\":true");
+    if (has_recipe_library()) writer.text(",\"recipe_conditional_write\":true");
     if (capabilities.picostill_brewer_link_v1) writer.text(",\"picostill_brewer_link_v1\":true");
     if (capabilities.group_brewing_v1) writer.text(",\"group_brewing_v1\":true");
     if (capabilities.z_state_v1) writer.text(",\"z_state_v1\":true");
@@ -41,8 +41,8 @@ unsigned Engine::Impl::discovery_json(Writer& writer) {
     if (capabilities.z_program_maker) writer.text(",\"z_program_maker\":true");
     writer.text(",\"api_version\":1,\"release_channel\":\"stable\",\"firmware_version\":"); writer.quote(identity.firmware_version);
     writer.format(",\"mode\":\"standalone\",\"recipe_capacity\":%u,\"step_capacity\":%u,\"recipe_create_only\":%s,\"zero_minute_steps\":%s,\"restore_default_recipes\":%s,\"starter_recipe_count\":%u,\"recipe_labels\":\"printable ASCII\",\"commands\":[",
-        capabilities.flags & Recipes ? unsigned(RecipeCapacity) : 0u, capabilities.flags & Recipes ? unsigned(RecipeStepCapacity) : 0u,
-        capabilities.flags & Recipes ? "true" : "false", capabilities.zero_minute_steps ? "true" : "false", capabilities.starter_recipe_count ? "true" : "false", unsigned(capabilities.starter_recipe_count));
+        has_recipe_library() ? unsigned(RecipeCapacity) : 0u, has_recipe_library() ? unsigned(RecipeStepCapacity) : 0u,
+        has_recipe_library() ? "true" : "false", capabilities.zero_minute_steps ? "true" : "false", capabilities.starter_recipe_count ? "true" : "false", unsigned(capabilities.starter_recipe_count));
     for (std::size_t i = 0; i < capabilities.command_count; ++i) { if (i) writer.text(","); writer.quote(capabilities.commands[i].name); }
     writer.format("],\"dedicated_pause_resume\":%s,\"front_panel\":%s,\"events_persistent\":false,\"history_persistent\":true,\"history_capacity_records\":%u,\"history_capacity_sessions\":8,\"telemetry_forwarding\":true,\"capabilities\":{",
         capabilities.dedicated_pause_resume ? "true" : "false", capabilities.flags & FrontPanel ? "true" : "false", PointCapacity);
@@ -163,7 +163,7 @@ unsigned Engine::Impl::settings_api(const PicoHttpRequest& request, Writer& writ
     settings_json(writer, settings, capabilities.settings); return 200;
 }
 unsigned Engine::Impl::recipes_api(const PicoHttpRequest& request, Writer& writer) {
-    if (!(capabilities.flags & Recipes)) return error(writer, Result(404, "not_found", "Recipes are unavailable on this device"));
+    if (!has_recipe_library()) return error(writer, Result(404, "not_found", "Recipes are unavailable on this device"));
     if (!persistent) return error(writer, Result(503, "storage_io", "The recipe catalogue is not verified"));
     const char* suffix = request.path + std::strlen("/api/v1/recipes");
     if (!*suffix) {
@@ -220,13 +220,17 @@ unsigned Engine::Impl::command_api(const PicoHttpRequest& request, Writer& write
         ((descriptor->required_fields & Confirm) && !command.confirm))
         return error(writer, Result(400, "invalid_command", "Command arguments do not match advertised capabilities"));
     if (!persistent && std::strcmp(command.name, "stop")) return error(writer, Result(503, "storage_io", "Persistent state must be repaired before starting another operation"));
-    Recipe recipe;
+    if (!owner.device_.execute) return error(writer, Result(503, "not_ready", "The device command port is unavailable"));
+    Result result;
     if (command.fields & RecipeId) {
+        if (!has_recipe_library()) return error(writer, Result(404, "not_found", "Recipes are unavailable"));
+        Recipe recipe;
         const Result loaded = owner.recipe_get(command.recipe_id, recipe); if (!loaded.ok()) return error(writer, loaded);
         command.recipe = &recipe;
+        result = owner.device_.execute(owner.device_.context, command);
+    } else {
+        result = owner.device_.execute(owner.device_.context, command);
     }
-    if (!owner.device_.execute) return error(writer, Result(503, "not_ready", "The device command port is unavailable"));
-    const Result result = owner.device_.execute(owner.device_.context, command);
     if (!result.ok()) return error(writer, result);
     if (!std::strcmp(command.name, "stop")) owner.cancel_prepared_session();
     owner.event("command", command.name);
