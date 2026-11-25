@@ -49,6 +49,8 @@ Z canonical API recipes use direct native valves **1–6**. Archived native Z
 programs use locations **0–5** for valves and **6** for pause. The Hub preserves
 those archived programs as reference/export material until an explicit
 conversion is supplied; it does not deploy their numbers as canonical recipes.
+A paired PicoFerm turns off its radio between reporting windows while fermentation recording continues locally. A short press opens a two-minute window for Hub management. The Hub shows the time of the last reading while the radio is asleep. Battery life in hours or days still requires a physical measurement.
+
 PicoFerm's pressure reading retains its evidenced raw units; battery readings
 use the recovered ADC-to-voltage conversion and are reported in volts.
 

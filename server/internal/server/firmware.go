@@ -696,7 +696,7 @@ func (s *Server) machineFirmware(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if out.InstallSupported && out.RetryPackageID == "" && !stockPending(stock) {
-		out.RevisedPackageID = receipt.RevisedPackageID(out.DeviceUID, out.Model, out.CurrentVersion)
+		out.RevisedPackageID = receipt.RevisedPackageID(out.DeviceUID, out.Model, out.DisplayVariant, out.CurrentVersion)
 	}
 	if out.Model != "" {
 		catalog, err := s.savedCatalog()

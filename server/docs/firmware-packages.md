@@ -2,7 +2,7 @@
 
 Open a machine's **Firmware** view to see wireless update versions for its exact model. Choose a version and click **Install**. The Hub fetches the selected archive, validates it and saves it for reuse. **Download** saves that version to your computer. You can downgrade to an earlier compatible OTA release. The running version is marked **Already installed**.
 
-If this Hub installed the original public 1.0.0 on your Pico S, choose **Install revised build** to get the **Brew Recipe** menu and light and dark themes. The Hub checks the original installation receipt and running image, then verifies the new application and website. Once the brewer confirms the update, the button reads **Already installed**.
+If this Hub installed an earlier 1.0.0 build on a Pico S, Pro, C, Z module or PicoStill, **Install revised build** appears for a recognized installation receipt and matching final package. Before writing, the Hub also checks the application digest on the connected device. After verification the button reads **Already installed**. An earlier PicoFerm 1.0.0 rejects a replacement with the same version at the device. Use USB setup for that particular update. Zymatic firmware updates also use USB.
 
 ## GitHub source and version checks
 

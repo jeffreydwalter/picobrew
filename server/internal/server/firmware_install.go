@@ -226,14 +226,14 @@ func (s *Server) installFirmware(w http.ResponseWriter, r *http.Request) {
 	if resume {
 		payload.ReplacesPackageID = prior.ReplacesPackageID
 	} else if currentVersion == payload.FirmwareVersion {
-		if in.PackageID != prior.RevisedPackageID(in.UID, model, currentVersion) {
+		if in.PackageID != prior.RevisedPackageID(in.UID, model, display, currentVersion) {
 			s.fail(w, 409, "firmware_already_installed", "This firmware version is already installed on the brewer")
 			return
 		}
 		payload.ReplacesPackageID = prior.PackageID
 	}
-	if payload.ReplacesPackageID != "" && !payload.IsPicoSRevision() {
-		s.fail(w, 409, "firmware_revision", "This package does not match the approved Pico S revision")
+	if payload.ReplacesPackageID != "" && !payload.IsApprovedRevision() {
+		s.fail(w, 409, "firmware_revision", "This package does not match the approved revision for this machine")
 		return
 	}
 	if stockPending(stock) {

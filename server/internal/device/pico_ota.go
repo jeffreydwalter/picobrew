@@ -74,7 +74,7 @@ func (p *pico) InstallFirmware(ctx context.Context, uid string, pkg firmware.Upd
 	defer p.unlock()
 	// Long flash readbacks need more time than the usual polling deadline.
 	remote := &pico{base: p.base, key: p.key, client: &http.Client{Transport: p.client.Transport, CheckRedirect: p.client.CheckRedirect, Timeout: 30 * time.Second}}
-	if pkg.ReplacesPackageID != "" && !pkg.IsPicoSRevision() {
+	if pkg.ReplacesPackageID != "" && !pkg.IsApprovedRevision() {
 		return otaFailure("Invalid revised firmware package")
 	}
 	if pkg.OTAProtocol != "" {
@@ -108,7 +108,7 @@ func (p *pico) InstallFirmware(ctx context.Context, uid string, pkg firmware.Upd
 			}
 			if pkg.ReplacesPackageID != "" {
 				if caps.FirmwareVersion != pkg.FirmwareVersion || !pkg.ReplacesRunningImage(before.Digest) {
-					return otaFailure("The running Pico S application does not match the original build for this revision")
+					return otaFailure("The running application does not match the recorded build for this revision")
 				}
 				// Only after verifying the source image may a retry proceed directly in recovery.
 				if err := checkpoint("entering"); err != nil {
