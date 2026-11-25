@@ -69,7 +69,7 @@ rinse or clean can invite compatible members. Z modules with the extended group
 capability can also share drain, rack, circulate, chill, both sous vide programs,
 all four coffee programs and paired PicoStill operations. Each receiving Z shows
 the sender and program on its OLED. Answer on that dial, its local website or the
-Hub. For coffee, acceptance opens the native parameter screen with the sender’s
+Hub. For coffee, **Review coffee** on the dial opens the parameter screen with the sender’s
 water, temperature, intensity and duration. Choose **Start** there to begin.
 Each Z running a PicoStill operation needs its own ready, linked accessory.
 

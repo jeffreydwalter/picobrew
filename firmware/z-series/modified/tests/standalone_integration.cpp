@@ -1036,6 +1036,98 @@ void still_native_programs(){
         assert(w.still_request.find("\"op\":\"stop\"")!=std::string::npos);
     }
 }
+std::string owner_offer(unsigned id,const std::string& coffee=""){
+    return std::string(R"({"op":"offer","id":"1000000000000001","from":"Pico Z","action":"z_program","program_id":)")+
+           std::to_string(id)+coffee+"}";
+}
+void group_owner_programs(){
+    for(unsigned id:{2,3,4,5,6,7,26,27}){
+        World source,target;
+        if(id==7||id==26){
+            target.request(PICO_HTTP_POST,group_path,owner_offer(id).c_str(),409);
+            pair_still(source);pair_still(target);
+        }
+        assert(target.request(PICO_HTTP_GET,"/api/v1",nullptr,200).find("\"group_z_programs_v1\":true")!=std::string::npos);
+        CoreCommand begin;begin.id=CoreCommandId::StartProgram;begin.program_id=id;
+        assert(source.core.post(begin)&&source.dispatch());
+        const auto wire=source.request(PICO_HTTP_GET,group_path,nullptr,200);
+        assert(wire.find("\"action\":\"z_program\",\"program_id\":"+std::to_string(id)+",\"program_name\":")!=std::string::npos);
+        const auto pending=target.request(PICO_HTTP_POST,group_path,owner_offer(id).c_str(),200);
+        assert(pending.find("\"state\":\"pending\"")!=std::string::npos&&!target.core.core.commands.pending);
+        assert(target.core.core.state.id==CoreStateId::Idle&&!target.core.heater.state.started);
+        physical_group_button(target,1);assert(target.core.core.commands.pending&&target.dispatch());
+        assert(target.core.core.state.program_id==id&&target.core.core.state.id==CoreStateId::Starting);
+        assert(target.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"source\":null")!=std::string::npos);
+    }
+    for(unsigned id:{20,21,22,23}){
+        World source,target;
+        CoreCommand load;load.id=CoreCommandId::CoffeeProgramLoad;
+        auto& p=load.program_parameters;p.id=static_cast<ZProgramId>(id);
+        p.water={4.2,Unit::Gallon};p.temperature={92,Unit::Celsius};
+        p.time={900,Unit::Second};p.intensity={13,Unit::Intensity};
+        assert(source.core.post(load)&&source.dispatch());
+        CoreCommand start;start.id=CoreCommandId::StartProgram;start.program_id=24;
+        assert(source.core.post(start)&&source.dispatch());
+        double liters=0,degrees_f=0;
+        assert(quantity_in(p.water,Unit::Liter,liters)&&quantity_in(p.temperature,Unit::Fahrenheit,degrees_f));
+        char values[160];std::snprintf(values,sizeof values,",\"water_l\":%.17g,\"temperature_f\":%.17g,\"intensity\":13,\"time_seconds\":900",liters,degrees_f);
+        const auto source_group=source.request(PICO_HTTP_GET,group_path,nullptr,200);
+        assert(source_group.find(values)!=std::string::npos);
+        if(id==23){
+            assert(std::strlen(source.core.program.record().view.name)>=32);
+            source.engine.poll();const auto history=source.request(PICO_HTTP_GET,"/api/v1/history",nullptr,200);
+            assert(history.find("Custom ")!=std::string::npos&&history.find("15 min @197F")!=std::string::npos);
+        }
+        assert(source_group.find("\"program_id\":"+std::to_string(id)+",")!=std::string::npos);
+        const auto offer=owner_offer(id,values);
+        target.request(PICO_HTTP_POST,group_path,offer.c_str(),200);
+        std::string conflict=offer;conflict.replace(conflict.find("900"),3,"600");
+        target.request(PICO_HTTP_POST,group_path,conflict.c_str(),409);
+        physical_group_button(target,1);
+        assert(target.core.core.state.id==CoreStateId::Idle&&!target.core.core.commands.pending&&!target.core.heater.state.started);
+        assert(target.head.numeric.state.parameters.water.value==liters&&target.head.numeric.state.parameters.temperature.value==degrees_f);
+        const auto& a=source.core.program.record().view;const auto& b=target.core.program.record().view;
+        assert(a.code_size==b.code_size);
+        for(unsigned i=0;i<a.code_size;++i)assert(a.code[i].opcode==b.code[i].opcode&&a.code[i].argument==b.code[i].argument);
+        target.head_tick();assert(target.head.screens.menu_data.items[0].event.command==UiCommand::StartLoadedProgram);
+        physical_group_button(target,0);assert(target.dispatch());
+        assert(target.core.core.state.id==CoreStateId::Starting&&target.core.core.state.program_id==24);
+        assert(target.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"source\":null")!=std::string::npos);
+    }
+}
+void group_owner_validation(){
+    World w;
+    for(unsigned id:{0,1,8,9,10,11,12,13,14,15,16,17,18,19,24,25,28,255})
+        w.request(PICO_HTTP_POST,group_path,owner_offer(id).c_str(),400);
+    const std::string valid=R"(,"water_l":15.5,"temperature_f":195,"intensity":7,"time_seconds":420)";
+    for(const std::pair<std::string,std::string>& edit:std::vector<std::pair<std::string,std::string>>{
+        {"15.5","16.1"},{"195","201"},{"7,","0,"},{"420","121"},{"420","0"},{"420","5401"}}){
+        auto fields=valid;fields.replace(fields.find(edit.first),edit.first.size(),edit.second);
+        w.request(PICO_HTTP_POST,group_path,owner_offer(23,fields).c_str(),400);
+    }
+    w.request(PICO_HTTP_POST,group_path,owner_offer(23).c_str(),400);
+    w.request(PICO_HTTP_POST,group_path,owner_offer(3,valid).c_str(),400);
+    w.request(PICO_HTTP_POST,group_path,owner_offer(3,R"(,"program_name":"spoof")").c_str(),400);
+    w.request(PICO_HTTP_POST,group_path,owner_offer(3,R"(,"recipe_id":"native")").c_str(),400);
+    assert(w.core.core.state.id==CoreStateId::Idle&&!w.core.core.commands.pending);
+    World occupied;occupied.request(PICO_HTTP_POST,group_path,owner_offer(20,valid).c_str(),200);
+    CoreEvent boot;boot.type=CoreEventType::StateTransition;assert(occupied.head.core_events.put(boot));
+    occupied.request(PICO_HTTP_POST,group_path,accept_rinse,409);
+    assert(!occupied.core.core.commands.pending);
+    occupied.head.core_events.pending=false;physical_group_button(occupied,1);occupied.head_tick();
+    assert(occupied.head.screens.menu_data.items[0].event.command==UiCommand::StartLoadedProgram);
+    for(bool missing:{false,true}){
+        World review;review.request(PICO_HTTP_POST,group_path,owner_offer(23,valid).c_str(),200);physical_group_button(review,1);review.head_tick();
+        if(missing){
+            review.core.safeties.filter_missing=true;physical_group_button(review,0);assert(review.dispatch());
+            assert(review.core.core.state.id==CoreStateId::Idle&&!review.core.heater.state.started);
+        }else{
+            physical_group_button(review,1);assert(review.core.core.state.id==CoreStateId::Idle&&!review.core.core.commands.pending);
+            CoreCommand own;own.id=CoreCommandId::StartProgram;own.program_id=2;assert(review.core.post(own)&&review.dispatch());
+            assert(review.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"program_id\":2,")!=std::string::npos);
+        }
+    }
+}
 void group_routines() {
     for (const auto id : {ZProgramId::Rinse,ZProgramId::Clean}) {
         World source,target;
@@ -1113,7 +1205,7 @@ void group_interlocks() {
 }
 int main(int argc,char** argv){if(argc==4&&!std::strcmp(argv[1],"original-z")){for(double boil:{100.,93.})compare_archived_program(test_file(argv[2]),test_file(argv[3]),false,boil);return 0;}
     if(argc==3&&!std::strcmp(argv[1],"pak-corpus")){compare_pak_corpus(argv[2]);return 0;}assert(argc==2);const std::string test=argv[1];
-    if(test=="kit-dial")kit_strength_on_dial();else if(test=="still-programs")still_native_programs();else if(test=="still-pairing")still_pairing();else if(test=="still-session")still_session();else if(test=="pak-input")reject_pak_changes();else if(test=="group-brew")group_brew();else if(test=="group-routines")group_routines();else if(test=="group-interlocks")group_interlocks();
+    if(test=="group-owner")group_owner_programs();else if(test=="group-owner-invalid")group_owner_validation();else if(test=="kit-dial")kit_strength_on_dial();else if(test=="still-programs")still_native_programs();else if(test=="still-pairing")still_pairing();else if(test=="still-session")still_session();else if(test=="pak-input")reject_pak_changes();else if(test=="group-brew")group_brew();else if(test=="group-routines")group_routines();else if(test=="group-interlocks")group_interlocks();
     else if(test=="maker")maker_program();else if(test=="recipe")owned_recipe();else if(test=="storage")storage_preflight();else if(test=="unheated")no_target();
     else if(test=="stop")stop_guard();else if(test=="input")input_order();else if(test=="offline")offline_and_reservation();
     else if(test=="settings")settings_and_display();else if(test=="status")status_fields();

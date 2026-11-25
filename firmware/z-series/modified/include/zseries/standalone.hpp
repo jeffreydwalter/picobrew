@@ -123,6 +123,10 @@ private:
     enum class InviteState { Empty, Pending, Accepted, Declined, Withdrawn, Expired, Unavailable };
     struct GroupProgram {
         char action[16] = {};
+        std::uint8_t program_id = 0;
+        double water_l = 0, temperature_f = 0;
+        std::uint16_t time_seconds = 0;
+        std::uint8_t intensity = 0;
         char recipe_id[21] = {};
         std::uint32_t revision = 0;
         std::int8_t selected_abv = -1, selected_ibu = -1;
@@ -140,6 +144,10 @@ private:
     struct SeenInvitation { char id[17] = {}; std::uint32_t time = 0; };
     std::array<SeenInvitation,8> seen_invitations_{};
     std::uint32_t joined_program_ = 0;
+    bool group_coffee_review_ = false;
+    void leave_group_coffee_review();
+    const char* group_program_name(unsigned) const;
+    bool group_program_available(unsigned) const;
     bool invite_filter_missing_ = false;
     char invite_name_[32] = {};
     static api::Result apply_group_strength(const GroupProgram&,api::Recipe&);

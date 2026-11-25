@@ -1,4 +1,5 @@
 #include "zseries/standalone.hpp"
+#include "zseries/ui_catalog.hpp"
 #include "engine_internal.hpp"
 #include "recipe_record.hpp"
 #include <algorithm>
@@ -10,6 +11,33 @@ using namespace oem;
 namespace {
 constexpr std::uint32_t OfferLifetime = 120000;
 constexpr std::uint32_t ReplayWindow = 2 * OfferLifetime;
+
+bool coffee_id(unsigned id) {return id>=20&&id<=23;}
+
+UiCommand program_menu(unsigned id){
+    switch(static_cast<ZProgramId>(id)){
+    case ZProgramId::Drain:return UiCommand::StartDrain;
+    case ZProgramId::Rack:return UiCommand::StartRack;
+    case ZProgramId::Circulate:return UiCommand::StartCirculate;
+    case ZProgramId::SousVideWithoutKeg:return UiCommand::StartSousVideWithoutKeg;
+    case ZProgramId::SousVideWithKeg:return UiCommand::StartSousVideWithKeg;
+    case ZProgramId::PicoStillManual:return UiCommand::StartPicoStillManual;
+    case ZProgramId::CoffeeColdBrew:return UiCommand::CoffeeColdBrewTweak;
+    case ZProgramId::CoffeeHybrid:return UiCommand::CoffeeHybridTweak;
+    case ZProgramId::CoffeeHot:return UiCommand::CoffeeHotTweak;
+    case ZProgramId::CoffeeCustom:return UiCommand::CoffeeCustomTweak;
+    case ZProgramId::PicoStillBoilPoint:return UiCommand::StartPicoStillBoilPoint;
+    case ZProgramId::Chill:return UiCommand::StartChill;
+    default:return UiCommand::None;
+    }
+}
+
+bool coffee_bounds(double water_l,double temperature_f,int intensity,int seconds){
+    // Original metric/imperial picker limits. Its gallon conversion uses
+    // 3.78541; Fahrenheit may be fractional for an integer Celsius choice.
+    return water_l>=3.78541-1e-9&&water_l<=4.2*3.78541+1e-9&&temperature_f>=100&&temperature_f<=200&&
+           intensity>=1&&intensity<=15&&seconds>=60&&seconds<=5400&&seconds%60==0;
+}
 
 bool valid_invite_id(const char* id) {
     return std::strlen(id) == 16 && std::strspn(id, "0123456789abcdef") == 16;
@@ -27,6 +55,27 @@ api::Result changed() {
 api::Result invalid_body() {
     return {400, "invalid_invitation", "Invalid group invitation fields"};
 }
+}
+
+const char* Adapter::group_program_name(unsigned id)const{
+    // The stock submenus supply context for labels like "Manual" and "Custom".
+    switch(static_cast<ZProgramId>(id)){
+    case ZProgramId::SousVideWithKeg:return text("Sous vide with keg","Sous vide con barril","Sous vide avec fut");
+    case ZProgramId::SousVideWithoutKeg:return text("Sous vide without keg","Sous vide sin barril","Sous vide sans fut");
+    case ZProgramId::PicoStillManual:return text("PicoStill manual","PicoStill manual","PicoStill manuel");
+    case ZProgramId::PicoStillBoilPoint:return text("PicoStill boil point","PicoStill ebullicion","PicoStill ebullition");
+    case ZProgramId::CoffeeHybrid:return text("Hybrid coffee","Cafe hibrido","Cafe hybride");
+    case ZProgramId::CoffeeCustom:return text("Custom coffee","Cafe personalizado","Cafe personnalise");
+    default:break;
+    }
+    return ui_localized_text(UiTextCategory::UiCommand,static_cast<unsigned>(program_menu(id)),head_.screens.language);
+}
+bool Adapter::group_program_available(unsigned id)const{
+    const bool still=id==static_cast<unsigned>(ZProgramId::PicoStillManual)||id==static_cast<unsigned>(ZProgramId::PicoStillBoilPoint);
+    return !still||(still_address_.uid[0]&&!still_checking_&&!still_session_&&!still_output_hold_&&still_peer_.op!=StillPeer::Stop);
+}
+void Adapter::leave_group_coffee_review(){
+    if(group_coffee_review_){group_coffee_review_=false;joined_program_=0;}
 }
 
 api::Result Adapter::apply_group_strength(const GroupProgram& program,api::Recipe& recipe){
@@ -70,7 +119,20 @@ void Adapter::group_started(std::uint32_t id, bool local_brew) {
     } else if (id == static_cast<unsigned>(ZProgramId::Clean)) {
         std::strcpy(program.action, "clean");
     } else {
-        return;
+        if(id==static_cast<unsigned>(ZProgramId::Buffered)&&core_.program.record().type==SessionType::Coffee){
+            const auto& params=core_.program.parameters;
+            id=static_cast<unsigned>(params.id);
+            if(!coffee_id(id)||!quantity_in(params.water,Unit::Liter,program.water_l)||
+               !quantity_in(params.temperature,Unit::Fahrenheit,program.temperature_f)||
+               params.intensity.unit!=Unit::Intensity||params.time.unit!=Unit::Second||
+               !(params.intensity.value>=1&&params.intensity.value<=15&&params.time.value>=60&&params.time.value<=5400))return;
+            program.intensity=static_cast<std::uint8_t>(params.intensity.value);
+            program.time_seconds=static_cast<std::uint16_t>(params.time.value);
+            if(program.intensity!=params.intensity.value||program.time_seconds!=params.time.value||
+               !coffee_bounds(program.water_l,program.temperature_f,program.intensity,program.time_seconds))return;
+        }else if(coffee_id(id))return; // Physical coffee profiles run from the native buffered program.
+        if(program_menu(id)==UiCommand::None)return;
+        std::strcpy(program.action,"z_program");program.program_id=static_cast<std::uint8_t>(id);
     }
     if (++group_sequence_ == 0) ++group_sequence_;
     ::snprintf(group_source_id_, sizeof group_source_id_, "%08lx%08lx",
@@ -97,6 +159,7 @@ bool Adapter::show_invite() {
     decline.index = accept.index = invite_ticket_;
     invite_filter_missing_ = core_.safeties.filter_missing;
     const char* accept_label = invite_filter_missing_ ? text("Insert step filter","Inserte el filtro","Inserer le filtre") :
+                                                      coffee_id(group_invite_.program.program_id)?text("Review coffee","Revisar cafe","Verifier le cafe"):
                                                       text("Accept and start","Aceptar e iniciar","Accepter et demarrer");
     if (!screens.menu_data.append(decline, text("Decline","Rechazar","Refuser")) ||
         !screens.menu_data.append(accept, accept_label)) return false;
@@ -147,7 +210,10 @@ api::Result Adapter::receive_invite(const GroupInvitation& offer) {
     if (!std::strcmp(offer.id, group_invite_.id) && invite_state_ != InviteState::Empty) {
         if (std::strcmp(offer.from, group_invite_.from) || std::strcmp(offer.program.action, group_invite_.program.action) ||
             std::strcmp(offer.program.recipe_id, group_invite_.program.recipe_id) || offer.program.revision != group_invite_.program.revision ||
-            offer.program.selected_abv!=group_invite_.program.selected_abv || offer.program.selected_ibu!=group_invite_.program.selected_ibu)
+            offer.program.selected_abv!=group_invite_.program.selected_abv || offer.program.selected_ibu!=group_invite_.program.selected_ibu ||
+            offer.program.program_id!=group_invite_.program.program_id||offer.program.water_l!=group_invite_.program.water_l||
+            offer.program.temperature_f!=group_invite_.program.temperature_f||offer.program.intensity!=group_invite_.program.intensity||
+            offer.program.time_seconds!=group_invite_.program.time_seconds)
             return {409,"invitation_conflict","This invitation ID already identifies a different program"};
         return {}; // A duplicate reports the current state without extending the original deadline.
     }
@@ -169,6 +235,9 @@ api::Result Adapter::receive_invite(const GroupInvitation& offer) {
         const auto adjusted=apply_group_strength(offer.program,recipe);
         if(!adjusted.ok())return adjusted;
         label = recipe.name;
+    } else if(offer.program.program_id){
+        if(!group_program_available(offer.program.program_id))return {409,"still_unavailable","This Z needs its own available, linked PicoStill"};
+        label=group_program_name(offer.program.program_id);
     } else {
         label = !std::strcmp(offer.program.action, "rinse") ? text("Rinse","Enjuague","Rincage") : text("Clean","Limpieza","Nettoyage");
     }
@@ -205,7 +274,10 @@ api::Result Adapter::respond_invite(const char* id, const char* op) {
     if (core_.safeties.filter_missing) return {409,"filter_missing","Insert the step filter before accepting"};
     const auto& program = group_invite_.program;
     const bool brew = !std::strcmp(program.action, "brew");
-    const auto native_id = brew ? ZProgramId::Buffered : !std::strcmp(program.action, "clean") ? ZProgramId::Clean : ZProgramId::Rinse;
+    const bool coffee=coffee_id(program.program_id);
+    const auto native_id=(brew||coffee)?ZProgramId::Buffered:program.program_id?static_cast<ZProgramId>(program.program_id):
+                         !std::strcmp(program.action,"clean")?ZProgramId::Clean:ZProgramId::Rinse;
+    if(!group_program_available(program.program_id)){finish_invite(InviteState::Unavailable);return {409,"still_unavailable","This Z needs its own available, linked PicoStill"};}
     if (brew) {
         if (program.revision != engine_->recipe_revision()) { finish_invite(InviteState::Unavailable); return changed(); }
         api::Recipe recipe;
@@ -213,6 +285,21 @@ api::Result Adapter::respond_invite(const char* id, const char* op) {
         if(result.ok())result=apply_group_strength(program,recipe);
         if (result.ok()) result = load_recipe(recipe, true);
         if (!result.ok()) { finish_invite(InviteState::Unavailable); return result; }
+    } else if(coffee){
+        // The native Head mailbox drops new events while occupied. Keep the
+        // invitation pending until it can publish the coffee review reliably.
+        if(head_.core_events.pending)return {409,"busy","The brewer is updating its display. Try again."};
+        CoreCommand command;command.id=CoreCommandId::CoffeeProgramLoad;
+        auto& params=command.program_parameters;params.id=static_cast<ZProgramId>(program.program_id);
+        params.water={program.water_l,Unit::Liter};params.temperature={program.temperature_f,Unit::Fahrenheit};
+        params.intensity={static_cast<double>(program.intensity),Unit::Intensity};
+        params.time={static_cast<double>(program.time_seconds),Unit::Second};
+        // As on stock, accepting coffee loads the native review. Only the
+        // operator's subsequent Start runs it. Preparation displays read Head's quantities.
+        if(core_.commands.load_coffee(command)!=CoreFlowResult::Ok||core_.commands.last_program_result!=ProgramBuildResult::Ok){
+            finish_invite(InviteState::Unavailable);return {409,"unavailable","The brewer could not load this coffee program"};
+        }
+        owned_recipe_=false;group_coffee_review_=true;head_.numeric.state.parameters=params;
     } else if (!queue_program(static_cast<unsigned>(native_id))) {
         return {409,"busy","The native start queue is busy"};
     }
@@ -255,7 +342,14 @@ bool Adapter::group_http(const PicoHttpRequest& req, PicoHttpResponse& response,
                     valid=json.integer(0,10,number);
                     if(abv)offer.program.selected_abv=static_cast<std::int8_t>(number);
                     else offer.program.selected_ibu=static_cast<std::int8_t>(number);
-                } else if (!std::strcmp(key,"ttl_ms")) {
+                } else if(!std::strcmp(key,"program_id")){
+                    std::int64_t n=0;field=512;valid=json.integer(1,27,n)&&program_menu(static_cast<unsigned>(n))!=UiCommand::None;
+                    offer.program.program_id=static_cast<std::uint8_t>(n);
+                } else if(!std::strcmp(key,"water_l")){field=1024;valid=json.number(offer.program.water_l);}
+                else if(!std::strcmp(key,"temperature_f")){field=2048;valid=json.number(offer.program.temperature_f);}
+                else if(!std::strcmp(key,"intensity")){std::int64_t n=0;field=4096;valid=json.integer(1,15,n);offer.program.intensity=static_cast<std::uint8_t>(n);}
+                else if(!std::strcmp(key,"time_seconds")){std::int64_t n=0;field=8192;valid=json.integer(60,5400,n);offer.program.time_seconds=static_cast<std::uint16_t>(n);}
+                else if (!std::strcmp(key,"ttl_ms")) {
                     std::int64_t number = 0; field = 64; valid = json.integer(1,OfferLifetime,number);
                     offer.ttl_ms = static_cast<std::uint32_t>(number);
                 }
@@ -268,7 +362,13 @@ bool Adapter::group_http(const PicoHttpRequest& req, PicoHttpResponse& response,
             else if (!std::strcmp(op,"offer")) {
                 const bool brew = !std::strcmp(offer.program.action,"brew");
                 const bool routine = !std::strcmp(offer.program.action,"rinse") || !std::strcmp(offer.program.action,"clean");
-                if ((brew && (seen & 63u) == 63) || (routine && (seen & ~64u) == 15)) result = receive_invite(offer);
+                const auto& program=offer.program;
+                const bool owner=!std::strcmp(program.action,"z_program");
+                const bool coffee=coffee_id(program.program_id);
+                const unsigned fields=seen&~64u;
+                const bool owner_fields=fields==(15u|512u|(coffee?(1024u|2048u|4096u|8192u):0u));
+                if((brew&&(fields&~(128u|256u))==63)||(routine&&fields==15)||
+                   (owner&&owner_fields&&(!coffee||coffee_bounds(program.water_l,program.temperature_f,program.intensity,program.time_seconds))))result=receive_invite(offer);
                 else result = invalid_body();
             } else if (seen == 3 && (!std::strcmp(op,"accept") || !std::strcmp(op,"decline") || !std::strcmp(op,"withdraw"))) {
                 result = respond_invite(offer.id,op);
@@ -280,6 +380,12 @@ bool Adapter::group_http(const PicoHttpRequest& req, PicoHttpResponse& response,
     } else {
         const auto write_program = [&](const GroupProgram& program) {
             writer.text(",\"action\":"); writer.quote(program.action);
+            if(program.program_id){
+                writer.format(",\"program_id\":%u,\"program_name\":",unsigned(program.program_id));writer.quote(group_program_name(program.program_id));
+                if(coffee_id(program.program_id))
+                    writer.format(",\"water_l\":%.17g,\"temperature_f\":%.17g,\"intensity\":%u,\"time_seconds\":%u",
+                                  program.water_l,program.temperature_f,unsigned(program.intensity),unsigned(program.time_seconds));
+            }
             if (program.recipe_id[0]) {
                 writer.text(",\"recipe_id\":"); writer.quote(program.recipe_id);
                 writer.format(",\"revision\":%lu",static_cast<unsigned long>(program.revision));

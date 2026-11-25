@@ -105,6 +105,14 @@ ProgramBuildResult build(ProgramBuffer& buffer,const api::Recipe& recipe,double 
     return buffer.set_code(code.data(),count);
 }
 }
+static void journal_name(char (&name)[32],const char* native){
+    // Custom Coffee's native title includes volume, minutes and target, and can
+    // overflow a journal entry. Keep all three values and the full OLED title.
+    static const char prefix[]="Custom Coffee ";
+    if(native&&std::strlen(native)>=sizeof name&&!std::strncmp(native,prefix,sizeof prefix-1))
+        ::snprintf(name,sizeof name,"Custom %s",native+sizeof prefix-1);
+    else copy(name,native);
+}
 static const char* session_command(std::uint32_t id,bool local_recipe){
     if(id==7)return "picostill-manual";
     if(id==26)return "picostill-boil-point";
@@ -124,7 +132,7 @@ api::DeviceServices Adapter::services() noexcept {
     out.capabilities=[](void* p){api::Capabilities caps;
         if (static_cast<Adapter*>(p)->wireless_) caps.ota_protocol = "esp32-factory-v1";
         caps.flags=api::Recipes|api::Brewing|api::Heating|api::Pump|api::Temperature|api::Pressure|api::FrontPanel;
-        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus|api::AutoCycle;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.group_brewing_v1=true;caps.picostill_brewer_link_v1=true;caps.zero_minute_steps=true;caps.z_program_maker=true;caps.z_cloud_program_v1=true;caps.z_picopak_v1=true;caps.z_state_v1=true;caps.dedicated_pause_resume=true;return caps;};
+        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus|api::AutoCycle;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.group_brewing_v1=true;caps.group_z_programs_v1=true;caps.picostill_brewer_link_v1=true;caps.zero_minute_steps=true;caps.z_program_maker=true;caps.z_cloud_program_v1=true;caps.z_picopak_v1=true;caps.z_state_v1=true;caps.dedicated_pause_resume=true;return caps;};
     out.snapshot=[](void* p,api::Snapshot& value){return static_cast<Adapter*>(p)->snapshot(value);};
     out.execute=[](void* p,const api::Command& value){return static_cast<Adapter*>(p)->execute(value);};
     out.idle=[](void* p){return static_cast<Adapter*>(p)->idle();};
@@ -307,6 +315,7 @@ api::Result Adapter::load_recipe(const api::Recipe& recipe,bool start){
     if(recovery_.present()&&!recovery_active_)return {409,"recovery_pending","Resume or discard the interrupted brew first"};
     if(build(core_.program,recipe,core_.auxiliary.pressure_pa,core_.temperatures.estimated_boil_celsius)!=ProgramBuildResult::Ok)
         return {400,"invalid_recipe","The current native recipe environment rejected this recipe"};
+    leave_group_coffee_review();
     selected_recipe_=recipe;selected_revision_=engine_->recipe_revision();owned_recipe_=true;page_=Page::Original;
     if(start){if(!queue_program(static_cast<std::uint32_t>(ZProgramId::Buffered)))return busy();}
     else core_.publication.ready();
@@ -569,8 +578,9 @@ bool Adapter::service_effect(const CoreAction& action,std::uint32_t& result){
     case CoreEffect::DispatchCoreCommand:
         // Coffee and local recipes share the original mutable ProgramBuffer.
         // Its native id24 does not establish that it contains our saved beer.
-        if(action.command&&action.command->id==CoreCommandId::CoffeeProgramLoad&&core_.core.state.id==CoreStateId::Idle)
-            owned_recipe_=false;
+        if(action.command&&action.command->id==CoreCommandId::CoffeeProgramLoad&&core_.core.state.id==CoreStateId::Idle){
+            leave_group_coffee_review();owned_recipe_=false;
+        }
         if(action.command&&action.command->id==CoreCommandId::StartProgram){
             // The recovered dispatcher ignores StartProgram outside Idle.
             // Preserve that boundary before touching persistent history.
@@ -586,6 +596,8 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
     // A queued resume is consumed by this attempt, including storage rejection.
     // Keep the retained checkpoint reviewable if no native session starts.
     const bool requested_resume=resuming_;resuming_=false;
+    if(group_coffee_review_&&id!=static_cast<unsigned>(ZProgramId::Buffered))leave_group_coffee_review();
+    group_coffee_review_=false;
     const bool joined=joined_program_!=0;
     const bool matches_joined=joined_program_==id;
     joined_program_=0;
@@ -609,7 +621,8 @@ bool Adapter::start_effect(const CoreAction& action,std::uint32_t& result,std::u
         if(!recovery_.ready()||(recovery_.present()&&!recovery_active_&&!(local_brew&&requested_resume))){
             engine_->event("session-error",recovery_.ready()?"recovery_pending":"recovery_storage");return show_home();}
         std::uint32_t token=session_token_+1;if(!token)++token;
-        const auto reserved=engine_->prepare_session(session_command(id,local_brew),program->view.name,token);
+        char name[32];journal_name(name,program->view.name);
+        const auto reserved=engine_->prepare_session(session_command(id,local_brew),name,token);
         if(!reserved.ok()){engine_->event("session-error",reserved.error?reserved.error:"storage_error");return show_home();}
         session_token_=token;
         native_prepared_=true;
@@ -663,6 +676,7 @@ bool Adapter::handle_ui(const HeadUiAction& action){
     return original_ui_.perform(original_ui_.context,action);
 }
 bool Adapter::show_home(){
+    leave_group_coffee_review();
     auto& screen=head_.screens;screen.clear_data();HeadUiEvent recipes;recipes.command=static_cast<UiCommand>(LocalRecipes);
     screen.menu_data.append(recipes,text("Brew Recipe","Preparar receta","Brasser une recette"));
     if(recovery_.present()&&!recovery_active_){HeadUiEvent resume;resume.command=static_cast<UiCommand>(LocalRecovery);
@@ -1086,7 +1100,7 @@ api::Result Adapter::snapshot(api::Snapshot& out){
     // labels. Only the saved recipe string reference identifies an API step.
     const auto reference=core_.runtime.saved_step_reference;
     out.current_step=local_brew&&reference>=1&&reference<=out.step_count?static_cast<std::int32_t>(reference-1):-1;
-    copy(out.recipe_name,core_.commands.session.name.data());copy(out.step_name,core_.runtime.state.step_name);
+    journal_name(out.recipe_name,core_.commands.session.name.data());copy(out.step_name,core_.runtime.state.step_name);
     out.filter_known=out.ready;out.filter_inserted=!safety.filter_missing;
     const auto& menu=head_.encoder.state.menu;out.encoder_position=static_cast<std::int32_t>(menu.selected);out.encoder_max=menu.count?static_cast<std::int32_t>(menu.count-1):0;
     out.recording=recordable(core_.core.state.program_id)&&(core_.core.state.id==CoreStateId::Starting||core_.core.state.id==CoreStateId::Running||core_.core.state.id==CoreStateId::Stopping);

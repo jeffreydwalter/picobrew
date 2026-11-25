@@ -34,6 +34,7 @@ unsigned Engine::Impl::discovery_json(Writer& writer) {
     if (capabilities.ota_protocol) { writer.text(",\"ota_protocol\":"); writer.quote(capabilities.ota_protocol); }
     if (has_recipe_library()) writer.text(",\"recipe_conditional_write\":true");
     if (capabilities.picostill_brewer_link_v1) writer.text(",\"picostill_brewer_link_v1\":true");
+    if (capabilities.group_z_programs_v1) writer.text(",\"group_z_programs_v1\":true");
     if (capabilities.group_brewing_v1) writer.text(",\"group_brewing_v1\":true");
     if (capabilities.z_state_v1) writer.text(",\"z_state_v1\":true");
     if (capabilities.z_picopak_v1) writer.text(",\"z_picopak_v1\":true");
