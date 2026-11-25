@@ -39,6 +39,22 @@ func (s *ZPakStep) UnmarshalJSON(b []byte) error {
 }
 
 func (p ZPicoPak) Validate(steps []MachineStep) error {
+	return p.validate(steps, false, false)
+}
+
+// ValidateBrewSelection applies transient settings to a copy. Even a reset
+// to the original target needs an axis the native controller can adjust.
+func (p ZPicoPak) ValidateBrewSelection(steps []MachineStep, abv, ibu *int) error {
+	if abv != nil {
+		p.SelectedABV = abv
+	}
+	if ibu != nil {
+		p.SelectedIBU = ibu
+	}
+	return p.validate(steps, abv != nil, ibu != nil)
+}
+
+func (p ZPicoPak) validate(steps []MachineStep, explicitABV, explicitIBU bool) error {
 	if p.RecipeID == 0 || p.BeerID == 0 || p.ABV < -1 || p.ABV > 127 || p.IBU < -1 || p.IBU > 127 || len(steps) == 0 || len(steps) > 15 || len(p.StepOptions) != len(steps) {
 		return errors.New("the PicoPak needs original recipe and beer IDs, strength targets and matching step options")
 	}
@@ -58,11 +74,11 @@ func (p ZPicoPak) Validate(steps []MachineStep) error {
 		}
 	}
 	for _, v := range []struct {
-		selected   *int
-		original   int
-		adjustable bool
-	}{{p.SelectedABV, p.ABV, abv}, {p.SelectedIBU, p.IBU, ibu}} {
-		if v.selected != nil && (*v.selected < 0 || *v.selected > 10 || *v.selected != v.original && (v.original < 1 || v.original > 9 || !v.adjustable)) {
+		selected             *int
+		original             int
+		adjustable, explicit bool
+	}{{p.SelectedABV, p.ABV, abv, explicitABV}, {p.SelectedIBU, p.IBU, ibu, explicitIBU}} {
+		if v.selected != nil && (*v.selected < 0 || *v.selected > 10 || (*v.selected != v.original || v.explicit) && (v.original < 1 || v.original > 9 || !v.adjustable)) {
 			return errors.New("an adjusted strength requires a kit target from 1 through 9 and matching authored step times")
 		}
 	}

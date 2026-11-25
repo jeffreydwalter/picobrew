@@ -16,6 +16,7 @@ import (
 // An on-device recipe ID is a slot name. Only a verified transfer receipt
 // can identify its source library revision across different machine models.
 type groupRecipe struct {
+	device.GroupKitSelection
 	Model     string               `json:"model"`
 	Program   domain.MachineRecipe `json:"program"`
 	LibraryID string               `json:"library_id,omitempty"`
@@ -83,9 +84,32 @@ func (s *Server) groupLibrary(src groupRecipe) (domain.Recipe, error) {
 	}
 	return saved, nil
 }
+
+const kitGroupRequirement = "These one-brew kit settings require a standalone Z with group brewing and PicoPak adapter support."
+
+func groupKitCapable(v domain.DeviceView) bool {
+	return v.Model == "z-series" && v.Capabilities != nil && v.Capabilities.Model == "z-series" && v.Capabilities.ZPicoPakV1 && v.Capabilities.GroupBrewingV1
+}
+
+func validateGroupKit(v domain.DeviceView, p domain.MachineRecipe, selection device.GroupKitSelection) error {
+	if !selection.Present() {
+		return nil
+	}
+	if !groupKitCapable(v) {
+		return errors.New(kitGroupRequirement)
+	}
+	if p.ZPak == nil || p.ZCloud != nil || p.ZProgram != nil {
+		return errors.New("The source brew requested kit settings for a recipe without an original PicoPak program.")
+	}
+	return p.ZPak.ValidateBrewSelection(p.Steps, selection.SelectedABV, selection.SelectedIBU)
+}
+
 func sameGroupProgram(a, b domain.MachineRecipe) bool { a.ID = b.ID; return reflect.DeepEqual(a, b) }
 func (s *Server) groupTargetRecipe(ctx context.Context, d *runtimeDevice, v domain.DeviceView, wire device.GroupBrewer, src groupRecipe) (string, uint32, error) {
 	desired := src.Program
+	if src.GroupKitSelection.Present() && (!groupKitCapable(v) || src.Model != v.Model) {
+		return "", 0, errors.New(kitGroupRequirement)
+	}
 	if src.Model != v.Model {
 		saved, err := s.groupLibrary(src)
 		if err != nil {
@@ -129,6 +153,9 @@ func (s *Server) groupTargetRecipe(ctx context.Context, d *runtimeDevice, v doma
 			}
 			return "", 0, errors.New("The target program changed during verification")
 		}
+	}
+	if src.GroupKitSelection.Present() {
+		return "", 0, errors.New("Save the matching original PicoPak on this Z before joining a brew with one-brew kit settings.")
 	}
 	// Sending a grouped invitation must not overwrite a brewer's existing recipe.
 	if src.LibraryID == "" || !v.Capabilities.RecipeCreateOnly || len(inventory) >= v.Capabilities.RecipeCapacity || slices.ContainsFunc(inventory, func(p domain.MachineRecipe) bool { return p.ID == desired.ID }) {

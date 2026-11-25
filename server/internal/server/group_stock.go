@@ -11,6 +11,9 @@ import (
 func (s *Server) stockGroupProgram(i brewInvite) (stockItem, error) {
 	var src groupRecipe
 	var item stockItem
+	if i.GroupKitSelection.Present() {
+		return item, errors.New(kitGroupRequirement)
+	}
 	if i.Action != "brew" {
 		return item, errors.New("Only saved recipes can be sent to a Zymatic menu")
 	}
