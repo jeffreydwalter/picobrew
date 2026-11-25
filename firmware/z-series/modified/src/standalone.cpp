@@ -87,7 +87,7 @@ api::DeviceServices Adapter::services() noexcept {
     out.capabilities=[](void* p){api::Capabilities caps;
         if (static_cast<Adapter*>(p)->wireless_) caps.ota_protocol = "esp32-factory-v1";
         caps.flags=api::Recipes|api::Brewing|api::Heating|api::Pump|api::Temperature|api::Pressure|api::FrontPanel;
-        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.zero_minute_steps=true;caps.z_program_maker=true;caps.dedicated_pause_resume=true;return caps;};
+        caps.settings=api::TemperatureUnit|api::Language|api::DetailedStatus|api::AutoCycle;caps.commands=commands;caps.command_count=sizeof(commands)/sizeof(*commands);caps.zero_minute_steps=true;caps.z_program_maker=true;caps.dedicated_pause_resume=true;return caps;};
     out.snapshot=[](void* p,api::Snapshot& value){return static_cast<Adapter*>(p)->snapshot(value);};
     out.execute=[](void* p,const api::Command& value){return static_cast<Adapter*>(p)->execute(value);};
     out.idle=[](void* p){return static_cast<Adapter*>(p)->idle();};
@@ -505,11 +505,12 @@ bool Adapter::handle_ui(const HeadUiAction& action){
     if(action.effect==HeadUiEffect::WifiDetails&&(!ports_.lan_ready(ports_.context,1)||core_.wifi.state.id!=WiFiStateId::Connected))
         return network_message(text("Wi-Fi offline","Wi-Fi desconectado","Wi-Fi deconnecte"));
     if(action.effect==HeadUiEffect::ConnectWifi)return ports_.reconnect_network(ports_.context)&&show_network();
-    if(action.effect==HeadUiEffect::SetImperial||action.effect==HeadUiEffect::SetLanguage||action.effect==HeadUiEffect::SetSlideshowDetail){
-        if(!engine_||core_.core.state.id!=CoreStateId::Idle||core_.runtime.state.id!=RuntimeStateId::Standby)return false;
+    if(action.effect==HeadUiEffect::SetImperial||action.effect==HeadUiEffect::SetLanguage||action.effect==HeadUiEffect::SetSlideshowDetail||action.effect==HeadUiEffect::SetStaticCycle){
+        if(!engine_)return false;
         api::Settings settings;read_settings(settings);std::uint32_t changed=0;
         if(action.effect==HeadUiEffect::SetImperial){settings.temperature_unit=action.first?'F':'C';changed=api::TemperatureUnit;}
         else if(action.effect==HeadUiEffect::SetSlideshowDetail){settings.detailed_status=action.first!=0;changed=api::DetailedStatus;}
+        else if(action.effect==HeadUiEffect::SetStaticCycle){settings.auto_cycle=action.first==0;changed=api::AutoCycle;}
         else {if(action.first>=LanguageTypeCount)return false;copy(settings.language,action.first==1?"fr":action.first==2?"es":"en");changed=api::Language;}
         const auto saved=engine_->preferences_store(settings,changed);
         if(!saved.ok()){engine_->event("settings-error",saved.error?saved.error:"storage_error");return false;}
@@ -536,7 +537,7 @@ bool Adapter::show_home(){
 }
 bool Adapter::show_settings(){
     auto& screen=head_.screens;screen.clear_data();
-    for(auto command:{UiCommand::ConfigureNetwork,UiCommand::ConfigureUnits,UiCommand::ConfigureLanguage,UiCommand::ConfigureSlideshowDetail})
+    for(auto command:{UiCommand::ConfigureNetwork,UiCommand::ConfigureUnits,UiCommand::ConfigureLanguage,UiCommand::ConfigureSlideshowDetail,UiCommand::ConfigureSlideshowCycle})
         if(!screen.menu_data.append(command))return false;
     HeadUiEvent about;
     about.command=static_cast<UiCommand>(LocalAbout);
@@ -798,10 +799,11 @@ api::Result Adapter::snapshot(api::Snapshot& out){
 }
 api::Result Adapter::read_settings(api::Settings& out){
     out.temperature_unit=core_.eeprom.data.use_imperial?'F':'C';out.detailed_status=core_.eeprom.data.show_detail!=0;
+    out.auto_cycle=!core_.eeprom.data.slideshow_cycle_static;
     copy(out.language,text("en","es","fr"));return {};
 }
 api::Result Adapter::validate_settings(const api::Settings& value,std::uint32_t changed){
-    if(changed&~std::uint32_t(api::TemperatureUnit|api::Language|api::DetailedStatus))return {400,"invalid_settings","Unsupported setting"};
+    if(changed&~std::uint32_t(api::TemperatureUnit|api::Language|api::DetailedStatus|api::AutoCycle))return {400,"invalid_settings","Unsupported setting"};
     if((value.temperature_unit!='F'&&value.temperature_unit!='C')||(std::strcmp(value.language,"en")&&std::strcmp(value.language,"es")&&std::strcmp(value.language,"fr")))return {400,"invalid_settings","Unsupported preference value"};
     return {};
 }
@@ -810,6 +812,7 @@ api::Result Adapter::apply_settings(const api::Settings& value,std::uint32_t cha
     auto& settings=core_.eeprom.data;
     if(changed&api::TemperatureUnit)settings.use_imperial=value.temperature_unit=='F';
     if(changed&api::DetailedStatus)settings.show_detail=value.detailed_status;
+    if(changed&api::AutoCycle)settings.slideshow_cycle_static=!value.auto_cycle;
     if(changed&api::Language)settings.language=!std::strcmp(value.language,"es")?LanguageType::Spanish:!std::strcmp(value.language,"fr")?LanguageType::French:LanguageType::English;
     head_.refresh_observed();if(page_==Page::Home&&!show_home())return unavailable();return {};
 }

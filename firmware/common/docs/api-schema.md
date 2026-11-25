@@ -132,7 +132,7 @@ acknowledgement. Unknown fields, mixed program encodings and out-of-range
 values are rejected before storage.
 
 Settings use the existing `temperature_unit` (`F`/`C`), `language`
-(`en`/`es`/`fr`) and `detailed_status` fields, only where advertised. PATCH is a
+(`en`/`es`/`fr`), `detailed_status` and `auto_cycle` (automatically advance the Z brew status screens), only where advertised. PATCH is a
 nonempty subset and preserves unrelated fields. Common persistence validates
 before saving; application failures return an explicit error, never a success
 claim. No Wi-Fi credentials, API key or calibration values are exposed as

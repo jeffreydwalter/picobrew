@@ -342,6 +342,7 @@ export interface AIAdvice {
   error?: string
 }
 export interface DeviceSettings {
+  auto_cycle?: boolean
   temperature_unit: 'F' | 'C'
   language: string
   detailed_status: boolean

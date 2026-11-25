@@ -297,7 +297,8 @@ void settings_json(Writer& writer, const Settings& settings, std::uint32_t field
     writer.text("{"); bool comma = false;
     if (fields & TemperatureUnit) { writer.format("\"temperature_unit\":\"%c\"", settings.temperature_unit); comma = true; }
     if (fields & Language) { if (comma) writer.text(","); writer.text("\"language\":"); writer.quote(settings.language); comma = true; }
-    if (fields & DetailedStatus) { if (comma) writer.text(","); writer.text("\"detailed_status\":"); writer.boolean(settings.detailed_status); }
+    if (fields & DetailedStatus) { if (comma) writer.text(","); writer.text("\"detailed_status\":"); writer.boolean(settings.detailed_status); comma = true; }
+    if (fields & AutoCycle) { if (comma) writer.text(","); writer.text("\"auto_cycle\":"); writer.boolean(settings.auto_cycle); }
     writer.text("}");
 }
 }}}

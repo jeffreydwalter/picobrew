@@ -18,7 +18,7 @@ enum Capability : std::uint32_t {
     Fermentation = 1u << 9, FrontPanel = 1u << 10, IntermittentWifi = 1u << 11
 };
 enum SettingField : std::uint32_t {
-    TemperatureUnit = 1u << 0, Language = 1u << 1, DetailedStatus = 1u << 2
+    TemperatureUnit = 1u << 0, Language = 1u << 1, DetailedStatus = 1u << 2, AutoCycle = 1u << 3
 };
 enum CommandField : std::uint32_t {
     RecipeId = 1u << 0, Delta = 1u << 1, Click = 1u << 2,
@@ -140,6 +140,7 @@ struct Settings {
     char temperature_unit = 'F';
     char language[3] = {'e', 'n', 0};
     bool detailed_status = false;
+    bool auto_cycle = true;
 };
 struct Command {
     char name[32] = {};

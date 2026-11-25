@@ -165,9 +165,9 @@ func validateSettings(settings map[string]any) error {
 			if value != "en" && value != "es" && value != "fr" {
 				return invalid("Language must be en, es or fr")
 			}
-		case "detailed_status":
+		case "detailed_status", "auto_cycle":
 			if _, ok := value.(bool); !ok {
-				return invalid("Detailed status must be a boolean")
+				return invalid("Display preferences must be boolean")
 			}
 		default:
 			return invalid("Unknown preference")

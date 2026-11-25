@@ -75,6 +75,8 @@ Result Engine::Impl::save_config(const Settings& next, const TelemetryConfig& fo
     std::uint8_t bytes[136] = {};
     bytes[0] = next.temperature_unit; bytes[1] = next.detailed_status;
     bytes[2] = next.language[0]; bytes[3] = next.language[1]; bytes[4] = forwarding.enabled;
+    // Zero in older records means the brewer's original slideshow setting applies.
+    if (capabilities.settings & AutoCycle) bytes[5] = next.auto_cycle ? 1 : 2;
     bytes[6] = forwarding.port; bytes[7] = forwarding.port >> 8;
     std::memcpy(bytes + 8, forwarding.host, sizeof(forwarding.host));
     std::uint32_t generation = 0;
@@ -109,7 +111,8 @@ Result Engine::Impl::initialize() {
     std::uint8_t bytes[136] = {}; std::size_t length = 0;
     const RecordResult config = records.load("cfg", bytes, sizeof(bytes), length, config_generation);
     if (config == RecordResult::Ok) {
-        if (length != sizeof(bytes) || bytes[1] > 1 || bytes[4] > 1) return storage_error();
+        if (length != sizeof(bytes) || bytes[1] > 1 || bytes[4] > 1 || bytes[5] > 2) return storage_error();
+        if (bytes[5]) settings.auto_cycle = bytes[5] == 1;
         settings.temperature_unit = bytes[0]; settings.detailed_status = bytes[1];
         settings.language[0] = bytes[2]; settings.language[1] = bytes[3]; settings.language[2] = 0;
         telemetry.enabled = bytes[4]; telemetry.port = bytes[6] | (unsigned(bytes[7]) << 8);
@@ -336,6 +339,7 @@ Result Engine::preferences_store(const Settings& value, std::uint32_t changed) {
     if (changed & TemperatureUnit) next.temperature_unit = value.temperature_unit;
     if (changed & Language) std::memcpy(next.language, value.language, sizeof(next.language));
     if (changed & DetailedStatus) next.detailed_status = value.detailed_status;
+    if (changed & AutoCycle) next.auto_cycle = value.auto_cycle;
     if (device_.validate_settings) { const Result result = device_.validate_settings(device_.context, next, changed); if (!result.ok()) return result; }
     const Settings previous = impl_->settings;
     if (device_.apply_settings) {

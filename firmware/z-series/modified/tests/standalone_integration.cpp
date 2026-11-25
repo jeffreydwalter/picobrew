@@ -241,8 +241,15 @@ void offline_and_reservation(){World w;w.core.core.state.id=CoreStateId::Booting
     assert(w.core.post(duplicate));assert(w.dispatch());assert(w.writes==before&&w.core.core.state.id==CoreStateId::Running);
 }
 void settings_and_display(){World w;
-    auto output=w.request(PICO_HTTP_PATCH,"/api/v1/settings","{\"temperature_unit\":\"C\",\"language\":\"fr\",\"detailed_status\":true}",200);
+    auto output=w.request(PICO_HTTP_PATCH,"/api/v1/settings","{\"temperature_unit\":\"C\",\"language\":\"fr\",\"detailed_status\":true,\"auto_cycle\":false}",200);
     assert(!w.core.eeprom.data.use_imperial&&w.core.eeprom.data.language==LanguageType::French&&w.core.eeprom.data.show_detail);
+    assert(w.core.eeprom.data.slideshow_cycle_static&&output.find("\"auto_cycle\":false")!=std::string::npos);
+    HeadUiEvent setting;setting.command=UiCommand::Settings;assert(w.head.receive_ui(setting));w.head_tick();
+    bool cycle=false;for(std::size_t i=0;i<w.head.screens.menu_data.count;++i)
+        if(w.head.screens.menu_data.items[i].event.command==UiCommand::ConfigureSlideshowCycle)cycle=true;
+    assert(cycle);
+    setting.command=UiCommand::SetAutoCycle;assert(w.head.receive_ui(setting));w.head_tick();
+    assert(!w.core.eeprom.data.slideshow_cycle_static);
     auto services=w.adapter.services();api::Display first;assert(services.display(services.context,first).ok());assert(first.total_bytes==4096&&first.width==128&&first.height==64);
     std::uint8_t page[1024];assert(services.read_display(services.context,first.revision,1024,page,sizeof page).ok());
     auto old=page[0];w.head.display.pixels[1024]^=0xff;assert(services.read_display(services.context,first.revision,1024,page,sizeof page).ok()&&page[0]==old);

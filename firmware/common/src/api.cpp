@@ -48,8 +48,8 @@ unsigned Engine::Impl::discovery_json(Writer& writer) {
     }
     if (capabilities.flags & IntermittentWifi) writer.text(",\"intermittent_wifi\":true");
     writer.format("},\"history_sample_interval_ms\":%lu,\"settings_fields\":[", static_cast<unsigned long>(history_interval())); bool comma = false;
-    const char* settings_names[] = {"temperature_unit", "language", "detailed_status"};
-    for (unsigned i = 0; i < 3; ++i) if (capabilities.settings & (1u << i)) {
+    const char* settings_names[] = {"temperature_unit", "language", "detailed_status", "auto_cycle"};
+    for (unsigned i = 0; i < sizeof(settings_names)/sizeof(*settings_names); ++i) if (capabilities.settings & (1u << i)) {
         if (comma) writer.text(",");
         writer.quote(settings_names[i]); comma = true;
     }
@@ -140,6 +140,8 @@ unsigned Engine::Impl::settings_api(const PicoHttpRequest& request, Writer& writ
             field = Language; valid = json.string(changed.language, sizeof(changed.language));
         } else if (!std::strcmp(key, "detailed_status")) {
             field = DetailedStatus; valid = json.boolean(changed.detailed_status);
+        } else if (!std::strcmp(key, "auto_cycle")) {
+            field = AutoCycle; valid = json.boolean(changed.auto_cycle);
         } else valid = false;
         if ((seen & field) || !(capabilities.settings & field)) valid = false;
         seen |= field; if (!valid || !json.next('}')) break;

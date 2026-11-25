@@ -106,7 +106,7 @@ function setupApiExplorer({session, enqueue}) {
       return true;
     }).map(row=>{
       if(row[1]==='/api/v1/settings' && row[0]==='PATCH' && Array.isArray(info.settings_fields)) {
-        const defaults={temperature_unit:'F',language:'en',detailed_status:false};
+        const defaults={temperature_unit:'F',language:'en',detailed_status:false,auto_cycle:true};
         return [row[0],row[1],row[2],[['Supported preferences',Object.fromEntries(info.settings_fields.filter(name=>name in defaults).map(name=>[name,defaults[name]]))]]];
       }
       if(row[1]!=='/api/v1/commands')return row;

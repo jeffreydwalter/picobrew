@@ -526,7 +526,7 @@ function download(name,data) {
 }
 
 function renderSettings(settings) {
-  state.settings={temperature_unit:'F',...settings};$('temperatureUnit').value=state.settings.temperature_unit;$('language').value=settings.language || 'en';$('detailedStatus').checked=!!settings.detailed_status;
+  state.settings={temperature_unit:'F',...settings};$('temperatureUnit').value=state.settings.temperature_unit;$('language').value=settings.language || 'en';$('detailedStatus').checked=!!settings.detailed_status;$('autoCycle').checked=!!settings.auto_cycle;
 }
 
 function renderTelemetry(config) {
@@ -717,7 +717,7 @@ $('importRecipe').addEventListener('drop',event=>{
 });
 $('exportRecipe').addEventListener('click',()=>{const recipe=recipeFromForm();if(recipe)download(recipe.id+'.json',recipe.z_program || recipe);});
 $('settingsForm').addEventListener('submit',async event=>{
-  event.preventDefault();try{const available={temperature_unit:$('temperatureUnit').value,language:$('language').value,detailed_status:$('detailedStatus').checked};const keys=state.info.settings_fields || Object.keys(available);const patch=Object.fromEntries(keys.filter(key=>key in available).map(key=>[key,available[key]]));const settings=await api('/settings','PATCH',patch);renderSettings(settings);if(state.status)renderStatus(state.status);notify('Preferences saved on the Pico.');}catch(error){notify(error.message,true);}
+  event.preventDefault();try{const available={temperature_unit:$('temperatureUnit').value,language:$('language').value,detailed_status:$('detailedStatus').checked,auto_cycle:$('autoCycle').checked};const keys=state.info.settings_fields || ['temperature_unit','language','detailed_status'];const patch=Object.fromEntries(keys.filter(key=>key in available).map(key=>[key,available[key]]));const settings=await api('/settings','PATCH',patch);renderSettings(settings);if(state.status)renderStatus(state.status);notify('Preferences saved on the Pico.');}catch(error){notify(error.message,true);}
 });
 document.addEventListener('visibilitychange',()=>{if(!document.hidden && state.key)poll();});
 apiExplorer=setupApiExplorer({session:()=>({key:state.key,connected:state.connected,generation:state.generation}),enqueue:task=>{

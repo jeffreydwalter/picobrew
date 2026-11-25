@@ -75,6 +75,13 @@ export function DevicePreferences({ id, onClose }: { id: string; onClose: () => 
                 </Field>
               )}
             </div>
+            {fields.includes('auto_cycle') && (
+              <label className="check-field">
+                <input type="checkbox" checked={form.auto_cycle === true}
+                  onChange={(event) => setForm({ ...form, auto_cycle: event.target.checked })} />
+                Automatically cycle brew status screens
+              </label>
+            )}
             {fields.includes('detailed_status') && (
               <label className="check-field">
                 <input
