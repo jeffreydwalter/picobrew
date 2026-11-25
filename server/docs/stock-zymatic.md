@@ -19,9 +19,7 @@ Set `--hub-host brewery.lan:8080` during USB setup to point both network clients
 
 ## Download an offline program
 
-In a saved recipe’s **Send** dialog, choose **Zymatic · offline program for USB setup**, then **Preview offline programs**. Review the steps and select **Download offline program**. The Hub compiles the saved recipe revision locally. You can download separate files for several recipes, and each USB installation accepts one of them with `--offline-program PATH`. No brewer serial or network connection to a brewer is needed to compile a recipe. [Zymatic USB setup](../../firmware/zymatic/modified/README.md)
-
-To prepare a persistent offline recipe, select **Send → Zymatic · offline program for USB setup**, review the compiled steps and download the program. No brewer serial is required. Pass that file to the installer with `--offline-program`.
+In a saved recipe’s **Send** dialog, choose **Zymatic · offline program for USB setup**, then **Preview offline programs**. Review the steps and select **Use in USB setup**. Connect an idle Zymatic to the Hub computer and confirm installation. The Hub writes the reviewed schedule along with the firmware and verifies the complete flash. The machine stores one offline program. You can also choose **Download offline program** and select that JSON file in a later USB setup. The command-line installer accepts the same file with `--offline-program PATH`. [Zymatic USB setup](../../firmware/zymatic/modified/README.md)
 
 ## Compatibility beyond Zymatic
 

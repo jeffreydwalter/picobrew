@@ -87,7 +87,12 @@ class WorkerTests(unittest.TestCase):
                 service.assert_not_called()
                 events.clear()
 
-                def complete(data, port, action, *, confirm, key_file, hub_host, expected_uid):
+                request["offline_program"] = {
+                    "model": "zymatic", "name": "Offline ale", "id": "0"*32,
+                    "steps": [{"name": "Mash", "location": 1, "minutes": 50, "drain_minutes": 2, "target_f": 152}],
+                }
+                def complete(data, port, action, *, confirm, key_file, hub_host, expected_uid, offline_program):
+                    self.assertEqual(offline_program, request["offline_program"])
                     self.assertEqual(confirm("Type INSTALL ZYMATIC: "), "INSTALL ZYMATIC")
                     self.assertEqual(confirm("Type WRITE 1.0.0: "), "WRITE 1.0.0")
                     self.assertNotEqual(key_file("b" * 32), key_file("c" * 32))
@@ -107,6 +112,14 @@ class WorkerTests(unittest.TestCase):
                 self.assertNotIn("a" * 64, json.dumps(events))
                 self.assertNotIn(str(Path(tmp)), json.dumps(events))
                 self.assertEqual(len({e["id"] for e in events if e["type"] == "confirm"}), 3)
+
+    def test_invalid_offline_program_rejected_before_port_access(self):
+        program = {"model": "zymatic", "name": "Invalid", "steps": [
+            {"name": "Mash", "location": 7, "minutes": 1, "target_f": 150, "drain_minutes": 3}]}
+        for action, model in (("install", "zymatic"), ("install", "pico-s"), ("backup", "zymatic")):
+            with self.subTest(action=action, model=model), self.assertRaises(bridge.UserError):
+                bridge.run({"action": action, "model": model, "offline_program": program}, None, None,
+                           lambda: self.fail("USB discovery ran for invalid input"))
 
     def test_esp_pairing_receipt_uses_the_observed_unit_and_survives_retry(self):
         import esp_usb
