@@ -107,7 +107,7 @@ function displayGroup(invite) {
   const recipe=state.recipes.find(r=>r.id===invite.recipe_id);
   const program=invite.action==='brew' ? (recipe?.name || invite.recipe_id) : (programLabels[invite.action] || invite.action);
   $('groupDetail').textContent=invite.from+' invited this brewer to start '+program+'.';
-  $('joinGroup').disabled=groupResponding;
+  $('joinGroup').disabled=groupResponding || state.status?.filter_inserted===false;
   $('declineGroup').disabled=groupResponding;
 }
 async function respondGroup(op) {
@@ -509,18 +509,31 @@ function addStep(step={name:'New step',location:1,target_f:152,minutes:20,drain_
   const definitions=[['name','text',null,null],['location','select',1,6],['target_f','number',0,212],['minutes','number',0,599],['drain_minutes','number',0,120]];
   for (const [field,type,min,max] of definitions) {
     const cell=document.createElement('td');let input;
-    if(type==='select') {input=document.createElement('select');flowPaths.forEach((label,index)=>input.add(new Option(label,String(index+1))));}
+    if(type==='select') {
+      input=document.createElement('select');
+      flowPaths.forEach((label,index)=>input.add(new Option(label,String(state.zCloud?index:index+1))));
+      if(state.zCloud)input.add(new Option('Pause for operator','6'));
+    }
     else {input=document.createElement('input');input.type=type;if(type==='text'){input.maxLength=21;input.pattern='[ -~]{1,21}';input.title='Use printable ASCII characters.';}else{input.min=min;input.max=max;input.step=1;}}
     input.dataset.field=field;input.required=true;input.value=step[field] ?? (field==='drain_minutes' ? 0 : '');
     input.setAttribute('aria-label',field.replaceAll('_',' '));cell.append(input);row.append(cell);
   }
   const cell=document.createElement('td');const remove=document.createElement('button');remove.type='button';remove.className='remove';remove.textContent='×';remove.setAttribute('aria-label','Remove step');
   remove.addEventListener('click',()=>{row.remove();state.dirty=true;});cell.append(remove);row.append(cell);$('steps').append(row);
+  if(state.zCloud){
+    const route=row.querySelector('[data-field=location]');
+    const sync=()=>{for(const key of ['target_f','minutes','drain_minutes'])row.querySelector('[data-field='+key+']').disabled=route.value==='6';};
+    route.addEventListener('change',sync);sync();
+  }
 }
 
 function editRecipe(recipe, existing=false) {
   const program=recipe.z_program || (state.info.z_program_maker===true && !recipe.steps ? newZProgram() : null);
   state.zProgram=!!program;
+  state.zCloud=!!recipe.z_cloud;
+  $('zCloudOptions').hidden=$('zCloudOptions').disabled=!state.zCloud;
+  $('cloudWater').value=state.zCloud ? recipe.z_cloud.start_water_ml/1000 : '';
+  $('cloudBeer').checked=recipe.z_cloud?.is_beer===true;
   state.zHasUnit=program?.IsMetric!==undefined;
   $('zStepType').hidden=$('zProgramOptions').hidden=!program;
   $('zUnits').value=state.zHasUnit ? (program.IsMetric ? 'C' : 'F') : state.settings.temperature_unit;
@@ -532,6 +545,10 @@ function editRecipe(recipe, existing=false) {
   $('stepDrain').textContent=program ? 'Drain (min:sec)' : 'Drain min';
   $('recipeLimits').textContent=program ? 'Up to 15 steps. A pause waits for the operator to continue.' : 'Up to 15 steps. A target of 0 means unheated circulation.';
   $('recipeRoutingHint').textContent=program ? 'Import or export Z Program Maker JSON. Use minutes:seconds for exact timing.' : 'Choose the flow path for each step.';
+  if(state.zCloud){
+    $('recipeRoutingHint').textContent='The brewer uses the saved water quantity during setup. Pauses wait for you to continue.';
+    $('recipeLimits').textContent='A target of 0 keeps the previous heat setting. The Z adjusts boiling steps to its local boiling point.';
+  }
   state.editorId=existing ? recipe.id : null;
   state.editorRevision=existing ? recipe.revision : undefined;
   state.dirty=false;
@@ -563,8 +580,11 @@ function recipeFromForm() {
   });
   if(!steps.length){notify('Add at least one brewing step.',true);return null;}
   if(state.info.zero_minute_steps!==true && steps.some(step=>step.minutes===0)){notify('This firmware requires at least one minute per step.',true);return null;}
-  if(steps.some(step=>step.target_f!==0 && step.target_f<60)){notify('Targets must be 0 for unheated circulation, or between 60 and 212 °F.',true);return null;}
-  return {id:$('recipeId').value,name:$('recipeName').value,steps};
+  const minimum=state.zCloud?32:60;
+  if(steps.some(step=>step.target_f!==0 && step.target_f<minimum)){notify('Use 0 or a target between '+minimum+' and 212 °F.',true);return null;}
+  const result={id:$('recipeId').value,name:$('recipeName').value,steps};
+  if(state.zCloud)result.z_cloud={start_water_ml:Math.round(Number($('cloudWater').value)*1000),is_beer:$('cloudBeer').checked};
+  return result;
 }
 
 async function sendCommand(body) {
@@ -723,7 +743,8 @@ $('recipeName').addEventListener('input',()=>{if($('recipeId').dataset.auto==='t
 $('recipeId').addEventListener('input',()=>{$('recipeId').dataset.auto='false';});
 $('recipeForm').addEventListener('submit',async event=>{
   event.preventDefault();const recipe=recipeFromForm();if(!recipe)return;
-  try{const saved=await api('/recipes/'+encodeURIComponent(recipe.id),'PUT',{...(recipe.z_program ? {z_program:recipe.z_program} : {name:recipe.name,steps:recipe.steps}),...(state.editorId ? {if_revision:state.editorRevision} : {create_only:true})});editRecipe(saved,true);await refreshRecipes();notify('Recipe saved on the Pico.');}
+  const {id,...body}=recipe;
+  try{const saved=await api('/recipes/'+encodeURIComponent(id),'PUT',{...body,...(state.editorId ? {if_revision:state.editorRevision} : {create_only:true})});editRecipe(saved,true);await refreshRecipes();notify('Recipe saved on the Pico.');}
   catch(error){notify(error.message,true);}
 });
 $('deleteRecipe').addEventListener('click',async()=>{
@@ -763,11 +784,15 @@ function readRecipeFile(text) {
   }
   const label=(value,max)=>typeof value==='string' && value.length>=1 && value.length<=max && !/[^ -~]/.test(value);
   const integer=(value,min,max)=>Number.isInteger(value) && value>=min && value<=max;
-  if(!hasOnlyFields(recipe,['id','name','steps']) || !validId(recipe.id) || !label(recipe.name,31) ||
+  const cloud=recipe && Object.hasOwn(recipe,'z_cloud');
+  if(cloud && (state.info.z_cloud_program_v1!==true || !hasOnlyFields(recipe.z_cloud,['start_water_ml','is_beer']) ||
+    !integer(recipe.z_cloud.start_water_ml,1,16163) || typeof recipe.z_cloud.is_beer!=='boolean'))
+    throw new Error('This Z schedule requires a compatible brewer and a valid starting-water quantity.');
+  if(!hasOnlyFields(recipe,['id','name','steps','z_cloud']) || !validId(recipe.id) || !label(recipe.name,31) ||
      !Array.isArray(recipe.steps) || !integer(recipe.steps.length,1,15))throw new Error('Choose a Pico Local recipe with a valid ID, name, and 1–15 steps.');
   for(const [i,step] of recipe.steps.entries()) {
     if(!hasOnlyFields(step,['name','location','target_f','minutes','drain_minutes']) || !label(step.name,21) ||
-       !integer(step.location,1,6) || (step.target_f!==0 && !integer(step.target_f,60,212)) ||
+       !integer(step.location,cloud?0:1,6) || (step.target_f!==0 && !integer(step.target_f,cloud?32:60,212)) ||
        !integer(step.minutes,state.info.zero_minute_steps===true ? 0 : 1,599) ||
        ('drain_minutes' in step && !integer(step.drain_minutes,0,120)))throw new Error('Step '+(i+1)+' contains unsupported fields or values.');
   }

@@ -30,7 +30,7 @@ export function routeLabel(location: number, model?: string, archived = false) {
   if (archived && (model === 'z' || model === 'zymatic'))
     return archivePause(location, model)
       ? 'Pause'
-      : model === 'zymatic' && location >= 0 && location <= 5
+      : location >= 0 && location <= 5
         ? [
             'Keg circulation',
             'Mash',
@@ -68,7 +68,9 @@ export function programTiming(program: MachineRecipe, archivedModel?: string) {
       (steps.some((s) => s.StepType === 2) ? ' + pauses' : '')
     )
   }
-  const active = program.steps.filter((step) => !archivePause(step.location, archivedModel))
+  const active = program.steps.filter(
+    (step) => !archivePause(step.location, program.z_cloud ? 'z' : archivedModel)
+  )
   const minutes = active.reduce((sum, step) => sum + step.minutes + step.drain_minutes, 0)
   return `${minutes} min${active.some((step) => step.target_f > 0) ? ' + heating' : ''}${active.length < program.steps.length ? ' + pauses' : ''}`
 }

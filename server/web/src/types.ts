@@ -94,6 +94,7 @@ export interface Capabilities {
   telemetry_forwarding: boolean
   dedicated_pause_resume: boolean
   z_program_maker?: boolean
+  z_cloud_program_v1?: boolean
   recipe_create_only?: boolean
   zero_minute_steps?: boolean
 }
@@ -168,6 +169,7 @@ export interface ZProgram {
 }
 export interface MachineRecipe {
   z_program?: ZProgram
+  z_cloud?: { start_water_ml: number; is_beer: boolean }
   id: string
   name: string
   steps: MachineStep[]
