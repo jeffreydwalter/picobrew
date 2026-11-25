@@ -172,7 +172,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
   const [editing, setEditing] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [testingConnection, setTestingConnection] = useState(false)
-  const [removeRecipe, setRemoveRecipe] = useState(false)
+  const [removeRecipe, setRemoveRecipe] = useState<MachineRecipe | null>(null)
   const [editRecipe, setEditRecipe] = useState<MachineRecipe | null>(null)
   const [transferRecipes, setTransferRecipes] = useState(false)
   const [error, setError] = useState('')
@@ -714,7 +714,7 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
                           !!status?.stopped ||
                           !!pending
                         }
-                        onClick={() => setRemoveRecipe(true)}
+                        onClick={() => setRemoveRecipe(recipes.find((recipe) => recipe.id === recipeID) || null)}
                       >
                         <Trash2 size={13} />
                         Remove selected copy
@@ -950,21 +950,22 @@ function BrewerMachine({ id, initialRecipe }: MachineProps) {
           label="Remove machine copy"
           danger
           busy={pending === 'remove-recipe'}
-          onClose={() => setRemoveRecipe(false)}
+          onClose={() => setRemoveRecipe(null)}
           onConfirm={async () => {
             setPending('remove-recipe')
             setError('')
             try {
-              await api(`/devices/${id}/recipes/${encodeURIComponent(recipeID)}`, {
+              await api(`/devices/${id}/recipes/${encodeURIComponent(removeRecipe.id)}`, {
                 method: 'DELETE',
+                body: { expected: removeRecipe },
               })
               setRecipeID('')
               native.reload()
-              setRemoveRecipe(false)
+              setRemoveRecipe(null)
               hub.notify('Saved machine recipe removed.')
             } catch (error) {
               setError(errorMessage(error))
-              setRemoveRecipe(false)
+              setRemoveRecipe(null)
             } finally {
               setPending('')
             }

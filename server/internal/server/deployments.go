@@ -416,11 +416,7 @@ func (s *Server) executeDeployment(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, 500, "receipt_error", "Transfer stopped because its receipt could not be saved. Inspect the current machine inventory before trying again.")
 			return
 		}
-		write := d.adapter.CreateRecipe
-		if item.Update {
-			write = d.adapter.PutRecipe
-		}
-		if err = write(r.Context(), *item.Native); err != nil {
+		if err = saveReviewedRecipe(r.Context(), d.adapter, *item.Native, item.Previous); err != nil {
 			item.Status = "unconfirmed"
 			item.Reason = "The recipe write was not verified. Refresh the machine inventory before preparing another transfer."
 			var failure *device.Error

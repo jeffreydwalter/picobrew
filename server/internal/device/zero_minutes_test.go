@@ -24,16 +24,16 @@ func TestZeroMinuteSupportIsFreshlyDiscoveredBeforeWriting(t *testing.T) {
 			replyJSON(w, 200, program)
 		}
 	})
-	err := deviceFailure(t, p.PutRecipe(context.Background(), program))
+	err := deviceFailure(t, p.PutRecipe(context.Background(), program, nil))
 	if writes.Load() != 0 || err.UnknownOutcome || err.Code != "unsupported_zero_minute_steps" {
 		t.Fatalf("old firmware received zero-minute program: %+v", err)
 	}
 	supported.Store(true)
-	if err := p.PutRecipe(context.Background(), program); err != nil {
+	if err := p.PutRecipe(context.Background(), program, nil); err != nil {
 		t.Fatal(err)
 	}
 	supported.Store(false) // Firmware can be downgraded while this Hub stays up.
-	err = deviceFailure(t, p.PutRecipe(context.Background(), program))
+	err = deviceFailure(t, p.PutRecipe(context.Background(), program, nil))
 	if writes.Load() != 1 || discoveries.Load() != 3 || err.UnknownOutcome {
 		t.Fatal("cached capability permitted a write after downgrade")
 	}

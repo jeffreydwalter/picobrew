@@ -1,14 +1,24 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"reflect"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/device"
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/domain"
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/recipe"
 )
+
+func saveReviewedRecipe(ctx context.Context, adapter device.Adapter, program domain.MachineRecipe, expected *domain.MachineRecipe) error {
+	if expected == nil {
+		return adapter.CreateRecipe(ctx, program)
+	}
+	return adapter.PutRecipe(ctx, program, expected)
+}
 
 type MachineRecipeUpdate struct {
 	Recipe   domain.MachineRecipe `json:"recipe"`
@@ -90,8 +100,12 @@ func (s *Server) updateMachineRecipe(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, err)
 		return
 	}
-	if err = d.adapter.PutRecipe(r.Context(), in.Recipe); err != nil {
+	if err = d.adapter.PutRecipe(r.Context(), in.Recipe, &in.Expected); err != nil {
 		receipt["state"] = "unconfirmed"
+		var failure *device.Error
+		if errors.As(err, &failure) && !failure.UnknownOutcome {
+			receipt["state"] = "not_sent"
+		}
 		_, _ = s.db.Put("deployment", receiptID, receipt, -1)
 		s.deviceError(w, err)
 		return

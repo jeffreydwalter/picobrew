@@ -623,7 +623,20 @@ func (s *Server) deleteMachineRecipe(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, 409, "machine_not_idle", "Return the machine to its main menu before removing recipes")
 		return
 	}
-	if err = d.adapter.DeleteRecipe(r.Context(), chi.URLParam(r, "recipe_id")); err != nil {
+	id := chi.URLParam(r, "recipe_id")
+	var in struct {
+		Expected *domain.MachineRecipe `json:"expected"`
+	}
+	if r.ContentLength != 0 {
+		if !s.decode(w, r, &in) {
+			return
+		}
+		if in.Expected == nil || in.Expected.ID != id {
+			s.fail(w, 400, "recipe_id", "Include the saved recipe you selected for removal")
+			return
+		}
+	}
+	if err = d.adapter.DeleteRecipe(r.Context(), id, in.Expected); err != nil {
 		s.deviceError(w, err)
 		return
 	}

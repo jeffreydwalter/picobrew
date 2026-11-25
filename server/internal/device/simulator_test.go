@@ -48,7 +48,7 @@ func TestSimulatorBrewCommandStartsRecordingAndCompletes(t *testing.T) {
 	recipe := nativeRecipe()
 	recipe.Steps[0].Minutes = 1
 	recipe.Steps[0].DrainMinutes = 0
-	if err := s.PutRecipe(ctx, recipe); err != nil {
+	if err := s.PutRecipe(ctx, recipe, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Command(ctx, domain.Command{Command: "brew", RecipeID: recipe.ID}); err != nil {
@@ -110,18 +110,18 @@ func TestSimulatorRecipeCapacityDeletionAndOwnership(t *testing.T) {
 	for i := range 14 {
 		recipe := nativeRecipe()
 		recipe.ID = fmt.Sprintf("r%d", i)
-		if err := s.PutRecipe(ctx, recipe); err != nil {
+		if err := s.PutRecipe(ctx, recipe, nil); err != nil {
 			t.Fatal(err)
 		}
 		recipe.Steps[0].TargetF = 999
 	}
-	if err := s.PutRecipe(ctx, nativeRecipe()); deviceFailure(t, err).StatusCode != 507 {
+	if err := s.PutRecipe(ctx, nativeRecipe(), nil); deviceFailure(t, err).StatusCode != 507 {
 		t.Fatal(err)
 	}
-	if err := s.DeleteRecipe(ctx, "r0"); err != nil {
+	if err := s.DeleteRecipe(ctx, "r0", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PutRecipe(ctx, nativeRecipe()); err != nil {
+	if err := s.PutRecipe(ctx, nativeRecipe(), nil); err != nil {
 		t.Fatal(err)
 	}
 	recipes, _ := s.Recipes(ctx)
@@ -141,7 +141,7 @@ func TestSimulatorRecipeCapacityDeletionAndOwnership(t *testing.T) {
 	if err := s.Command(ctx, domain.Command{Command: "rinse"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DeleteRecipe(ctx, "r1"); deviceFailure(t, err).StatusCode != 409 {
+	if err := s.DeleteRecipe(ctx, "r1", nil); deviceFailure(t, err).StatusCode != 409 {
 		t.Fatal("busy simulator allowed recipe removal")
 	}
 }

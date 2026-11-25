@@ -58,7 +58,7 @@ var endpoints = []endpoint{
 	{"POST", "/ai/models", "Connect and list models without saving credentials or enabling AI", map[string]any{"provider": "openai", "api_key": "your-api-key"}},
 	{"PUT", "/profiles/{id}", "Save measured batch, efficiency and grain limits", map[string]any{"batch_liters": 5, "efficiency": 70, "max_grain_kg": 0}},
 	{"DELETE", "/profiles/{id}", "Restore the model's default planning profile", nil},
-	{"DELETE", "/devices/{id}/recipes/{recipe_id}", "Delete a recipe stored on an idle appliance", nil},
+	{"DELETE", "/devices/{id}/recipes/{recipe_id}", "Remove an installed recipe, optionally checking the selected copy", map[string]any{"expected": domain.MachineRecipe{}}},
 	{"PUT", "/devices/{id}/recipes/{recipe_id}", "Edit an installed program after checking the previous value", map[string]any{"recipe": domain.MachineRecipe{}, "expected": domain.MachineRecipe{}}},
 	{"POST", "/devices/{id}/deployments", "Preview a capacity-limited bulk recipe transfer", map[string]any{"profile_id": "pico-pro", "overwrite_existing": false, "items": []any{map[string]any{"recipe_id": "library-recipe-id", "source_revision": 1, "batch_liters": 0}}}},
 	{"GET", "/devices/{id}/deployments/{deployment_id}", "Read the saved transfer preview or receipt", nil},
@@ -494,6 +494,9 @@ func requestSchema(e endpoint) (schemaMap, bool) {
 	case "/devices/{id}/deployments":
 		name = "DeploymentInput"
 	case "/devices/{id}/recipes/{recipe_id}":
+		if e.method == "DELETE" {
+			return schemaObject(schemaMap{"expected": schemaRef("MachineRecipe")}, "expected"), false
+		}
 		name = "MachineRecipeUpdate"
 	case "/profiles/{id}":
 		name = "ProfileInput"
@@ -879,7 +882,7 @@ func openAPIDocument() schemaMap {
 		}
 		path[strings.ToLower(e.method)] = op
 	}
-	return schemaMap{"openapi": "3.0.3", "info": map[string]any{"title": "PicoBrew Hub API", "version": Version, "description": "Same-origin owner API. Obtain the session cookie at login, then read /auth/session for X-CSRF-Token on protected writes. Status codes describe HTTP acceptance, not proof of physical execution. Controls follow discovered capabilities; no dedicated pause/resume or live recipe editing is implemented. AI is advisory and cannot issue commands. JSON decoding accepts one value, rejects unknown fields and limits bodies to 2 MiB. Firmware ZIP uploads use bounded multipart requests and do not install firmware. Recipe files additionally have a 1 MiB import limit. Optional device forwarding is unsigned observation data, not control or authoritative status."}, "servers": []any{map[string]string{"url": "/api/v1"}}, "paths": paths, "components": map[string]any{"schemas": buildSchemas(), "securitySchemes": map[string]any{"session": map[string]string{"type": "apiKey", "in": "cookie", "name": "pico_hub_session"}, "csrf": map[string]string{"type": "apiKey", "in": "header", "name": "X-CSRF-Token"}}}}
+	return schemaMap{"openapi": "3.0.3", "info": map[string]any{"title": "PicoBrew Hub API", "version": Version, "description": "Same-origin owner API. Obtain the session cookie at login, then read /auth/session for X-CSRF-Token on protected writes. Status codes describe HTTP acceptance, not proof of physical execution. The Hub offers pause and resume when the brewer advertises them. Installed recipes can be edited while the brewer is idle. AI is advisory and cannot issue commands. JSON decoding accepts one value, rejects unknown fields and limits bodies to 2 MiB. Firmware ZIP uploads use bounded multipart requests and do not install firmware. Recipe files additionally have a 1 MiB import limit. Optional device forwarding is unsigned observation data, not control or authoritative status."}, "servers": []any{map[string]string{"url": "/api/v1"}}, "paths": paths, "components": map[string]any{"schemas": buildSchemas(), "securitySchemes": map[string]any{"session": map[string]string{"type": "apiKey", "in": "cookie", "name": "pico_hub_session"}, "csrf": map[string]string{"type": "apiKey", "in": "header", "name": "X-CSRF-Token"}}}}
 }
 
 func recipeAPIExample(revision int64) schemaMap {

@@ -18,8 +18,8 @@ type Adapter interface {
 	Recipes(context.Context) ([]domain.MachineRecipe, error)
 	Recipe(context.Context, string) (domain.MachineRecipe, error)
 	CreateRecipe(context.Context, domain.MachineRecipe) error
-	PutRecipe(context.Context, domain.MachineRecipe) error
-	DeleteRecipe(context.Context, string) error
+	PutRecipe(context.Context, domain.MachineRecipe, *domain.MachineRecipe) error
+	DeleteRecipe(context.Context, string, *domain.MachineRecipe) error
 	Command(context.Context, domain.Command) error
 	Settings(context.Context) (map[string]any, error)
 	UpdateSettings(context.Context, map[string]any) error
@@ -81,6 +81,10 @@ func (e *Error) Error() string { return e.Code + ": " + e.Message }
 
 func existsError() error {
 	return &Error{StatusCode: 409, Code: "recipe_exists", Message: "This recipe ID is already on the machine. Review the existing program before replacing it."}
+}
+
+func recipeChanged() error {
+	return &Error{StatusCode: 409, Code: "recipe_changed", Message: "The installed recipe changed. Reload it before trying again."}
 }
 
 func invalid(message string) error {

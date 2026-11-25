@@ -300,7 +300,6 @@ func (s *Server) deploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	deployment := map[string]any{"device_id": view.ID, "recipe_id": v.ID, "revision": v.Revision, "native": native, "at": time.Now().UTC(), "state": "prepared"}
-	write := d.adapter.CreateRecipe
 	var found bool
 	for _, previous := range existing {
 		if previous.ID != native.ID {
@@ -316,7 +315,6 @@ func (s *Server) deploy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		deployment["previous"] = previous
-		write = d.adapter.PutRecipe
 		break
 	}
 	if !found && in.ReplaceExpected != nil {
@@ -332,7 +330,7 @@ func (s *Server) deploy(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, e)
 		return
 	}
-	if e = write(r.Context(), native); e != nil {
+	if e = saveReviewedRecipe(r.Context(), d.adapter, native, in.ReplaceExpected); e != nil {
 		deployment["state"] = "unconfirmed"
 		var failure *device.Error
 		if errors.As(e, &failure) && !failure.UnknownOutcome {

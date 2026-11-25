@@ -124,6 +124,7 @@ type Capabilities struct {
 	HistoryPersistent       bool                     `json:"history_persistent"`
 	TelemetryForwarding     bool                     `json:"telemetry_forwarding"`
 	DedicatedPauseResume    bool                     `json:"dedicated_pause_resume"`
+	RecipeConditionalWrite  bool                     `json:"recipe_conditional_write,omitempty"`
 	RecipeCreateOnly        bool                     `json:"recipe_create_only"`
 	ZeroMinuteSteps         bool                     `json:"zero_minute_steps"`
 	RestoreDefaultRecipes   bool                     `json:"restore_default_recipes"`

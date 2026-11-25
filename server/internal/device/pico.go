@@ -311,29 +311,61 @@ func (p *pico) Recipe(ctx context.Context, id string) (domain.MachineRecipe, err
 
 // readRecipe reads one slot while the caller holds the adapter lock.
 func (p *pico) readRecipe(ctx context.Context, id string) (domain.MachineRecipe, error) {
+	slot, err := p.readRecipeSlot(ctx, id)
+	return slot.MachineRecipe, err
+}
+
+type recipeSlot struct {
+	domain.MachineRecipe
+	Revision uint32 `json:"revision"`
+}
+
+func (p *pico) readRecipeSlot(ctx context.Context, id string) (recipeSlot, error) {
 	if !recipeID.MatchString(id) {
-		return domain.MachineRecipe{}, &Error{Code: "invalid_response", Message: "Invalid machine recipe ID"}
+		return recipeSlot{}, &Error{Code: "invalid_response", Message: "Invalid machine recipe ID"}
 	}
-	var recipe domain.MachineRecipe
+	var recipe recipeSlot
 	if err := p.request(ctx, http.MethodGet, "/api/v1/recipes/"+id, nil, &recipe, 200); err != nil {
-		return domain.MachineRecipe{}, err
+		return recipeSlot{}, err
 	}
 	if recipe.ZProgram != nil {
 		recipe.Name = recipe.ZProgram.Name
 	}
-	if recipe.ID != id || validateRecipe(recipe) != nil {
-		return domain.MachineRecipe{}, &Error{Code: "invalid_response", Message: "Device returned an invalid recipe"}
+	if recipe.ID != id || validateRecipe(recipe.MachineRecipe) != nil {
+		return recipeSlot{}, &Error{Code: "invalid_response", Message: "Device returned an invalid recipe"}
 	}
 	return recipe, nil
 }
 
+// Compare the contents the operator saw, then use the revision from that same read for the write.
+func (p *pico) checkedRecipeRevision(ctx context.Context, id string, expected *domain.MachineRecipe) (uint32, error) {
+	slot, err := p.readRecipeSlot(ctx, id)
+	if err != nil {
+		var missing *Error
+		if expected != nil && errors.As(err, &missing) && missing.StatusCode == 404 {
+			return 0, recipeChanged()
+		}
+		return 0, err
+	}
+	if expected != nil && !reflect.DeepEqual(slot.MachineRecipe, *expected) {
+		return 0, recipeChanged()
+	}
+	if p.capabilities != nil && p.capabilities.RecipeConditionalWrite {
+		if slot.Revision == 0 {
+			return 0, &Error{Code: "invalid_response", Message: "The brewer omitted the recipe revision required for saving changes."}
+		}
+		return slot.Revision, nil
+	}
+	return 0, nil
+}
+
 func (p *pico) CreateRecipe(ctx context.Context, recipe domain.MachineRecipe) error {
-	return p.writeRecipe(ctx, recipe, true)
+	return p.writeRecipe(ctx, recipe, true, nil)
 }
-func (p *pico) PutRecipe(ctx context.Context, recipe domain.MachineRecipe) error {
-	return p.writeRecipe(ctx, recipe, false)
+func (p *pico) PutRecipe(ctx context.Context, recipe domain.MachineRecipe, expected *domain.MachineRecipe) error {
+	return p.writeRecipe(ctx, recipe, false, expected)
 }
-func (p *pico) writeRecipe(ctx context.Context, recipe domain.MachineRecipe, create bool) error {
+func (p *pico) writeRecipe(ctx context.Context, recipe domain.MachineRecipe, create bool, expected *domain.MachineRecipe) error {
 	if err := validateRecipe(recipe); err != nil {
 		return err
 	}
@@ -345,7 +377,8 @@ func (p *pico) writeRecipe(ctx context.Context, recipe domain.MachineRecipe, cre
 		return unsupportedCapability("recipes")
 	}
 	path := "/api/v1/recipes/" + recipe.ID
-	var body any = recipe
+	var createOnly bool
+	var revision uint32
 	accepted := []int{200, 201}
 	zeroMinute := false
 	for _, step := range recipe.Steps {
@@ -354,7 +387,7 @@ func (p *pico) writeRecipe(ctx context.Context, recipe domain.MachineRecipe, cre
 			break
 		}
 	}
-	if create || zeroMinute || recipe.ZProgram != nil {
+	if create || zeroMinute || recipe.ZProgram != nil || expected != nil {
 		capabilities, err := p.discover(ctx)
 		if err != nil {
 			return err
@@ -371,10 +404,7 @@ func (p *pico) writeRecipe(ctx context.Context, recipe domain.MachineRecipe, cre
 		if create {
 			if capabilities.RecipeCreateOnly {
 				accepted = []int{201}
-				body = struct {
-					domain.MachineRecipe
-					CreateOnly bool `json:"create_only"`
-				}{recipe, true}
+				createOnly = true
 			} else {
 				// Older firmware has only an upsert. Recheck this specific slot under the
 				// adapter lock immediately before writing. Independent device clients can
@@ -390,12 +420,26 @@ func (p *pico) writeRecipe(ctx context.Context, recipe domain.MachineRecipe, cre
 			}
 		}
 	}
+	if expected != nil {
+		var err error
+		revision, err = p.checkedRecipeRevision(ctx, recipe.ID, expected)
+		if err != nil {
+			return err
+		}
+		accepted = []int{200}
+	}
+	var body any = struct {
+		domain.MachineRecipe
+		CreateOnly bool   `json:"create_only,omitempty"`
+		IfRevision uint32 `json:"if_revision,omitempty"`
+	}{recipe, createOnly, revision}
 	if recipe.ZProgram != nil {
 		body = struct {
 			ID         string           `json:"id"`
 			Z          *domain.ZProgram `json:"z_program"`
 			CreateOnly bool             `json:"create_only,omitempty"`
-		}{recipe.ID, recipe.ZProgram, create && p.capabilities.RecipeCreateOnly}
+			IfRevision uint32           `json:"if_revision,omitempty"`
+		}{recipe.ID, recipe.ZProgram, createOnly, revision}
 		recipe.Steps = nil
 	}
 	if err := p.request(ctx, http.MethodPut, path, body, nil, accepted...); err != nil {
@@ -413,7 +457,7 @@ func (p *pico) writeRecipe(ctx context.Context, recipe domain.MachineRecipe, cre
 	}
 	return nil
 }
-func (p *pico) DeleteRecipe(ctx context.Context, id string) error {
+func (p *pico) DeleteRecipe(ctx context.Context, id string, expected *domain.MachineRecipe) error {
 	if !recipeID.MatchString(id) {
 		return invalid("Recipe ID is invalid")
 	}
@@ -424,7 +468,24 @@ func (p *pico) DeleteRecipe(ctx context.Context, id string) error {
 	if p.capabilities != nil && !p.capabilities.Supports("recipes") {
 		return unsupportedCapability("recipes")
 	}
-	return p.request(ctx, http.MethodDelete, "/api/v1/recipes/"+id, nil, nil, 204)
+	var body any
+	if expected != nil || p.capabilities != nil && p.capabilities.RecipeConditionalWrite {
+		if p.capabilities == nil {
+			if _, err := p.discover(ctx); err != nil {
+				return err
+			}
+		}
+		revision, err := p.checkedRecipeRevision(ctx, id, expected)
+		if err != nil {
+			return err
+		}
+		if revision != 0 {
+			body = struct {
+				IfRevision uint32 `json:"if_revision"`
+			}{revision}
+		}
+	}
+	return p.request(ctx, http.MethodDelete, "/api/v1/recipes/"+id, body, nil, 200, 204)
 }
 func (p *pico) Command(ctx context.Context, command domain.Command) error {
 	if err := p.lock(ctx); err != nil {
