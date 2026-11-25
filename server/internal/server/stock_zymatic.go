@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"regexp"
@@ -29,10 +28,14 @@ type stockItem struct {
 	Maintenance      bool                 `json:"maintenance,omitempty"`
 }
 type stockSession struct {
-	ID       string
-	Program  domain.MachineRecipe
-	Snapshot string
-	Ended    bool
+	ID          string
+	Program     domain.MachineRecipe
+	Snapshot    string
+	Ended       bool
+	Started     time.Time
+	RecipeID    string
+	Revision    int64
+	Maintenance bool
 }
 type stockBrewer struct {
 	Machine        string
@@ -75,7 +78,12 @@ func (s *Server) stockMenu(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet {
-		s.json(w, 200, map[string]any{"machine": id, "items": b.Items, "last_requested": b.Requested})
+		var diagnostics stockDiagnostics
+		if _, err := s.db.Get(stockDiagnosticsKind, id, &diagnostics); err != nil && !errors.Is(err, store.ErrNotFound) {
+			s.storeError(w, err)
+			return
+		}
+		s.json(w, 200, map[string]any{"machine": id, "items": b.Items, "last_requested": b.Requested, "diagnostics": diagnostics})
 		return
 	}
 	if r.Method == http.MethodDelete {
@@ -233,6 +241,29 @@ func stockReply(w http.ResponseWriter, body string) {
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write([]byte("\r\n" + body))
 }
+
+func (s *Server) stockMachineForSession(sid string) (string, error) {
+	var b domain.Brew
+	_, err := s.db.Get("brew", stockBrewID(sid), &b)
+	if err == nil && b.Source == stockReportSource {
+		return b.StockSerial, nil
+	}
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return "", err
+	}
+	// Sessions predating the journal only have their ID in the brewer record.
+	brewers, err := listRecords[stockBrewer](s, stockKind)
+	if err != nil {
+		return "", err
+	}
+	for _, brewer := range brewers {
+		if brewer.Session.ID == sid {
+			return brewer.Machine, nil
+		}
+	}
+	return "", nil
+}
+
 func (s *Server) stockWire(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Demo {
 		http.NotFound(w, r)
@@ -242,10 +273,12 @@ func (s *Server) stockWire(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	switch op {
 	case "zymaticfirmwarecheck":
+		// This route is an OEM release notification. A custom USB image is
+		// a different distribution channel and is never an OEM update offer.
 		stockReply(w, "#F#")
 		return
 	case "firstsetup", "sessionerror":
-		stockReply(w, "")
+		s.stockDiagnosticsReport(w, op, q)
 		return
 	case "checksync":
 		stockReply(w, "#T#")
@@ -260,34 +293,27 @@ func (s *Server) stockWire(w http.ResponseWriter, r *http.Request) {
 	var b stockBrewer
 	var version int64
 	var err error
-	if op == "recoversession" || (op == "logsession" && q.Get("code") != "0") {
+	bySession := op == "recoversession" || (op == "logsession" && q.Get("code") != "0")
+	missingSession := func() {
+		if op == "recoversession" && q.Get("code") == "1" {
+			stockReply(w, "#!#")
+			return
+		}
+		http.Error(w, "unknown session", 404)
+	}
+	if bySession {
 		sid := q.Get("session")
 		if len(sid) != 32 {
 			http.Error(w, "unknown session", 404)
 			return
 		}
-		rows, e := s.db.List(stockKind)
-		if e != nil {
+		b.Machine, err = s.stockMachineForSession(sid)
+		if err != nil {
 			http.Error(w, "storage unavailable", 500)
 			return
 		}
-		for _, row := range rows {
-			var other stockBrewer
-			if e := json.Unmarshal(row, &other); e != nil {
-				http.Error(w, "storage unavailable", 500)
-				return
-			}
-			if other.Session.ID == sid {
-				b = other
-				break
-			}
-		}
 		if b.Machine == "" {
-			if op == "recoversession" && q.Get("code") == "1" {
-				stockReply(w, "#!#")
-				return
-			}
-			http.Error(w, "unknown session", 404)
+			missingSession()
 			return
 		}
 	} else {
@@ -307,6 +333,10 @@ func (s *Server) stockWire(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		http.Error(w, "storage unavailable", 500)
+		return
+	}
+	if bySession && b.Session.ID != q.Get("session") {
+		missingSession()
 		return
 	}
 	save := func() bool {
@@ -379,8 +409,29 @@ func (s *Server) stockWire(w http.ResponseWriter, r *http.Request) {
 			}
 			for _, item := range served {
 				if item.Program.ID == q.Get("recipe") && recipe.ValidateStockZymaticProgram(item.Program) == nil {
-					b.Session = stockSession{ID: randomID(), Program: item.Program}
-					if !save() {
+					previous := b.Session
+					now := time.Now().UTC()
+					// The create request has no nonce. Return the outstanding ID on
+					// an immediate retry before the brewer has reported any activity.
+					sameProgram := previous.Program.ID == item.Program.ID && previous.RecipeID == item.RecipeID && previous.Revision == item.Revision && previous.Maintenance == item.Maintenance
+					age := now.Sub(previous.Started)
+					if !previous.Ended && sameProgram && age >= 0 && age < time.Minute && previous.Snapshot == "" {
+						var journal domain.Brew
+						if _, err := s.db.Get("brew", stockBrewID(previous.ID), &journal); err == nil && journal.SampleCount == 0 {
+							stockReply(w, "#"+previous.ID+"#")
+							return
+						} else if err != nil && !errors.Is(err, store.ErrNotFound) {
+							http.Error(w, "storage unavailable", 500)
+							return
+						}
+					}
+					b.Session = stockSession{ID: randomID(), Program: item.Program, RecipeID: item.RecipeID, Revision: item.Revision, Maintenance: item.Maintenance, Started: now}
+					write := s.stockJournal(b, version, now)
+					if previous.ID != "" && !previous.Ended {
+						write.PreviousID = stockBrewID(previous.ID)
+					}
+					if err := s.db.WriteZymaticJournal(write); err != nil {
+						http.Error(w, "storage unavailable", 500)
 						return
 					}
 					stockReply(w, "#"+b.Session.ID+"#")
@@ -388,21 +439,29 @@ func (s *Server) stockWire(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			http.Error(w, "unknown recipe", 404)
-		case "1":
-			stockReply(w, "")
-		case "2":
-			if !b.Session.Ended && resetPoint.MatchString(q.Get("step")) {
-				b.Session.Snapshot = q.Get("step")
-				if !save() {
-					return
-				}
-			}
-			stockReply(w, "")
-		case "3":
-			b.Session.Ended = true
-			if save() {
+		case "1", "2", "3":
+			if b.Session.Ended {
 				stockReply(w, "")
+				return
 			}
+			code := q.Get("code")
+			newCheckpoint := code == "2" && resetPoint.MatchString(q.Get("step")) && b.Session.Snapshot != q.Get("step")
+			if newCheckpoint {
+				b.Session.Snapshot = q.Get("step")
+			}
+			b.Session.Ended = code == "3"
+			write := s.stockJournal(b, version, time.Now().UTC())
+			write.End = b.Session.Ended
+			write.Reading = stockReading(code, q)
+			if !write.End && !newCheckpoint && write.Reading == nil {
+				stockReply(w, "")
+				return
+			}
+			if err := s.db.WriteZymaticJournal(write); err != nil {
+				http.Error(w, "storage unavailable", 500)
+				return
+			}
+			stockReply(w, "")
 		default:
 			http.Error(w, "unknown session operation", 400)
 		}

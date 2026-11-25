@@ -96,6 +96,7 @@ export interface Capabilities {
   telemetry_forwarding: boolean
   dedicated_pause_resume: boolean
   z_program_maker?: boolean
+  z_program_step_capacity?: number
   z_cloud_program_v1?: boolean
   recipe_create_only?: boolean
   zero_minute_steps?: boolean
@@ -257,6 +258,7 @@ export interface Profile {
   batch_liters: number
   efficiency: number
   max_steps: number
+  z_program_max_steps?: number
   max_target_c: number
   max_grain_kg: number
   max_hop_slot_g?: number
@@ -278,6 +280,14 @@ export interface Adapted {
   profile_fingerprint?: string
 }
 export interface Sample {
+  stock_zymatic?: {
+    kind: 'temperatures' | 'step' | 'error'
+    step_name?: string
+    state?: number
+    error_flags?: number
+    error_code?: number
+    reset_point?: string
+  }
   zymatic_history?: boolean
   temperature_f?: number | null
   pressure_kpa?: number | null

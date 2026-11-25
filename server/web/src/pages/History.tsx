@@ -2,6 +2,7 @@ import { FermentDialog } from '../components/FermentDialog'
 import { MachineCare } from '../components/MachineCare'
 import { ConditioningJournal } from '../components/ConditioningJournal'
 import { sessionState } from '../lib/sessionState'
+import { zymaticReportLabel, zymaticReportState } from '../lib/history'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowUpRight,
@@ -82,9 +83,14 @@ function BrewList() {
             onChange={(event) => setDevice(event.target.value)}
           >
             <option value="">All machines</option>
-            {hub.devices.map((device) => (
-              <option key={device.id} value={device.id}>
-                {device.name}
+            {Array.from(
+              new Map([
+                ...hub.brews.map((b) => [b.device_id, b.device_name] as const),
+                ...hub.devices.map((d) => [d.id, d.name] as const),
+              ])
+            ).map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
               </option>
             ))}
           </select>
@@ -112,7 +118,7 @@ function BrewList() {
                   <th>Machine</th>
                   <th>Started</th>
                   <th>Duration</th>
-                  <th>Samples</th>
+                  <th>Records</th>
                   <th>State</th>
                   <th>Rating</th>
                   <th />
@@ -260,14 +266,18 @@ function BrewPage({ id, analyze }: { id: string; analyze: boolean }) {
         !d.model_error
     )
   const samples = brew.samples || []
-  const last = samples.at(-1)
+  const stock = brew.source === 'zymatic-report'
+  const measurements = stock
+    ? samples.filter((row) => row.stock_zymatic?.kind === 'temperatures')
+    : samples
+  const last = measurements.at(-1)
   return (
     <>
       <PageTitle
         back={() => hub.navigate('/history')}
         eyebrow={`${brew.device_name} · ${dateLabel(brew.started_at || brew.observed_at)}`}
         title={brew.recipe_name || brew.command || 'Brew session'}
-        description={`${modelLabel(brew.model)} · ${brew.source === 'device' ? 'Machine history' : brew.source === 'simulation' ? 'Simulation' : brew.source}${accessory ? '' : ` · ${brew.recipe_revision ? `Recipe revision ${brew.recipe_revision}` : 'Recipe revision not recorded'}`}`}
+        description={`${modelLabel(brew.model)} · ${stock ? 'Brewer reports' : brew.source === 'device' ? 'Machine history' : brew.source === 'simulation' ? 'Simulation' : brew.source}${accessory ? '' : ` · ${brew.recipe_revision ? `Recipe revision ${brew.recipe_revision}` : 'Recipe revision not recorded'}`}`}
         actions={
           <>
             {canFerment && (
@@ -300,12 +310,18 @@ function BrewPage({ id, analyze }: { id: string; analyze: boolean }) {
         <section className="panel">
           <SectionHeading title={brew.group_name || 'Group brew'} />
           <div className="brew-group-comparison">
-            {hub.brews.filter(item => item.group_session_id === brew.group_session_id).map(item => (
-              <button key={item.id} className="button secondary" aria-current={item.id === brew.id ? 'page' : undefined}
-                onClick={() => hub.navigate('/history/' + encodeURIComponent(item.id))}>
-                {item.device_name} · {duration(item.duration_ms)} · {item.state}
-              </button>
-            ))}
+            {hub.brews
+              .filter((item) => item.group_session_id === brew.group_session_id)
+              .map((item) => (
+                <button
+                  key={item.id}
+                  className="button secondary"
+                  aria-current={item.id === brew.id ? 'page' : undefined}
+                  onClick={() => hub.navigate('/history/' + encodeURIComponent(item.id))}
+                >
+                  {item.device_name} · {duration(item.duration_ms)} · {item.state}
+                </button>
+              ))}
           </div>
         </section>
       )}
@@ -339,8 +355,12 @@ function BrewPage({ id, analyze }: { id: string; analyze: boolean }) {
         />
         <Metric
           label="Sensor samples"
-          value={samples.length.toLocaleString()}
-          note={`${events.length} phase or state transitions`}
+          value={measurements.length.toLocaleString()}
+          note={
+            stock
+              ? `${events.length} timeline events`
+              : `${events.length} phase or state transitions`
+          }
         />
         <Metric
           label={accessory ? 'Last temperature reading' : 'Last wort reading'}
@@ -383,13 +403,22 @@ function BrewPage({ id, analyze }: { id: string; analyze: boolean }) {
             )
           }
         />
-        {samples.length ? (
-          <SessionChart brew={brew} unit={hub.unit} notes={notes} onSelect={setMarker} />
+        {measurements.length ? (
+          <SessionChart
+            brew={stock ? { ...brew, samples: measurements } : brew}
+            unit={hub.unit}
+            notes={notes}
+            onSelect={setMarker}
+          />
         ) : (
           <Empty
             icon={<Activity size={24} />}
             title="No sensor samples are available."
-            description="This session may have been discovered before a complete history could be imported."
+            description={
+              stock
+                ? 'The Hub has received no temperature report for this session.'
+                : 'This session may have been discovered before a complete history could be imported.'
+            }
           />
         )}
       </section>
@@ -467,7 +496,12 @@ function BrewPage({ id, analyze }: { id: string; analyze: boolean }) {
               <div key={index}>
                 <span className="timeline-dot" />
                 <time>{clockTime(sample.elapsed_ms)}</time>
-                {sample.zymatic_history ? (
+                {sample.stock_zymatic ? (
+                  <div>
+                    <strong>{zymaticReportLabel(sample.stock_zymatic)}</strong>
+                    <small>{zymaticReportState(sample.stock_zymatic)}</small>
+                  </div>
+                ) : sample.zymatic_history ? (
                   <div>
                     <strong>
                       {sample.current_step == null
@@ -513,11 +547,20 @@ function BrewPage({ id, analyze }: { id: string; analyze: boolean }) {
                 <div>
                   <strong>Session interrupted</strong>
                   <small>
-                    {brew.recovered_after_restart
-                      ? 'The brewer restarted while the session was open. This is its last saved checkpoint.'
-                      : 'The brewer recorded an interruption without a specific cause.'}
+                    {stock
+                      ? 'The brewer started another session before the Hub received an end report for this one.'
+                      : brew.recovered_after_restart
+                        ? 'The brewer restarted while the session was open. This is its last saved checkpoint.'
+                        : 'The brewer recorded an interruption without a specific cause.'}
                   </small>
                 </div>
+              </div>
+            )}
+            {stock && brew.state === 'ended' && (
+              <div>
+                <span className="timeline-dot" />
+                <time>{clockTime(brew.duration_ms)}</time>
+                <strong>Brewer reported the end of the session</strong>
               </div>
             )}
           </div>

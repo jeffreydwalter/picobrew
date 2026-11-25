@@ -54,3 +54,36 @@ func TestPairStillKeepsCredentialInsideDeviceRelay(t *testing.T) {
 		t.Fatal("accepted unverified device identity")
 	}
 }
+
+func TestPairStockStillUsesExplicitLANAddressAndNoAccessoryKey(t *testing.T) {
+	calls := 0
+	h := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body) != 4 ||
+			body["protocol"] != "stock" || body["uid"] != "001122aabbcc" || body["port"] != float64(80) ||
+			body["host"] != "192.168.1.11" || r.URL.Path != "/api/v1/picostill" || r.Method != http.MethodPut ||
+			r.Header.Get("Authorization") != "Bearer "+testKey {
+			t.Errorf("unexpected stock pairing request: %v", body)
+		}
+		w.WriteHeader(202)
+		json.NewEncoder(w).Encode(map[string]any{"stock_supported": true, "checking": true})
+	}))
+	defer h.Close()
+	z, err := newPico(h.URL, testKey, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := z.PairStockPicoStill(t.Context(), "192.168.1.11", "001122AABBCC")
+	if err != nil || !result.Checking || !result.StockSupported {
+		t.Fatal(result, err)
+	}
+	for _, bad := range []string{"localhost", "::1", "127.0.0.1", "224.0.0.1", "192.168.1.11:80"} {
+		if _, err := z.PairStockPicoStill(t.Context(), bad, "001122aabbcc"); err == nil {
+			t.Fatal(bad)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("sent %d requests", calls)
+	}
+}

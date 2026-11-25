@@ -126,6 +126,11 @@ export function InstalledProgramDialog({
               key={generation}
               confirmSample
               program={program.z_program}
+              machineStepLimit={
+                target?.capabilities?.z_program_step_capacity ??
+                target?.capabilities?.step_capacity ??
+                15
+              }
               update={(z) => setProgram({ ...program, name: z.Name, z_program: z })}
             />
           ) : (

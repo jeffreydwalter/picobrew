@@ -144,15 +144,24 @@ export function newRecipe(): Recipe {
   }
 }
 export function transitions(samples: Sample[]) {
-  return samples.filter(
-    (sample, i) =>
+  let previousFlags: number | undefined
+  return samples.filter((sample, i) => {
+    const report = sample.stock_zymatic
+    if (report) {
+      if (report.kind !== 'temperatures') return true
+      const changed = report.error_flags != null && report.error_flags !== previousFlags
+      previousFlags = report.error_flags
+      return changed
+    }
+    return (
       i === 0 ||
       sample.phase !== samples[i - 1].phase ||
       sample.current_step !== samples[i - 1].current_step ||
       (sample.zymatic_history && sample.compartment !== samples[i - 1].compartment) ||
       sample.flags !== samples[i - 1].flags ||
       sample.device_state !== samples[i - 1].device_state
-  )
+    )
+  })
 }
 export function annotations(notes: string) {
   return Array.from(notes.matchAll(/^\[(\d+):(\d{2})\]\s*(.+)$/gm), (m) => ({

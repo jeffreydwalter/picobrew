@@ -185,8 +185,12 @@ func adaptNative(r domain.Recipe, profile, builtIn domain.Profile, batchLiters f
 			plan.DeploymentBlockers = []string{"This program requires a Z brewer with Program Maker support."}
 			return plan, nil
 		}
-		if len(z.Steps) > profile.MaxSteps {
-			return plan, errors.New("program exceeds the Z profile step limit")
+		limit := profile.ZProgramMaxSteps
+		if limit == 0 {
+			limit = profile.MaxSteps
+		}
+		if len(z.Steps) > limit {
+			return plan, errors.New("program exceeds the Z Program Maker profile step limit")
 		}
 		for _, s := range z.Steps {
 			var c float64

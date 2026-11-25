@@ -29,7 +29,7 @@ including Fahrenheit temperatures and the normalized PicoStill kPa channel.
 
 ## Z recipes and front panel
 
-Choose **Send** to save a program on a connected standalone Z. The Hub checks the program against the individual module’s capabilities and reads it back. Select **Brew Recipe** on the dial, or start the saved recipe from the website or Hub when ready. The module stores up to 16 programs of up to 15 steps each.
+Choose **Send** to save a program on a connected standalone Z. The Hub checks the individual module’s step limit before transfer and reads back the saved program. Select **Brew Recipe** on the dial, or start the saved recipe from the website or Hub when ready. Each module stores up to 16 programs. Updated modules accept up to 20 steps in a Z Program Maker file. Earlier firmware and the other Z recipe formats accept up to 15 steps.
 
 | Recipe in the Hub | What the Z runs |
 | --- | --- |
@@ -96,3 +96,5 @@ These checks use the actual server/browser source and local fixtures. They do
 not contact hardware, establish safe physical installation, or claim stock
 firmware compatibility. The server remains self-contained under `server/`;
 building or running it does not read sibling firmware sources.
+
+In a Z’s brewer preferences, **PicoStill** can pair a registered standalone accessory or a same-LAN PicoStill with original firmware 0.0.35. For the original firmware enter the accessory’s LAN address and factory UID. [Stock setup and connection-loss behavior](../../firmware/z-series/modified/README.md#using-a-picostill-with-the-z)

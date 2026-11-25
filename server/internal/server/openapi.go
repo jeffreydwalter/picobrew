@@ -41,7 +41,7 @@ var endpoints = []endpoint{
 	{"GET", "/devices", "List fleet status", nil}, {"POST", "/devices", "Register a machine", map[string]any{"name": "My Pico", "model": "", "adapter": "pico-standalone", "base_url": "http://192.168.1.50", "api_key": "64-hex-character-device-key", "location": "Brew room"}},
 	{"GET", "/devices/{id}/events", "Read recent volatile events from the connected machine", nil},
 	{"GET", "/devices/{id}/picostill", "Read the Z’s paired PicoStill and verification status", nil},
-	{"PUT", "/devices/{id}/picostill", "Pair a registered PicoStill to the Z", map[string]any{"picostill_id": "registered-accessory-id"}},
+	{"PUT", "/devices/{id}/picostill", "Pair a registered PicoStill or a stock 0.0.35 PicoStill by LAN address and UID", map[string]any{"picostill_id": "registered-accessory-id"}},
 	{"PATCH", "/devices/{id}/picostill", "Choose whether to record PicoStill sessions", map[string]any{"session_logging": true}},
 	{"DELETE", "/devices/{id}/picostill", "Remove the PicoStill connection from an idle Z", nil},
 	{"GET", "/devices/{id}/picoferms", "List PicoFerms, batches and fermentation recordings for a brewer", nil},
@@ -502,7 +502,9 @@ func requestSchema(e endpoint) (schemaMap, bool) {
 			return schemaObject(schemaMap{"session_logging": boolSchema()}, "session_logging"), true
 		}
 		if e.method == "PUT" {
-			return schemaObject(schemaMap{"picostill_id": stringSchema()}, "picostill_id"), true
+			standalone := schemaObject(schemaMap{"picostill_id": stringSchema()}, "picostill_id")
+			stock := schemaObject(schemaMap{"stock": schemaObject(schemaMap{"host": schemaMap{"type": "string", "format": "ipv4"}, "uid": schemaMap{"type": "string", "pattern": "^[a-fA-F0-9]{12}$"}}, "host", "uid")}, "stock")
+			return schemaMap{"oneOf": []any{standalone, stock}}, true
 		}
 	case "/catalog/{id}/copy":
 		name = "CatalogCopyInput"

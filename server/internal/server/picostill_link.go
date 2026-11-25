@@ -44,9 +44,31 @@ func (s *Server) picoStillLink(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPut:
 		var input struct {
 			DeviceID string `json:"picostill_id"`
+			Stock    *struct {
+				Host string `json:"host"`
+				UID  string `json:"uid"`
+			} `json:"stock"`
 		}
 		if !s.decode(w, r, &input) {
 			return
+		}
+		if input.Stock != nil {
+			stock, supported := brewer.adapter.(device.StockPicoStillBrewer)
+			if !supported || input.DeviceID != "" {
+				s.fail(w, 422, "picostill", "Choose one PicoStill connection")
+				return
+			}
+			current, e := link.PicoStillLink(r.Context())
+			if e != nil {
+				s.deviceError(w, e)
+				return
+			}
+			if !current.StockSupported {
+				s.fail(w, 409, "unsupported_link", "Update the Z to firmware that supports stock PicoStill pairing")
+				return
+			}
+			result, err = stock.PairStockPicoStill(r.Context(), input.Stock.Host, input.Stock.UID)
+			break
 		}
 		s.mu.RLock()
 		still := s.devices[input.DeviceID]

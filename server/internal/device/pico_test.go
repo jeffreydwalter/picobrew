@@ -507,6 +507,48 @@ func TestZProgramWriteRequiresLiveCapabilityAndExactReadback(t *testing.T) {
 	}
 }
 
+func TestLongZProgramChecksLiveFormatCapacity(t *testing.T) {
+	flow, hold, drain := 6, 86400, 7200
+	label := strings.Repeat("&", 20)
+	program := domain.ZProgram{Name: label, IsBeer: true}
+	for range domain.MaxZProgramSteps {
+		program.Steps = append(program.Steps, domain.ZProgramStep{Name: label, Type: 1, Location: &flow, Temp: json.RawMessage("67.12345678901234"), Time: &hold, Drain: &drain})
+	}
+	recipe := domain.MachineRecipe{ID: "long", Name: label, ZProgram: &program}
+	for _, limit := range []int{0, 19, domain.MaxZProgramSteps} {
+		writes := 0
+		p := testPico(t, func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.URL.Path == "/api/v1":
+				caps := domain.Capabilities{APIVersion: 1, Model: "z-series", ModelFamily: "z-series", RecipeCapacity: 16, StepCapacity: 15, ZProgramStepCapacity: limit, RecipeCreateOnly: true, ZProgramMaker: true}
+				replyJSON(w, 200, struct {
+					domain.Capabilities
+					Mode string `json:"mode"`
+				}{caps, "standalone"})
+			case r.Method == "PUT":
+				writes++
+				var body struct {
+					Program domain.ZProgram `json:"z_program"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !reflect.DeepEqual(body.Program, program) || r.ContentLength > maxRequestBytes {
+					t.Errorf("20-step program changed or exceeded the request limit: %v", err)
+				}
+				replyJSON(w, 201, map[string]any{})
+			default:
+				replyJSON(w, 200, map[string]any{"id": recipe.ID, "z_program": program})
+			}
+		})
+		err := p.CreateRecipe(context.Background(), recipe)
+		if limit < len(program.Steps) {
+			if deviceFailure(t, err).Code != "recipe_step_capacity" || writes != 0 {
+				t.Fatalf("wrote to incompatible device (limit %d): %v", limit, err)
+			}
+		} else if err != nil || writes != 1 {
+			t.Fatalf("20-step write and readback failed: %v", err)
+		}
+	}
+}
+
 func TestDedicatedBrewerServiceOperations(t *testing.T) {
 	for _, tc := range []struct {
 		name, flag, path, body, response string

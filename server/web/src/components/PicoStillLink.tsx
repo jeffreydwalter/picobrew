@@ -5,6 +5,8 @@ import type { Device } from '../types'
 import { Button, ErrorBanner, Field } from './ui'
 
 type LinkState = {
+  stock_supported?: boolean
+  protocol?: string
   paired: boolean
   verified: boolean
   checking: boolean
@@ -27,6 +29,9 @@ export function PicoStillLink({ brewer }: { brewer: Device }) {
   const path = '/devices/' + encodeURIComponent(brewer.id) + '/picostill'
   const resource = useResource<LinkState>(brewer.online ? path : null, 3000)
   const [chosen, setChosen] = useState('')
+  const [host, setHost] = useState('')
+  const [uid, setUID] = useState('')
+  const stock = chosen === 'stock'
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const link = resource.data
@@ -75,12 +80,15 @@ export function PicoStillLink({ brewer }: { brewer: Device }) {
               .join(' · ')}
             {' · Pressure ' + link.sample.pressure_psi.toFixed(2) + ' psi'}
             {' · Pump ' + (link.sample.pump_running ? 'on' : 'off')}
-            {' · Cooling fan ' + (link.sample.fan_2_running ? 'on' : 'off')}
+            {' · Cooling fan (fan 2) ' + (link.sample.fan_2_running ? 'on' : 'off')}
           </p>
         )}
         <Field label="PicoStill">
           <select value={chosen} onChange={(e) => setChosen(e.target.value)}>
             <option value="">Choose an accessory</option>
+            {link?.stock_supported && (
+              <option value="stock">PicoStill with original firmware</option>
+            )}
             {stills.map((d) => (
               <option
                 key={d.id}
@@ -93,13 +101,49 @@ export function PicoStillLink({ brewer }: { brewer: Device }) {
             ))}
           </select>
         </Field>
+        {stock && (
+          <>
+            <Field label="PicoStill LAN address">
+              <input
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                placeholder="192.168.1.42"
+              />
+            </Field>
+            <Field label="PicoStill UID">
+              <input value={uid} onChange={(e) => setUID(e.target.value.trim())} maxLength={12} />
+            </Field>
+            <p>
+              Use the 12 characters after PicoStill_ in its Wi-Fi name. In the original PicoStill
+              setup page, connect it to the same LAN as the Z.
+            </p>
+          </>
+        )}
+        {(stock || link?.protocol === 'stock') && (
+          <p>
+            If the Z loses its connection, check the PicoStill. Press its button if it is still
+            running. After a run, allow about 20 seconds for its automatic restart and wait for it
+            to reconnect before starting again.
+          </p>
+        )}
         <div className="inline-actions">
           <Button
             variant="secondary"
             disabled={
-              !link || !chosen || busy || link.checking || !brewer.online || brewer.status?.busy
+              !link ||
+              !chosen ||
+              (stock && (!host.trim() || !/^[0-9a-f]{12}$/i.test(uid))) ||
+              busy ||
+              link.checking ||
+              !brewer.online ||
+              brewer.status?.busy
             }
-            onClick={() => void change('PUT', { picostill_id: chosen })}
+            onClick={() =>
+              void change(
+                'PUT',
+                stock ? { stock: { host: host.trim(), uid } } : { picostill_id: chosen }
+              )
+            }
           >
             Pair PicoStill
           </Button>

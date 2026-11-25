@@ -5,6 +5,7 @@ import type { BrewDetail, Sample } from '../types'
 import { HistorySamples } from '../components/HistorySamples'
 import { transitions } from './utils'
 import { sessionState } from './sessionState'
+import { historyChannels, zymaticReportLabel, zymaticReportState } from './history'
 
 test('Zymatic journal shows only recorded channels and labels keg, hops and the panel pause', () => {
   const empty: Sample = {
@@ -60,4 +61,37 @@ test('Zymatic journal shows only recorded channels and labels keg, hops and the 
   expect(table).toContain('Hop addition 1')
   expect(sessionState(brew, 'compartment', 6, 'device')).toBe('Operator pause')
   expect(transitions(samples)).toHaveLength(3)
+})
+
+test('stock Zymatic reports chart four temperatures and distinguish step state from fault flags', () => {
+  const temp: Sample = {
+    elapsed_ms: 1000,
+    wort_f: 150,
+    thermoblock_f: 177,
+    target_f: null,
+    current_step: null,
+    compartment: null,
+    source: 'zymatic-report',
+    zymatic_history: true,
+    readings: { sensor_board_f: 80, sensor_backup_heat_f: 174 },
+    stock_zymatic: { kind: 'temperatures', error_flags: 64 },
+  }
+  const step: Sample = { ...temp, stock_zymatic: { kind: 'step', step_name: 'Mash in', state: 2 } }
+  const reset: Sample = { ...temp, stock_zymatic: { kind: 'error', error_code: 303 } }
+  const samples = [step, temp, { ...temp, elapsed_ms: 2000 }, reset]
+  const schema = {
+    model: 'zymatic',
+    sample_fields: ['wort_f', 'thermoblock_f', 'sensor_board_f', 'sensor_backup_heat_f'],
+    field_metadata: {
+      sensor_board_f: { label: 'Control board', kind: 'temperature', unit: 'F' },
+      sensor_backup_heat_f: { label: 'Backup heater', kind: 'temperature', unit: 'F' },
+    },
+    samples,
+  }
+  expect(historyChannels(schema).map((channel) => channel.field)).toEqual(schema.sample_fields)
+  expect(transitions(samples)).toEqual([step, temp, reset])
+  expect(zymaticReportLabel(step.stock_zymatic!)).toBe('Mash in')
+  expect(zymaticReportState(step.stock_zymatic!)).toBe('Reported state 2')
+  expect(zymaticReportState(temp.stock_zymatic!)).toBe('Sensor disconnected')
+  expect(zymaticReportLabel(reset.stock_zymatic!)).toBe('Brownout reset')
 })
