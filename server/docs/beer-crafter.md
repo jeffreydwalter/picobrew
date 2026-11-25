@@ -20,7 +20,7 @@ Gravity uses fermentable extract potential (46 gravity points per pound per US g
 
 The forecast starts at 55 °F and uses Crafter’s approximate 4.96 °C/min heating and 0.585 °C/min cooling rates unless the recipe specifies a ramp. Pauses have unknown wall-clock duration. Unheated stretches have unknown temperature. The live brew journal uses measured temperatures. Starting-water estimates use the brewer’s own measured losses.
 
-Pico S, Pro and C use their PicoPak routing. Generic Z uses its canonical direct-valve schedule. Zymatic supports planning, export and [stock recipe sync](stock-zymatic.md). PicoStill and PicoFerm retain their distillation and fermentation controls. Hosted account publishing and KegSmarts fermentation control are outside the local Hub’s supported integrations.
+Pico S, Pro and C use their PicoPak routing. The Hub compiles ingredient recipes for Z using its keg, mash basket and hop compartments. Zymatic supports planning, export and [stock recipe sync](stock-zymatic.md). PicoStill and PicoFerm retain their distillation and fermentation controls. Hosted account publishing and KegSmarts fermentation control are outside the local Hub’s supported integrations.
 
 The brewer ingredient view, printed brew sheet and shopping list show the catalog yeast strain even when the source only names the yeast. An unspecified pitch has no numerical quantity to scale. A measured yeast ingredient supplies the pitch for that library recipe. Hub BeerXML extensions retain fermentable placement, addition time and the published source strain across Hub imports.
 
@@ -33,6 +33,8 @@ The style picker includes all 200 guide-and-code entries in PicoBrew’s Beer Cr
 In **Recipes → Add recipe → Create a machine program**, choose the intended brewer. Pico S, Pro and C use direct keg, mash and adjunct routes. The stock Zymatic editor uses its menu protocol, including operator pauses. Z Program Maker supports active steps, operator pauses, beer setup and the PicoPak adjunct setting. Locations 1 and 2 on a Z are the keg and mash basket. Locations 3–6 select hop compartments 1–4. The file records Celsius and seconds regardless of the units displayed in the editor.
 
 Import original Program Maker JSON from the library. Use the Z export to open a program in a stock 0.0.119 brewer’s Program Maker. That export checks the stock receiver’s 2,048-byte body and 64-entry JSON pool. Programs that fit the standalone Z can exceed those stock limits. For a connected standalone Z advertising Program Maker support, **Send** checks the device capabilities and verifies the saved program by reading it back. A successful transfer leaves brewing under the operator’s control.
+
+An archived Z schedule uses a different recipe format. Copy it to the library and send it directly to compatible standalone Z firmware. For an original PicoPak, you also need the physical pack and the Z PicoPak Adapter. The kit record supplies its strength and bitterness settings and any adjustable timing ranges. Turning on the Program Maker PicoPak setting only changes adjunct routing. [Z recipes and front panel](family-devices.md#z-recipes-and-front-panel)
 
 ## Ingredient sources
 

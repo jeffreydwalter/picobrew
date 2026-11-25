@@ -43,8 +43,9 @@ write between those two requests.
 Pico C/S/Pro standalone firmware provides 16 recipe slots with up to 15 steps per
 program. The Hub reads the device's advertised limits rather than assuming other
 models use these values. Maintenance programs use the same source-model and
-capacity rules. The archived Zymatic cleaning programs cannot be sent to a Pico;
-they remain reference/export records until a compatible live adapter exists.
+capacity rules. A stock Zymatic retrieves its published maintenance programs in the cleaning list. The Hub blocks sending Zymatic maintenance instructions to a Pico S, Pro or C. [Stock Zymatic setup](stock-zymatic.md)
+
+For a standalone Z, direct transfer preserves the selected format, including original Z cloud schedules and PicoPak adapter programs when supported. Each retains its own setup prompts and routing. A stock 0.0.119 Z takes a compatible Program Maker export through its own website. [Z recipes and front panel](family-devices.md#z-recipes-and-front-panel)
 
 Before execution, the Hub verifies device identity, idle state, current profile,
 recipe revisions, current inventory and firmware capabilities against the
