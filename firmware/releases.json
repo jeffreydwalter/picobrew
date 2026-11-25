@@ -53,10 +53,10 @@
       "model_family": "z-series",
       "firmware_version": "1.0.0",
       "kind": "reference",
-      "source_commit": "d242cbd7d46df0c6038fe2a1fe8b55a333de664f",
-      "archive_sha256": "00db307a60dfdc4dfa7e3f9e9c9b7da12fc4791d719ef03a65bf8b494e0a79ed",
-      "binary_sha256": "121e61688861c6fb42e59249e9871ac758e04cfc4e439ba985fe83778e5c7b44",
-      "binary_bytes": 1695008,
+      "source_commit": "699fde0e4344eb2528bf6a9ca377a4c1955d56f7",
+      "archive_sha256": "abf18250e290c0c191a797c4410c27ac528585b2235397964b6395ace3bec6de",
+      "binary_sha256": "c6294d78c5357d42ffc65463ec35e1577597d0c6aaac47b208edbd129940215a",
+      "binary_bytes": 1699248,
       "ota_protocol": "esp32-factory-v1"
     },
     {
@@ -64,10 +64,10 @@
       "model_family": "picostill",
       "firmware_version": "1.0.0",
       "kind": "reference",
-      "source_commit": "ebedeb2f891a180c3ed5fec2451e2a7c72026bd5",
-      "archive_sha256": "19cdce85563823db30c9f695749b9ace162964057434655fe9416cd071574a0a",
-      "binary_sha256": "40924632ce750f801dd234c77e3b499980a871471db3490f20948bf696df9396",
-      "binary_bytes": 835648,
+      "source_commit": "699fde0e4344eb2528bf6a9ca377a4c1955d56f7",
+      "archive_sha256": "acd143da668e9d11b3b3eeb22a613b882a661bc8778c93ff884dd967c96aaf07",
+      "binary_sha256": "78fc47fa2be3a27dac682bf96b145411afd26622685d21f91fc649f75d57ecb2",
+      "binary_bytes": 835824,
       "ota_protocol": "esp32-factory-v1"
     },
     {
@@ -75,10 +75,10 @@
       "model_family": "picoferm",
       "firmware_version": "1.0.0",
       "kind": "picoferm-ab",
-      "source_commit": "ebedeb2f891a180c3ed5fec2451e2a7c72026bd5",
-      "archive_sha256": "9998732a275c306cb8e06073ca8c742fb7f6cc2868fc1d6de726ad2c7861f822",
-      "binary_sha256": "d301bf6d8e1caab158adedce2ec6fddd2e0c152ed5639f83a063422ec4e767b5",
-      "binary_bytes": 400080,
+      "source_commit": "699fde0e4344eb2528bf6a9ca377a4c1955d56f7",
+      "archive_sha256": "d568fa521f1b9301fb4d2eae8fc723112712571abcb2dae06d30b1558cb75c8e",
+      "binary_sha256": "3ee1374b777a10ff43abd2603fc33b6bfffa4a488c61877d7c0f7b9bf2a679bb",
+      "binary_bytes": 400256,
       "ota_protocol": "esp8266-ab-v1"
     }
   ]

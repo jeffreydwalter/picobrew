@@ -23,18 +23,18 @@
     "uart": 16,
     "uart_rx_control": 16
   },
-  "target_heap_start": "0x3fff5270",
+  "target_heap_start": "0x3fff5290",
   "target_heap_end": "0x3fffc000",
-  "target_heap_bytes": 28048,
-  "elf_sha256": "c9b31eff6385d41443bdcf12baaaf18842821277ce4e2f47dfda0a4b50f5e117",
+  "target_heap_bytes": 28016,
+  "elf_sha256": "b0d69a799412526e3676ed133fbb5708e13a901a6054bc9097d72ee0ff3efab5",
   "build_source_entries_verified": null,
   "native_type_bytes": {
-    "engine_impl": 2524,
+    "engine_impl": 2528,
     "field": 74,
     "layout": 8,
     "storage_impl": 156
   },
-  "target_abi_gap_reserved": 140,
+  "target_abi_gap_reserved": 136,
   "platform_allocation_payloads": [
     280,
     24,
@@ -46,25 +46,25 @@
   "native": {
     "checks": 1838,
     "pointer_bytes": 4,
-    "heap_bytes": 28048,
+    "heap_bytes": 28016,
     "sdk_network_reservation": 16384,
-    "platform_reservation": 1012,
+    "platform_reservation": 1008,
     "allocations": 14238,
     "allocation_failures": 0,
-    "peak_used_bytes": 27216,
-    "minimum_free_bytes": 832,
-    "largest_request_bytes": 2524,
+    "peak_used_bytes": 27224,
+    "minimum_free_bytes": 792,
+    "largest_request_bytes": 2528,
     "peak_phase": 4,
     "phase_peaks": [
-      23264,
-      23016,
-      26848,
-      27176,
-      27216,
-      26328
+      23272,
+      23024,
+      26856,
+      27184,
+      27224,
+      26336
     ],
     "phase_largest_requests": [
-      2524,
+      2528,
       1258,
       1644,
       1644,
@@ -72,13 +72,13 @@
       1644
     ],
     "mounted_bytes": 19224,
-    "engine_begin_bytes": 21752,
-    "active_bytes": 23032,
-    "telemetry_bytes": 23016,
+    "engine_begin_bytes": 21760,
+    "active_bytes": 23040,
+    "telemetry_bytes": 23024,
     "hal_reads": 3597974,
     "hal_writes": 25948,
     "completed_sessions": 9,
-    "final_free_bytes": 28040,
+    "final_free_bytes": 28008,
     "passed": true
   },
   "native_compiler": "g++ (Debian 12.2.0-14+deb12u1) 12.2.0",
@@ -92,7 +92,7 @@
     "stop"
   ],
   "sdk_reservation_with_allocator_overhead": 16512,
-  "application_peak_excluding_sdk_reservation": 10704,
+  "application_peak_excluding_sdk_reservation": 10712,
   "source_sha256": {
     "picoferm/modified/tests/memory_native.cpp": "5462a4d87c606ba97c0f7d5fc39b64e7f9fe719ac36ae171df9631fcdaca4ce7",
     "picoferm/modified/src/standalone.cpp": "9e24400116d8d006cb39de07d732cb56694ade93998b91085a335019b2360920",
@@ -102,7 +102,7 @@
     "picoferm/reverse-engineered/src/core.cpp": "e240bbf86afc795f67308bb188f0d61c2310217e314256a82eab2dd0af956d6b",
     "common/platform/esp8266/storage.cpp": "5b6762c959f9101116c059be820c5c18261f1e8c9e312209fe2b0f0a71fb90c4",
     "common/src/engine.cpp": "166a25e70ffc9b42bba9b99ac610fcc534b03e0e3cb3bd652ba6cd64285ae526",
-    "common/src/api.cpp": "802ee7898f79e0e8c6deaeb32ae73c4d715f3123fded582310cef93980a70c56",
+    "common/src/api.cpp": "884b67b6b6b1ac3d347acdff0a0c9c10e2c84b01e2e830242b9100baf4aa7088",
     "common/src/values.cpp": "640a186e1055f2bf68b5aa31534b77e5ee663c3f77334692ddd4d14dba9412d3",
     "common/src/records.cpp": "9deec7864ea4dbfb9dcfad9a24ed9c52416724fb67af0c89ac6c7a000151ccc2",
     "common/src/history.cpp": "b66d329d4a860a3e0dc5f44e3a9eef8e76795f360fefbcdb31eaf091ce308d71",
@@ -117,7 +117,7 @@
     "common/src/json.hpp": "5ee0a5b00b92a6f5c3070fc0b29114fb707cc686380f0ab6abf28589c65c6654",
     "common/src/records.hpp": "19dc25a561479648e6bae02d8157f6e6d47678acd313d4a37d9c7350ecd5c6bd",
     "common/src/recipe_record.hpp": "56f1184b773dfe54bfa0f28fab0aaa343579ce2c002ec08bade0a6c062b4264d",
-    "common/include/picobrew/device_services.hpp": "45553fae4ff48bcc8ea969804c1b51f3d771ff5ad686915ca101aec7ff4f3d01"
+    "common/include/picobrew/device_services.hpp": "213befe40d7a1e9c5d2998526550e7de77a83475bbddec7dea943261bd9857e6"
   },
   "sdk_sha256": {
     "cores/esp8266/spiffs/spiffs_hydrogen.c": "53c0add000910baf555a9e07d19d52676a175eeb4475cf92221ee9c2afbf7f48",
