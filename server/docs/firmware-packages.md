@@ -114,6 +114,8 @@ The downloadable Hub includes the USB installer for its platform. The final conf
 | Z-series (Z1–Z4 stacks) | Service one module at a time. The generic standalone package requires independently identified stock 0.0.119 and a compatible ESP32 layout. | Back up and restore the same ESP32 on a qualifying 0.0.116 or 0.0.119 module. The separate MSP controller lies outside this capture. |
 | Zymatic | Install the private 1.0.0 compact application over rear USB from verified stock 1.1.14. Configure the Hub address and optional offline recipe. | Back up readable AVR program flash and restore the verified 1.1.14 application over the rear USB port. Windows PicoFlash can also use the locally verified HEX. EEPROM, bootloader repair and CC3000 radio firmware are outside the application restore. |
 
+A Z4 has four independent 2.5 US gallon brewing units. Each can run its own recipe while stacked or racked. On factory firmware, **Group Brewing** offers the other units the same recipe and can be disabled in Settings. To use standalone firmware, qualify and back up each unit separately, then add each one to the Hub at its own address. A stack label alone cannot identify a compatible controller. [PicoBrew Z FAQ](https://picobrew.com/about/faq_z) · [Z Series setup manual](https://www.picobrew.com/about/manual?p=z_manual.txt)
+
 #### Command-line workflows from a firmware checkout
 
 The browser uses the programmer bundled with the Hub. The following commands are optional developer tools for a separate USB computer with the full repository and its toolchain. Use that computer’s own data directory, then privately copy its saved originals and keys when moving to a different host.
