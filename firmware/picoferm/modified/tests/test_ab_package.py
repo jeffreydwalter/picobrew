@@ -59,7 +59,7 @@ class USBPackage(unittest.TestCase):
                 legacy=dict(binary_bytes=len(old),binary_sha256=hashlib.sha256(old).hexdigest())
                 fingerprints=firmware/'common/dependencies/legacy-usb-applications.json'
                 fingerprints.parent.mkdir(parents=True)
-                fingerprints.write_text(json.dumps({'picoferm':[legacy]}))
+                fingerprints.write_text(json.dumps({'picoferm':[legacy], 'picoferm-ab':[]}))
                 running=bytearray(self.source)
                 running[:len(old)]=old
                 running[usb_ab.FS]=target[usb_ab.FS]
