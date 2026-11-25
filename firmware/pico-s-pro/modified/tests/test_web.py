@@ -267,6 +267,7 @@ class BrowserWorkflow(unittest.TestCase):
         self.connect()
         self.page.locator('[data-tab="recipes"]').click()
         self.page.locator(".recipe-item").filter(has_text="House ale").click()
+        expect(self.page.locator("#editorHeading")).to_have_text("Edit recipe")
         self.page.locator("#recipeName").fill("My draft")
         with LOCK:
             backend.request("PUT", path, backend.recipe("Other brewer's edit"))
