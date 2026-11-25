@@ -118,6 +118,7 @@ type Capabilities struct {
 	HistorySampleIntervalMS uint32                   `json:"history_sample_interval_ms,omitempty"`
 	StockRestoreOTAV1       bool                     `json:"stock_restore_ota_v1,omitempty"`
 	PairingV1               bool                     `json:"pairing_v1,omitempty"`
+	ZCloudProgramV1         bool                     `json:"z_cloud_program_v1,omitempty"`
 	ZProgramMaker           bool                     `json:"z_program_maker,omitempty"`
 	OTAProtocol             string                   `json:"ota_protocol,omitempty"`
 	HubOTAV1                bool                     `json:"hub_ota_v1,omitempty"`
@@ -227,10 +228,11 @@ type MachineStep struct {
 	DrainMinutes int    `json:"drain_minutes"`
 }
 type MachineRecipe struct {
-	ZProgram *ZProgram     `json:"z_program,omitempty"`
-	ID       string        `json:"id"`
-	Name     string        `json:"name"`
-	Steps    []MachineStep `json:"steps"`
+	ZCloud   *ZCloudProgram `json:"z_cloud,omitempty"`
+	ZProgram *ZProgram      `json:"z_program,omitempty"`
+	ID       string         `json:"id"`
+	Name     string         `json:"name"`
+	Steps    []MachineStep  `json:"steps"`
 }
 type Ingredient struct {
 	SlotAddition bool    `json:"slot_addition,omitempty"`

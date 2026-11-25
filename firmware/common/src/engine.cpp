@@ -255,7 +255,7 @@ Result Engine::Impl::recipe_read(unsigned slot, Recipe& recipe) const {
     char name[12]; ::snprintf(name, sizeof(name), "r%02u", slot);
     if (records.load(name, bytes, sizeof(bytes), length, generation, recipes[slot].generation) != RecordResult::Ok ||
         !read_recipe_record(recipe, bytes, length)) return storage_error();
-    if (!recipe_valid(recipe, capabilities.zero_minute_steps, capabilities.z_program_maker) || std::strcmp(recipe.id, recipes[slot].id) ||
+    if (!recipe_valid(recipe, capabilities.zero_minute_steps, capabilities.z_program_maker, capabilities.z_cloud_program_v1) || std::strcmp(recipe.id, recipes[slot].id) ||
         std::strcmp(recipe.name, recipes[slot].name) || recipe.step_count != recipes[slot].steps) return storage_error();
     return owner.device_.validate_recipe ? owner.device_.validate_recipe(owner.device_.context, recipe) : Result();
 }
@@ -288,7 +288,7 @@ Result Engine::Impl::recipe_write(const Recipe& recipe, bool* created, bool crea
     if (!(capabilities.flags & Recipes)) return Result(404, "not_found", "Recipes are unavailable");
     if (!persistent) return storage_error();
     if (!idle()) return Result(409, "busy", "Change recipes only while the appliance is idle");
-    if (!recipe_valid(recipe, capabilities.zero_minute_steps, capabilities.z_program_maker)) return Result(400, "invalid_recipe", "Invalid recipe fields or bounds");
+    if (!recipe_valid(recipe, capabilities.zero_minute_steps, capabilities.z_program_maker, capabilities.z_cloud_program_v1)) return Result(400, "invalid_recipe", "Invalid recipe fields or bounds");
     if (owner.device_.validate_recipe) {
         const Result valid = owner.device_.validate_recipe(owner.device_.context, recipe); if (!valid.ok()) return valid;
     }
@@ -363,7 +363,7 @@ Result Engine::Impl::restore_defaults(unsigned& added, unsigned& preserved) {
     for (const RecipeEntry& entry : staged) if (!entry.id[0]) ++empty;
     for (std::size_t n = 0; n < capabilities.starter_recipe_count; ++n) {
         const Recipe& recipe = capabilities.starter_recipes[n]; bool found = false;
-        if (!recipe_valid(recipe, capabilities.zero_minute_steps, capabilities.z_program_maker)) return Result(503, "invalid_defaults", "Invalid native starter recipe");
+        if (!recipe_valid(recipe, capabilities.zero_minute_steps, capabilities.z_program_maker, capabilities.z_cloud_program_v1)) return Result(503, "invalid_defaults", "Invalid native starter recipe");
         if (owner.device_.validate_recipe) { const Result valid = owner.device_.validate_recipe(owner.device_.context, recipe); if (!valid.ok()) return valid; }
         for (const RecipeEntry& entry : staged) if (!std::strcmp(entry.id, recipe.id)) found = true;
         for (std::size_t j = 0; j < n; ++j) if (!std::strcmp(recipe.id, capabilities.starter_recipes[j].id)) return Result(503, "invalid_defaults", "Duplicate starter recipe ID");

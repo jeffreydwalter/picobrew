@@ -1,6 +1,7 @@
 #include "zseries/brew_recovery.hpp"
 #include "records.hpp"
 #include "recipe_record.hpp"
+#include "zseries/archive_program.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -53,7 +54,7 @@ api::Result BrewRecovery::load(api::Storage storage){
     if(!detail::read_recipe_record(saved_.recipe,bytes+HeaderBytes,recipe_bytes))return error();
     saved_.count=count;saved_.elapsed=detail::get32(bytes+12);saved_.seconds=detail::get32(bytes+16);
     saved_.step=static_cast<std::int32_t>(detail::get32(bytes+20));std::memcpy(saved_.step_name,bytes+24,sizeof saved_.step_name);
-    if(!detail::recipe_valid(saved_.recipe,true,true)||!label(saved_.step_name,sizeof saved_.step_name,true)||saved_.step<-1||saved_.step>=saved_.recipe.step_count||saved_.seconds>0x7fffffffu)return error();
+    if(!detail::recipe_valid(saved_.recipe,true,true,true)||!label(saved_.step_name,sizeof saved_.step_name,true)||saved_.step<-1||saved_.step>=saved_.recipe.step_count||saved_.seconds>0x7fffffffu)return error();
     for(std::size_t i=0;i<count;++i){const auto* p=bytes+HeaderBytes+recipe_bytes+i*8;saved_.code[i]={static_cast<OpCode>(detail::get32(p)),detail::get32(p+4)};}
     if(!code_valid(saved_.code.data(),saved_.count,saved_.recipe))return error();
     ready_=present_=true;return {};
@@ -62,7 +63,7 @@ api::Result BrewRecovery::save(const Checkpoint& value,bool present){
     std::uint8_t bytes[MaximumBytes]{};detail::put32(bytes,Magic);bytes[4]=present;
     std::size_t length=HeaderBytes;
     if(present){
-        if(!detail::recipe_valid(value.recipe,true,true)||!code_valid(value.code.data(),value.count,value.recipe))return invalid();
+        if(!detail::recipe_valid(value.recipe,true,true,true)||!code_valid(value.code.data(),value.count,value.recipe))return invalid();
         detail::put32(bytes+8,value.count);detail::put32(bytes+12,value.elapsed);detail::put32(bytes+16,value.seconds);
         detail::put32(bytes+20,static_cast<std::uint32_t>(value.step));std::memcpy(bytes+24,value.step_name,sizeof value.step_name);
         length+=detail::write_recipe_record(bytes+HeaderBytes,value.recipe);
@@ -130,7 +131,7 @@ api::Result BrewRecovery::restore(ProgramBuffer& buffer,double pressure) const {
     if(buffer.start(SessionType::LocalBrew,0,saved_.recipe.name)!=ProgramBuildResult::Ok)return invalid();
     for(std::size_t i=0;i<saved_.recipe.step_count;++i)if(buffer.append_string(saved_.recipe.steps[i].name)!=ProgramBuildResult::Ok)return invalid();
     if(buffer.set_code(saved_.code.data(),saved_.count)!=ProgramBuildResult::Ok||program_validation_error(buffer.record().view))return invalid();
-    ProgramParameters parameters;parameters.water={11.36,Unit::Liter};parameters.resumed_session=true;
+    ProgramParameters parameters;parameters.water={saved_.recipe.z_cloud_water_ml?archive_water_liters(saved_.recipe.z_cloud_water_ml):11.36,Unit::Liter};parameters.resumed_session=true;
     return finish_program(buffer,parameters,pressure,98,0)==ProgramBuildResult::Ok?api::Result():invalid();
 }
 api::Result BrewRecovery::clear(){

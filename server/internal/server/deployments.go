@@ -129,6 +129,8 @@ func recipeCapabilityIssue(caps domain.Capabilities, recipe domain.MachineRecipe
 	switch {
 	case !caps.Supports("recipes") || caps.RecipeCapacity < 1:
 		return "This firmware does not advertise recipe storage"
+	case recipe.ZCloud != nil && (caps.Model != "z-series" || !caps.ZCloudProgramV1):
+		return "This brewer needs firmware with original Z schedule support"
 	case recipe.ZProgram != nil && (caps.Model != "z-series" || !caps.ZProgramMaker):
 		return "This brewer does not support Z Program Maker programs"
 	case recipe.StepCount() > caps.StepCapacity:

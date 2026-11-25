@@ -52,8 +52,7 @@ Step type 2 requests an operator acknowledgement. Uploading a program saves
 it for a separate start action. See the [recipe wire format](../../common/docs/api-schema.md#z-program-maker-recipes).
 
 Archived native Z programs use a different grammar: locations 0–5 map to
-valves 1–6, and location 6 means pause. They are retained as reference/export
-data in the Hub; they are not silently interpreted as canonical API recipes.
+valves 1–6, and location 6 means pause. The Hub sends the original starting water and schedule to standalone Z firmware with `z_cloud_program_v1`. The Z compiles it through the dedicated native cloud recipe path.
 The shared API does not advertise starter programs without an attributed,
 model-specific conversion. S/Pro PicoPak data is not installed under a Z label.
 

@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 using namespace zseries::oem;
@@ -609,6 +611,37 @@ void wired_interface_selection(){
     assert(!std::strcmp(w.core.eeprom.data.wifi_ssid.data(),"saved-wifi"));
     assert(listed(UiCommand::WiFiScan)&&!w.core.system_error);
 }
+std::string test_file(const char* path){
+    std::ifstream in(path,std::ios::binary);assert(in);
+    return {std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};
+}
+void original_z_program(const char* source,const char* wire){
+    const auto json=test_file(wire);
+    for(double boiling:{100.,93.}){
+        World w;const char* path="/api/v1/recipes/archived";
+        assert(w.request(PICO_HTTP_GET,"/api/v1",nullptr,200).find("\"z_cloud_program_v1\":true")!=std::string::npos);
+        const auto stored=w.request(PICO_HTTP_PUT,path,json.c_str(),201);
+        World reopened(&w.files);assert(reopened.request(PICO_HTTP_GET,path,nullptr,200)==stored);
+        reopened.core.temperatures.estimated_boil_celsius=boiling;
+        reopened.request(PICO_HTTP_POST,"/api/v1/commands",R"({"command":"brew","recipe_id":"archived"})",202);
+        reopened.adapter.poll();
+        ProgramBuffer original;auto bytes=test_file(source);
+        assert(parse_http_recipe(original,&bytes[0],bytes.size(),HttpRecipeFormat::Zymatic,SessionType::LocalBrew,0,
+            ProgramParameters{},RecipeEnvironment(101325,boiling)).ready);
+        auto& program=reopened.core.program;
+        const auto& expected=original.record().view;const auto& got=program.record().view;
+        assert(got.code_size==expected.code_size&&got.string_count==expected.string_count);
+        for(std::size_t i=0;i<got.code_size;++i)assert(got.code[i].opcode==expected.code[i].opcode&&got.code[i].argument==expected.code[i].argument);
+        for(std::size_t i=1;i<got.string_count;++i)assert(std::strcmp(got.strings[i],expected.strings[i])==0);
+        assert(program.stats.duration_seconds==original.stats.duration_seconds);
+        assert(program.stats.maximum_temperature_added_seconds==original.stats.maximum_temperature_added_seconds);
+        assert(program.parameters.water.value==original.parameters.water.value);
+        assert(reopened.dispatch()&&reopened.core.commands.session.parameters.water.value==original.parameters.water.value);
+        zseries::standalone::BrewRecovery recovery;
+        assert(recovery.load(reopened.storage()).ok()&&recovery.present());
+        assert(recovery.recipe().z_cloud_water_ml==std::lround(1000.0*original.parameters.water.value));
+    }
+}
 void original_native_state(){
     World w;PicoHttpRequest req{};PicoHttpResponse res{};char arena[1200]{};
     std::strcpy(req.path,"/api/v1/status");
@@ -768,7 +801,7 @@ void group_interlocks() {
     assert(fault.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"unavailable\"")!=std::string::npos);
 }
 }
-int main(int argc,char** argv){assert(argc==2);const std::string test=argv[1];
+int main(int argc,char** argv){if(argc==4&&!std::strcmp(argv[1],"original-z")){original_z_program(argv[2],argv[3]);return 0;}assert(argc==2);const std::string test=argv[1];
     if(test=="group-brew")group_brew();else if(test=="group-routines")group_routines();else if(test=="group-interlocks")group_interlocks();
     else if(test=="maker")maker_program();else if(test=="recipe")owned_recipe();else if(test=="storage")storage_preflight();else if(test=="unheated")no_target();
     else if(test=="stop")stop_guard();else if(test=="input")input_order();else if(test=="offline")offline_and_reservation();

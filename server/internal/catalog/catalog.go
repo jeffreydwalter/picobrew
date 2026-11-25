@@ -64,6 +64,7 @@ type indexed struct {
 // Details and raw files are decompressed only when requested; nothing is
 // fetched from upstream and no records are automatically added to a library.
 type Archive struct {
+	zPrograms   map[string]zArchiveProgram
 	recovered   map[string]recipeRecovery
 	sheets      map[string]BrewSheet
 	marketplace map[string]MarketplaceIngredients
@@ -90,7 +91,7 @@ func openBytes(data []byte) (*Archive, error) {
 	if err != nil {
 		return nil, fmt.Errorf("catalog: open bundle: %w", err)
 	}
-	a := &Archive{files: make(map[string]*zip.File, len(z.File)), byID: map[string]Summary{}, assets: map[string]Asset{}}
+	a := &Archive{zPrograms: map[string]zArchiveProgram{}, files: make(map[string]*zip.File, len(z.File)), byID: map[string]Summary{}, assets: map[string]Asset{}}
 	for _, file := range z.File {
 		if !validPath(file.Name) || !file.Mode().IsRegular() || file.UncompressedSize64 > MaxFileBytes {
 			return nil, fmt.Errorf("catalog: unsupported archive file %q", file.Name)
@@ -173,6 +174,11 @@ func openBytes(data []byte) (*Archive, error) {
 		}
 		_, hasStockSheet := a.sheets[entry.ID]
 		entry.BrewReady = hasStockSheet && entry.Edition == "" && a.recovered[entry.ID].Review == ""
+		if entry.SourceModel == "z" && entry.Kind == "native-program" && (entry.SourceID == "picopak-library" || entry.SourceID == "chiefwigms") {
+			if err := a.prepareZ(entry); err != nil {
+				return nil, err
+			}
+		}
 		a.byID[entry.ID] = entry.Summary
 		counts[entry.SourceID]++
 		if entry.Style != "" {
@@ -368,6 +374,9 @@ func (a *Archive) Detail(id string) (Detail, error) {
 	}
 	if result.ID != id || result.Provenance.CatalogID != id || result.Provenance.SourceID != result.SourceID || len(result.SourceRecords) == 0 || result.SourceRecordCount != len(result.SourceRecords) {
 		return Detail{}, fmt.Errorf("catalog: invalid detail %q", id)
+	}
+	if z, ok := a.zPrograms[id]; ok {
+		z.apply(&result)
 	}
 	if result.Recipe != nil {
 		result.Recipe.SourceYeast = recipe.SourceYeast(*result.Recipe)

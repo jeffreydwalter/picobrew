@@ -291,6 +291,9 @@ func (s *simulator) PutRecipe(ctx context.Context, recipe domain.MachineRecipe, 
 	return s.writeRecipe(ctx, recipe, false, expected)
 }
 func (s *simulator) writeRecipe(ctx context.Context, recipe domain.MachineRecipe, create bool, expected *domain.MachineRecipe) error {
+	if recipe.ZCloud != nil {
+		return unsupportedCapability("z_cloud_program_v1")
+	}
 	if recipe.ZProgram != nil {
 		return unsupportedCapability("z_program_maker")
 	}

@@ -201,3 +201,7 @@ and delivery counters. Forwarding is optional, defaults off, contains no device
 key, and uses the existing versioned Hub status envelope. Device operation and
 history continue without the Hub. Slow/unreachable networks are bounded and
 must not block actuator/sensor service. No firmware OTA route is implied.
+
+### Archived Z cloud recipes
+
+On a brewer advertising `z_cloud_program_v1`, a saved recipe can carry `z_cloud: {"start_water_ml":13100,"is_beer":true}` with the usual `name`, `id` and `steps`. This selects the Z cloud compiler. Source locations 0–5 mean keg, mash and adjuncts 1–4. Location 6 is an operator pause. Hold and drain are whole minutes. A zero temperature keeps the previous heat setting. The device uses the original raw Fahrenheit values and measured local boiling point when compiling. A positive active target below 60 °F requires an immediately preceding operator pause for chiller setup. The Hub reads back and compares the entire saved program before reporting a transfer. Starting water must be 1–16,163 mL, within the stock keg planning ceiling.

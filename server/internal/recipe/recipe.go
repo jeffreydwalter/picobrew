@@ -555,6 +555,16 @@ func NativeJSON(r domain.MachineRecipe) ([]byte, error) {
 		}
 		return true
 	}
+	if r.ZCloud != nil {
+		r.Name = r.ZCloudDeviceName()
+		if !nativeID.MatchString(r.ID) {
+			return nil, errors.New("invalid original Z program ID")
+		}
+		if err := r.ValidateZCloud(); err != nil {
+			return nil, err
+		}
+		return json.Marshal(r)
+	}
 	if r.ZProgram != nil {
 		if !nativeID.MatchString(r.ID) || r.Name != r.ZProgram.Name || len(r.Steps) != 0 {
 			return nil, errors.New("invalid Z program identity or conflicting steps")

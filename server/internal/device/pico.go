@@ -387,13 +387,16 @@ func (p *pico) writeRecipe(ctx context.Context, recipe domain.MachineRecipe, cre
 			break
 		}
 	}
-	if create || zeroMinute || recipe.ZProgram != nil || expected != nil {
+	if create || zeroMinute || recipe.ZProgram != nil || recipe.ZCloud != nil || expected != nil {
 		capabilities, err := p.discover(ctx)
 		if err != nil {
 			return err
 		}
 		if !capabilities.Supports("recipes") {
 			return unsupportedCapability("recipes")
+		}
+		if recipe.ZCloud != nil && (capabilities.Model != "z-series" || !capabilities.ZCloudProgramV1 || recipe.StepCount() > capabilities.StepCapacity) {
+			return unsupportedCapability("z_cloud_program_v1")
 		}
 		if recipe.ZProgram != nil && (capabilities.Model != "z-series" || !capabilities.ZProgramMaker || recipe.StepCount() > capabilities.StepCapacity) {
 			return unsupportedCapability("z_program_maker")

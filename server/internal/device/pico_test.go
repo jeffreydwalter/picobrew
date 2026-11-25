@@ -666,3 +666,31 @@ func TestReviewedRecipeChecksTheRevisionReadWithItsContents(t *testing.T) {
 		}
 	}
 }
+
+func TestZCloudWriteRequiresConfirmedFormatAndMatchingWater(t *testing.T) {
+	r := domain.MachineRecipe{ID: "archived", Name: "Archive", ZCloud: &domain.ZCloudProgram{StartWaterML: 13170, IsBeer: true},
+		Steps: []domain.MachineStep{{Name: "Pass through", TargetF: 152, Location: 0, Minutes: 4}, {Name: "Connect chiller", Location: 6, TargetF: 68}, {Name: "Chill", Location: 0, TargetF: 50, Minutes: 5}}}
+	for _, capable := range []bool{false, true} {
+		writes := 0
+		p := testPico(t, func(w http.ResponseWriter, req *http.Request) {
+			if req.URL.Path == "/api/v1" {
+				replyJSON(w, 200, map[string]any{"mode": "standalone", "api_version": 1, "model": "z-series", "model_family": "z-series", "recipe_capacity": 16, "step_capacity": 15, "recipe_create_only": true, "zero_minute_steps": true, "z_cloud_program_v1": capable})
+				return
+			}
+			if req.Method == "PUT" {
+				writes++
+				var got domain.MachineRecipe
+				if err := json.NewDecoder(req.Body).Decode(&got); err != nil || !reflect.DeepEqual(got, r) {
+					t.Errorf("program changed: %+v %v", got, err)
+				}
+				replyJSON(w, 201, map[string]any{})
+				return
+			}
+			replyJSON(w, 200, r)
+		})
+		err := p.CreateRecipe(context.Background(), r)
+		if capable && (err != nil || writes != 1) || !capable && (err == nil || writes != 0) {
+			t.Errorf("capability %t, writes %d, %v", capable, writes, err)
+		}
+	}
+}

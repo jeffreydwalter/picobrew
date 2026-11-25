@@ -1,6 +1,9 @@
 """Exercise the production adapter, real Core/Head and shared persistent engine."""
 from pathlib import Path
 import os
+import json
+import hashlib
+import zipfile
 import shlex
 import subprocess
 import sys
@@ -53,6 +56,30 @@ class StandaloneTests(unittest.TestCase):
     def test_recipe_step_index_ignores_common_steps_and_resume_labels(self):self.run_case('step-indices')
     def test_wired_selection_busy_storage_link_loss_and_return_to_wifi(self):self.run_case('wired-network')
     def test_both_native_sous_vide_programs(self):self.run_case('sous-vide')
+    def test_original_z_archive_instructions_and_water_match_the_oem_compiler(self):
+        catalog=ROOT.parents[2]/'server/internal/catalog/data/catalog.zip'
+        with zipfile.ZipFile(catalog) as archive:
+            rows=[r for r in json.loads(archive.read('index.json')) if r['source_model']=='z' and r['kind']=='native-program']
+            self.assertEqual(len(rows),39)
+            for row in rows:
+                detail=json.loads(archive.read('entries/'+row['id']+'.json'))
+                record,=detail['source_records']
+                data=archive.read('originals/'+detail['source_id']+'/'+record['path'])
+                self.assertEqual(hashlib.sha256(data).hexdigest(),record['sha256'])
+                raw=json.loads(data)
+                if detail['source_id']=='chiefwigms':
+                    locations=['PassThru','Mash','Adjunct1','Adjunct2','Adjunct3','Adjunct4','Pause']
+                    raw={'Name':raw['name'],'StartWater':raw['start_water'],'Steps':[
+                        {'Name':s['name'],'Temp':s['temperature'],'Time':s['step_time'],'Drain':s['drain_time'],
+                         'Location':locations.index(s['location'])} for s in raw['steps']]}
+                body={'name':raw['Name'] if len(raw['Name'])<=31 else raw['Name'].removeprefix('Base Recipe - '),
+                      'steps':detail['native_program']['steps'],
+                      'z_cloud':{'is_beer':raw.get('TypeCode','Beer')=='Beer','start_water_ml':round(raw['StartWater']*1000)}}
+                original=Path(self.temp.name)/'original.json';original.write_text(json.dumps(raw))
+                wire=Path(self.temp.name)/'wire.json';wire.write_text(json.dumps(body))
+                with self.subTest(recipe=row['id']):
+                    subprocess.run([self.binary,'original-z',original,wire],check=True)
+
     def test_original_z_state_is_authenticated_and_complete(self):self.run_case('native-state')
     def test_wifi_picker_keeps_lease_and_selects_from_deduplicated_snapshot(self):self.run_case('wifi-picker')
     def test_pairing_requires_physical_selection_and_the_displayed_request(self):self.run_case('pairing')
