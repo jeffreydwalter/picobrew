@@ -315,9 +315,14 @@ describe('community catalog and local recipe slots', () => {
       expect(recipeID).toBeTruthy()
       expect(screen.queryByLabelText('Batch size (L)', { exact: true })).toBeNull()
       expect(screen.queryByRole('button', { name: 'Add grain' })).toBeNull()
-      expect(
-        (screen.getByLabelText('Step 1 hold (min)', { exact: true }) as HTMLInputElement).value
-      ).toBe('0')
+      expect(original.native_program.z_pak.recipe_id).toBe(64)
+      expect(screen.getByRole('heading', { name: 'Z PicoPak adapter' })).toBeTruthy()
+      expect(screen.queryByLabelText('Step 1 hold (min)', { exact: true })).toBeNull()
+      const strength = screen.getByLabelText('Kit strength', { exact: true })
+      await user.selectOptions(strength, '0')
+      expect(screen.queryByRole('button', { name: 'Edit as a standard Pico program' })).toBeNull()
+      await user.selectOptions(strength, '')
+      expect(screen.getByRole('button', { name: 'Edit as a standard Pico program' })).toBeTruthy()
       await user.clear(screen.getByLabelText('Program notes', { exact: true }))
       await user.type(
         screen.getByLabelText('Program notes', { exact: true }),
@@ -353,7 +358,11 @@ describe('community catalog and local recipe slots', () => {
       ).json()
       expect(
         after.recipes.find((program: { id: string }) => program.id === original.native_program.id)
-      ).toEqual(original.native_program)
+      ).toEqual({
+        id: original.native_program.id,
+        name: original.native_program.name,
+        steps: original.native_program.steps,
+      })
       for (const existing of before.recipes) expect(after.recipes).toContainEqual(existing)
       const device = await (await originalFetch(origin + `/api/v1/devices/${deviceID}`)).json()
       expect(device.status.busy).toBe(false)
@@ -388,7 +397,40 @@ describe('community catalog and local recipe slots', () => {
       ).toBe('Pico Pale')
 
       window.location.hash = `/recipes/${recipeID}`
-      await user.click(await screen.findByRole('button', { name: 'Send' }))
+      const convert = await screen.findByRole('button', { name: 'Edit as a standard Pico program' })
+      const confirmation = vi
+        .spyOn(window, 'confirm')
+        .mockReturnValueOnce(false)
+        .mockReturnValueOnce(true)
+      try {
+        await user.click(convert)
+        expect(screen.getByRole('heading', { name: 'Z PicoPak adapter' })).toBeTruthy()
+        await user.click(convert)
+        expect(confirmation).toHaveBeenCalledTimes(2)
+      } finally {
+        confirmation.mockRestore()
+      }
+      expect(
+        (screen.getByLabelText('Step 1 hold (min)', { exact: true }) as HTMLInputElement).value
+      ).toBe('0')
+      const secondHold = screen.getByLabelText('Step 2 hold (min)', { exact: true })
+      await user.clear(secondHold)
+      await user.type(secondHold, '12')
+      await user.click(screen.getByRole('button', { name: 'Save program' }))
+      const standardSteps = original.native_program.steps.map(
+        (step: { minutes: number }, i: number) => (i === 1 ? { ...step, minutes: 12 } : step)
+      )
+      await waitFor(async () => {
+        const edited = await (await originalFetch(origin + `/api/v1/recipes/${recipeID}`)).json()
+        expect(edited.native_program).toEqual({
+          id: original.native_program.id,
+          name: original.native_program.name,
+          steps: standardSteps,
+        })
+      })
+      const source = await (await originalFetch(origin + '/api/v1/catalog/picopak-64')).json()
+      expect(source.native_program).toEqual(original.native_program)
+      await user.click(screen.getByRole('button', { name: 'Send' }))
       dialog = await screen.findByRole('dialog', { name: 'Send recipes & programs' })
       await user.selectOptions(
         within(dialog).getByLabelText('Transfer to machine', { exact: true }),
