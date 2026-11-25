@@ -11,6 +11,7 @@ import (
 
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/ai"
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/catalog"
+	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/device"
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/domain"
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/firmware"
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/usbservice"
@@ -226,7 +227,7 @@ func (r *schemaRegistry) properties(name string) schemaMap {
 func buildSchemas() schemaMap {
 	r := &schemaRegistry{values: schemaMap{}}
 	r.describe(reflect.TypeOf(LANDiscovery{}))
-	for _, value := range []any{usbservice.USBDevices{}, usbservice.USBInput{}, usbservice.USBAnswer{}, ConditioningInput{}, domain.Device{}, domain.DeviceView{}, domain.DeviceEvents{}, domain.Capabilities{}, domain.Status{}, domain.Display{}, domain.Recipe{}, domain.MachineRecipe{}, domain.Profile{}, domain.Adapted{}, domain.Brew{}, domain.BrewDetail{}, domain.Sample{}, domain.History{}, domain.Command{}, commandReceipt{}, ai.Config{}, ai.Request{}, ai.Result{}, adviceRecord{}, aiMonitorStatus{}, aiModelList{}, ai.SubscriptionStatus{}, BulkDeployment{}, DeploymentInput{}, MachineRecipeUpdate{}, catalog.Page{}, catalog.Detail{}, catalog.References{}} {
+	for _, value := range []any{brewGroup{}, brewInvite{}, groupCandidate{}, device.PicoStillLink{}, usbservice.USBDevices{}, usbservice.USBInput{}, usbservice.USBAnswer{}, ConditioningInput{}, domain.Device{}, domain.DeviceView{}, domain.DeviceEvents{}, domain.Capabilities{}, domain.Status{}, domain.Display{}, domain.Recipe{}, domain.MachineRecipe{}, domain.Profile{}, domain.Adapted{}, domain.Brew{}, domain.BrewDetail{}, domain.Sample{}, domain.History{}, domain.Command{}, commandReceipt{}, ai.Config{}, ai.Request{}, ai.Result{}, adviceRecord{}, aiMonitorStatus{}, aiModelList{}, ai.SubscriptionStatus{}, BulkDeployment{}, DeploymentInput{}, MachineRecipeUpdate{}, catalog.Page{}, catalog.Detail{}, catalog.References{}} {
 		r.describe(reflect.TypeOf(value))
 	}
 	// Preserve the previously published schema name while sharing this record
@@ -238,6 +239,11 @@ func buildSchemas() schemaMap {
 	r.properties("DeviceView")["key_reused"] = schemaMap{"type": "boolean", "readOnly": true, "description": "Advisory: another registered physical machine has the same recorded hexadecimal API key, including disabled machines. Derived in memory; no key or fingerprint is returned. Use a separately provisioned key for each brewer. Saving a connection does not change its firmware key."}
 	r.describe(reflect.TypeOf(brewerFermentationOptions{}))
 	r.describe(reflect.TypeOf(brewerPicoFermInput{}))
+	r.values["BrewGroupInput"] = schemaObject(schemaMap{
+		"name":       schemaMap{"type": "string", "minLength": 1, "maxLength": 80},
+		"device_ids": schemaMap{"type": "array", "items": stringSchema(), "minItems": 2, "maxItems": 16, "uniqueItems": true},
+		"revision":   schemaMap{"type": "integer", "minimum": 0, "description": "Use the current revision when editing a group."},
+	}, "name", "device_ids")
 	r.values["PicoFermBrewer"] = schemaObject(schemaMap{
 		"brewer_id": schemaMap{"type": "string", "description": "Registered physical brewer ID. An empty string clears the association."},
 		"revision":  schemaMap{"type": "integer", "minimum": 0, "description": "Use the current association revision when saving."},
@@ -255,7 +261,7 @@ func buildSchemas() schemaMap {
 	r.values["Telemetry"] = schemaMap{"type": "object", "properties": schemaMap{"enabled": boolSchema(), "host": stringSchema(), "port": schemaMap{"type": "integer", "minimum": 1, "maximum": 65535}, "state": stringSchema()}, "additionalProperties": true}
 	r.values["Login"] = schemaObject(schemaMap{"password": schemaMap{"type": "string", "maxLength": 256, "writeOnly": true}}, "password")
 	r.values["Setup"] = schemaObject(schemaMap{"password": schemaMap{"type": "string", "minLength": 12, "maxLength": 256, "writeOnly": true}, "token": schemaMap{"type": "string", "writeOnly": true}}, "password", "token")
-	r.values["DeviceInput"] = schemaObject(schemaMap{"name": schemaMap{"type": "string", "minLength": 1, "maxLength": 100}, "model": schemaMap{"type": "string", "enum": []string{"", "auto", "pico-pro", "pico-s", "pico-c", "z-series", "picostill", "picoferm", "z", "zymatic"}, "description": "Omit/empty for automatic physical firmware identification. Simulator requires an explicit profile. Manual S/Pro selection supports older firmware that does not report a model."}, "adapter": schemaMap{"type": "string", "enum": []string{"pico-standalone", "simulator"}}, "base_url": schemaMap{"type": "string", "description": "Explicit appliance HTTP base URL; required for pico-standalone. Supported standalone families include C/S/Pro, generic Z-series, PicoStill, PicoFerm and Ethernet-connected custom Zymatic; only discovered capabilities are enabled."}, "api_key": schemaMap{"type": "string", "writeOnly": true, "description": "Standalone firmware key; omit/leave blank on update to preserve the stored key."}, "location": stringSchema(), "enabled": boolSchema()}, "name", "adapter")
+	r.values["DeviceInput"] = schemaObject(schemaMap{"name": schemaMap{"type": "string", "minLength": 1, "maxLength": 100}, "model": schemaMap{"type": "string", "enum": []string{"", "auto", "pico-pro", "pico-s", "pico-c", "z-series", "picostill", "picoferm", "z", "zymatic"}, "description": "Omit/empty for automatic physical firmware identification. Simulator requires an explicit profile. Manual S/Pro selection supports older firmware that does not report a model."}, "adapter": schemaMap{"type": "string", "enum": []string{"pico-standalone", "simulator"}}, "base_url": schemaMap{"type": "string", "description": "Explicit appliance HTTP base URL; required for pico-standalone. Supported standalone families include C/S/Pro, generic Z-series, PicoStill, PicoFerm and custom Zymatic over Ethernet or supported Wi-Fi; only discovered capabilities are enabled."}, "api_key": schemaMap{"type": "string", "writeOnly": true, "description": "Standalone firmware key; omit/leave blank on update to preserve the stored key."}, "location": stringSchema(), "enabled": boolSchema()}, "name", "adapter")
 	recipeProps := schemaMap{}
 	for k, v := range r.properties("Recipe") {
 		recipeProps[k] = v
@@ -435,6 +441,11 @@ func operationParameters(e endpoint) []any {
 		params = append(params, schemaMap{"name": name, "in": "query", "description": description, "required": false, "schema": schema})
 	}
 	switch e.path {
+	case "/brew-groups/{group}":
+		if e.method == "DELETE" {
+			query("revision", "Current group revision.", schemaMap{"type": "integer", "minimum": 1})
+			params[len(params)-1].(schemaMap)["required"] = true
+		}
 	case "/telemetry/receiver":
 		query("challenge", "A random 16-byte challenge encoded as 32 hexadecimal characters.", schemaMap{"type": "string", "pattern": "^[0-9a-fA-F]{32}$"})
 		params[len(params)-1].(schemaMap)["required"] = true
@@ -480,6 +491,19 @@ func operationParameters(e endpoint) []any {
 func requestSchema(e endpoint) (schemaMap, bool) {
 	name := ""
 	switch e.path {
+	case "/brew-groups", "/brew-groups/{group}":
+		if e.method == "POST" || e.method == "PUT" {
+			return schemaRef("BrewGroupInput"), true
+		}
+	case "/devices/{id}/brew-invite/{invite}/respond":
+		return schemaObject(schemaMap{"accept": boolSchema()}, "accept"), true
+	case "/devices/{id}/picostill":
+		if e.method == "PATCH" {
+			return schemaObject(schemaMap{"session_logging": boolSchema()}, "session_logging"), true
+		}
+		if e.method == "PUT" {
+			return schemaObject(schemaMap{"picostill_id": stringSchema()}, "picostill_id"), true
+		}
 	case "/catalog/{id}/copy":
 		name = "CatalogCopyInput"
 	case "/auth/setup":
@@ -561,6 +585,26 @@ func successResponses(e endpoint) schemaMap {
 	code := "200"
 	description := "Successful response"
 	switch e.path {
+	case "/brew-groups":
+		if e.method == "GET" {
+			schema = schemaObject(schemaMap{"groups": schemaArray(schemaRef("brewGroup")), "stock_candidates": schemaArray(schemaRef("groupCandidate"))}, "groups", "stock_candidates")
+		} else {
+			schema = schemaRef("brewGroup")
+		}
+	case "/brew-groups/{group}":
+		if e.method == "DELETE" {
+			schema = schemaRef("Deleted")
+		} else {
+			schema = schemaRef("brewGroup")
+		}
+	case "/brew-invites":
+		schema = schemaObject(schemaMap{"invites": schemaArray(schemaRef("brewInvite"))}, "invites")
+	case "/devices/{id}/brew-invite":
+		schema = schemaObject(schemaMap{"invite": schemaMap{"type": "object", "nullable": true, "allOf": []any{schemaRef("brewInvite")}}}, "invite")
+	case "/devices/{id}/brew-invite/{invite}/respond":
+		schema = schemaRef("brewInvite")
+	case "/devices/{id}/picostill":
+		schema = schemaRef("PicoStillLink")
 	case "/usb/devices":
 		schema = schemaRef("USBDevices")
 	case "/usb/jobs":
