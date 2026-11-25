@@ -193,6 +193,16 @@ def main():
                         assert ('POST','/group-brew') not in requests
                         page.locator('#declineGroup').click()
                         expect(page.locator('#groupInvite')).to_be_hidden()
+                        invite.clear()
+                        invite.update(id='cab0000000000022',state='pending',action='z_program',program_id=22,
+                                      program_name='Hot coffee',water_l=3.78541,temperature_f=176,intensity=9,time_seconds=1200)
+                        invite['from']='Z stack'
+                        expect(page.locator('#groupDetail')).to_contain_text('Hot coffee',timeout=10000)
+                        expect(page.locator('#groupDetail')).to_contain_text('20 min · Intensity 9/15')
+                        expect(page.locator('#joinGroup')).to_have_text('Review on brewer')
+                        assert requests.count(('POST','/group-brew'))==1
+                        page.locator('#declineGroup').click()
+                        expect(page.locator('#groupInvite')).to_be_hidden()
                         page.locator('[data-tab="recipes"]').click()
                         page.locator('#newRecipe').click()
                         expect(page.locator('#zProgramOptions')).to_be_visible()

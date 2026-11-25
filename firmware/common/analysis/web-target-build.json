@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_sha256": "9708d7e819752fe9e7d0b9ec4fca0caab04e47061c195896a5b9ecbd995160bc",
+  "source_sha256": "3abfd6360a9f5ed1edf4337baacd5b3f4f62d060a60471e15982ec60e3f369c8",
   "headers": {
     "include/picobrew/common_web.h": "a32e78944bc9c6f470f03afaac681ecc8f040ada75e7fd0364696af3f2a5172b",
     "include/picobrew/http_server.h": "0a301db4544a62250f9ba64e6e1947f8aaa3ed16be1fcd7c14322b380f03cb38"
@@ -27,12 +27,12 @@
         "-U__STRICT_ANSI__",
         "-DESP8266"
       ],
-      "object_bytes": 48752,
-      "object_sha256": "2e1630eb867b5b491e74e45298d5664da8b7ba976ce88323fc81988ff8e34c21",
+      "object_bytes": 48868,
+      "object_sha256": "98b68313028ce50e52624b5b9a1099d4b0c01b0e33352c70941a1211a0357c37",
       "asset_sections": [
-        "0000921c l     O .irom.text\t00001886 _ZN12_GLOBAL__N_1L7asset_0E",
-        "00008647 l     O .irom.text\t00000bd5 _ZN12_GLOBAL__N_1L7asset_1E",
-        "00003fe9 l     O .irom.text\t0000465e _ZN12_GLOBAL__N_1L7asset_2E",
+        "0000928f l     O .irom.text\t00001886 _ZN12_GLOBAL__N_1L7asset_0E",
+        "000086ba l     O .irom.text\t00000bd5 _ZN12_GLOBAL__N_1L7asset_1E",
+        "00003fe9 l     O .irom.text\t000046d1 _ZN12_GLOBAL__N_1L7asset_2E",
         "00002f0a l     O .irom.text\t000010df _ZN12_GLOBAL__N_1L7asset_3E",
         "000015cb l     O .irom.text\t0000193f _ZN12_GLOBAL__N_1L7asset_4E",
         "00000482 l     O .irom.text\t00001149 _ZN12_GLOBAL__N_1L7asset_5E",
@@ -59,12 +59,12 @@
         "-ffunction-sections",
         "-fdata-sections"
       ],
-      "object_bytes": 49420,
-      "object_sha256": "ad141edf3e9bff807f554e6d9c185916df965f3e487e9993db1a98cf5a818fd2",
+      "object_bytes": 49536,
+      "object_sha256": "1a8175b39729fca2bad39ed0f1e4ecd8b7f94e88f07dd3e21e0aea854be2beb8",
       "asset_sections": [
         "00000000 l     O .rodata._ZN12_GLOBAL__N_1L7asset_0E\t00001886 _ZN12_GLOBAL__N_1L7asset_0E",
         "00000000 l     O .rodata._ZN12_GLOBAL__N_1L7asset_1E\t00000bd5 _ZN12_GLOBAL__N_1L7asset_1E",
-        "00000000 l     O .rodata._ZN12_GLOBAL__N_1L7asset_2E\t0000465e _ZN12_GLOBAL__N_1L7asset_2E",
+        "00000000 l     O .rodata._ZN12_GLOBAL__N_1L7asset_2E\t000046d1 _ZN12_GLOBAL__N_1L7asset_2E",
         "00000000 l     O .rodata._ZN12_GLOBAL__N_1L7asset_3E\t000010df _ZN12_GLOBAL__N_1L7asset_3E",
         "00000000 l     O .rodata._ZN12_GLOBAL__N_1L7asset_4E\t0000193f _ZN12_GLOBAL__N_1L7asset_4E",
         "00000000 l     O .rodata._ZN12_GLOBAL__N_1L7asset_5E\t00001149 _ZN12_GLOBAL__N_1L7asset_5E",

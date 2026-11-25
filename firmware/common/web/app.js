@@ -105,13 +105,16 @@ function displayGroup(invite) {
   $('groupInvite').hidden=!groupInvite;
   if(!groupInvite)return;
   const recipe=state.recipes.find(r=>r.id===invite.recipe_id);
-  const program=invite.action==='brew' ? (recipe?.name || invite.recipe_id) : (programLabels[invite.action] || invite.action);
+  const program=invite.program_name || recipe?.name || programLabels[invite.action] || invite.recipe_id || 'a program';
+  const coffee=invite.action==='z_program' && [invite.water_l,invite.temperature_f,invite.intensity,invite.time_seconds].every(Number.isFinite);
   const dose=[];
   if(invite.action==='brew'){
     if(Number.isInteger(invite.selected_abv))dose.push('Strength '+invite.selected_abv+'/10');
     if(Number.isInteger(invite.selected_ibu))dose.push('Bitterness '+invite.selected_ibu+'/10');
   }
-  $('groupDetail').textContent=invite.from+' invited this brewer to start '+program+'.'+(dose.length?' '+dose.join(' · '):'');
+  if(coffee)dose.push(Number(invite.water_l.toFixed(2))+' L',temperature(invite.temperature_f),invite.time_seconds/60+' min','Intensity '+invite.intensity+'/15');
+  $('groupDetail').textContent=invite.from+' invited this brewer to run '+program+'.'+(dose.length?' '+dose.join(' · '):'');
+  $('joinGroup').textContent=coffee?'Review on brewer':'Accept and start';
   $('joinGroup').disabled=groupResponding || state.status?.filter_inserted===false;
   $('declineGroup').disabled=groupResponding;
 }

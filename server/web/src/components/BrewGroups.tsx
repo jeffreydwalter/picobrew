@@ -3,6 +3,7 @@ import { Link2, Pencil } from 'lucide-react'
 import { useHub, useResource } from '../context'
 import type { Device } from '../types'
 import { api, errorMessage } from '../lib/api'
+import { temperature } from '../lib/utils'
 import { Button, ErrorBanner, Field, Modal } from './ui'
 
 export interface BrewGroup {
@@ -17,6 +18,11 @@ type Invite = {
   source_name: string
   target_device_id: string
   action: string
+  program_name?: string
+  water_l?: number
+  temperature_f?: number
+  intensity?: number
+  time_seconds?: number
   selected_abv?: number
   selected_ibu?: number
   recipe_name?: string
@@ -240,7 +246,7 @@ export function BrewInvitations({ devices, deviceID }: { devices: Device[]; devi
     : fleet.data?.invites || []
   const [error, setError] = useState('')
   const [pending, setPending] = useState('')
-  const { notify } = useHub()
+  const { notify, unit } = useHub()
   async function respond(invite: Invite, accept: boolean) {
     setError('')
     setPending(invite.id + invite.target_device_id)
@@ -265,6 +271,13 @@ export function BrewInvitations({ devices, deviceID }: { devices: Device[]; devi
       <ErrorBanner message={error} />
       {invites.map((invite) => {
         const device = devices.find((d) => d.id === invite.target_device_id)
+        const { water_l, temperature_f, intensity, time_seconds } = invite
+        const coffee =
+          invite.action === 'z_program' &&
+          water_l != null &&
+          temperature_f != null &&
+          intensity != null &&
+          time_seconds != null
         const kitSettings =
           invite.action === 'brew'
             ? [
@@ -279,7 +292,8 @@ export function BrewInvitations({ devices, deviceID }: { devices: Device[]; devi
           <article className="panel brew-invitation" key={invite.target_device_id + invite.id}>
             <div>
               <strong>
-                {invite.recipe_name ||
+                {invite.program_name ||
+                  invite.recipe_name ||
                   (invite.action === 'rinse'
                     ? 'Rinse'
                     : invite.action === 'clean'
@@ -294,6 +308,12 @@ export function BrewInvitations({ devices, deviceID }: { devices: Device[]; devi
                 . {invite.message}
               </p>
               {kitSettings && <p>{kitSettings}</p>}
+              {coffee && (
+                <p>
+                  {Number(water_l.toFixed(2))} L · {temperature(temperature_f, unit)} ·{' '}
+                  {time_seconds / 60} min · Intensity {intensity}/15
+                </p>
+              )}
             </div>
             {canRespond ? (
               <div className="form-actions">
@@ -308,7 +328,11 @@ export function BrewInvitations({ devices, deviceID }: { devices: Device[]; devi
                   disabled={!!pending || (!invite.menu_serial && !device?.online)}
                   onClick={() => void respond(invite, true)}
                 >
-                  {invite.menu_serial ? 'Add to brewer menu' : 'Accept invitation'}
+                  {invite.menu_serial
+                    ? 'Add to brewer menu'
+                    : coffee
+                      ? 'Review on brewer'
+                      : 'Accept invitation'}
                 </Button>
               </div>
             ) : (

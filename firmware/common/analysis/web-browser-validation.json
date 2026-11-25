@@ -83,7 +83,7 @@
     {
       "model": "z-series",
       "viewport": 1280,
-      "requests": 104,
+      "requests": 111,
       "commands": [
         {
           "command": "resume-interrupted",
@@ -98,7 +98,7 @@
     {
       "model": "z-series",
       "viewport": 390,
-      "requests": 102,
+      "requests": 109,
       "commands": [
         {
           "command": "resume-interrupted",
@@ -134,5 +134,6 @@
   "history_cadence_export": "Each of six browser cases downloads selected older session1 at60000ms while the newest inventory session2 is300000ms; JSON retains the older interval and named sensor schema.",
   "maintenance_and_controls": "Each model displays its own care guidance and manual. PicoStill fan 2 blocks disabling or speeds under 61% while pumping. PicoFerm displays its configured sampling interval. Z program names and identifiers are checked before saving.",
   "z_controls": "Both viewport sizes check that native Starting and Stopping disable pause/resume, Running enables them, and a new exported Program Maker file records an explicitly selected unit. Resume also requires the brewer to report ready with the filter inserted.",
-  "z_recipe_import": "Desktop and mobile import both the native recipe and the API envelope, preserve a zero drain, discard the source brewer revision when creating a copy, and reject ambiguous or invalid files without altering the open recipe. Desktop and mobile also verify original PicoPak settings, rejection of conflicting recipe formats, explicit conversion for standard editing and the one-brew group invitation controls."
+  "z_recipe_import": "Desktop and mobile import both the native recipe and the API envelope, preserve a zero drain, discard the source brewer revision when creating a copy, and reject ambiguous or invalid files without altering the open recipe. Desktop and mobile also verify original PicoPak settings, rejection of conflicting recipe formats, explicit conversion for standard editing and the one-brew group invitation controls.",
+  "z_group_coffee": "Desktop and mobile show the named coffee program, its amount of water, time, intensity and temperature. Before the user responds the browser sends no invitation command."
 }

@@ -92,3 +92,24 @@ it('stages a stock Zymatic invitation only after an explicit click', async () =>
     ).toBe(true)
   )
 })
+
+it('shows the source coffee settings before opening the receiving Z’s program review', async () => {
+  const invite = {
+    id: 'a123', action: 'z_program', program_id: 22, program_name: 'Hot coffee',
+    group_name: 'Z stack', source_name: 'Z1', target_device_id: 'Z2', state: 'pending',
+    temperature_f: 176, water_l: 3.78541, intensity: 9, time_seconds: 1200,
+    expires_at: new Date(Date.now() + 100000).toISOString(),
+  }
+  const fetcher = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) =>
+    Response.json(init?.method === 'POST' ? { ...invite, state: 'accepted' } : { invites: [invite] })
+  )
+  vi.stubGlobal('fetch', fetcher)
+  mount(createElement(BrewInvitations, { devices }))
+  expect(await screen.findByText('Hot coffee · Z stack')).toBeTruthy()
+  expect(screen.getByText('3.79 L · 176.0°F · 20 min · Intensity 9/15')).toBeTruthy()
+  expect(fetcher.mock.calls.every(([, v]) => v?.method !== 'POST')).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: 'Review on brewer' }))
+  await waitFor(() => expect(fetcher.mock.calls.some(([url, v]) =>
+    String(url).endsWith('/Z2/brew-invite/a123/respond') && v?.body === '{"accept":true}'
+  )).toBe(true))
+})
