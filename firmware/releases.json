@@ -53,10 +53,10 @@
       "model_family": "z-series",
       "firmware_version": "1.0.0",
       "kind": "reference",
-      "source_commit": "2f3da874ddf5d86bd1b9d3d8575e52e8fed1c08f",
-      "archive_sha256": "b0b9327f31fcb742b868acc2086d53bb9aabf159ae60716be277cfcfd69c391f",
-      "binary_sha256": "047e7fa1948b6ab1fc218860d654ee7aee7ef655a4ede1d6a6bf5a8ebb96529b",
-      "binary_bytes": 1660640,
+      "source_commit": "f36a8a91d0aa430cfa116e0fe8451f14fbcd90ef",
+      "archive_sha256": "141dea42de29ba1d810f61f6b5a8d92199f09db4eaa66e3e932ac0ece75da43b",
+      "binary_sha256": "e512698776b7f5ac32a5184019818784050be009b26063ddb4dd3a926b56d7b5",
+      "binary_bytes": 1661568,
       "ota_protocol": "esp32-factory-v1"
     },
     {
@@ -64,10 +64,10 @@
       "model_family": "picostill",
       "firmware_version": "1.0.0",
       "kind": "reference",
-      "source_commit": "2f3da874ddf5d86bd1b9d3d8575e52e8fed1c08f",
-      "archive_sha256": "0b5c955921aae38bccbb60cc47578d54d50d364bbf303f6eb7c45d3ffa7f58d5",
-      "binary_sha256": "dabfe7f8b814d6f94aba10585a6beeb7479df0835c2414194b5b5ea9cbbcdbeb",
-      "binary_bytes": 822736,
+      "source_commit": "f36a8a91d0aa430cfa116e0fe8451f14fbcd90ef",
+      "archive_sha256": "72763294a4519947c0f4ca18bbcae708ca8968da7019eb7c26fe658864bcee97",
+      "binary_sha256": "6423d7b35011434c9e0415122e6cc70062147709a669247b766f4f7b4d5c7c54",
+      "binary_bytes": 823680,
       "ota_protocol": "esp32-factory-v1"
     },
     {

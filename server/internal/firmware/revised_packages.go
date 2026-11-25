@@ -34,4 +34,20 @@ var betaReplacements = []replacement{
 			{"b1cad2083c839059fcc1e17c3fbe102e731d58781e35afe42025dc11010e5d40", "736fdc386e0c9ffd7a4f5bff371cc059f71bd5aceb1a5a77065ea4813809b5e1"},
 		},
 	},
+	{
+		model: "z-series", display: "",
+		current: releaseBuild{"141dea42de29ba1d810f61f6b5a8d92199f09db4eaa66e3e932ac0ece75da43b", "e512698776b7f5ac32a5184019818784050be009b26063ddb4dd3a926b56d7b5"},
+		prior: []releaseBuild{
+			{"d83caf43b19a66fd31c4fbae5c916f3378b9a40e32b9936633bb5508d52275b8", "744a87e4efa6e3e1cdafb09618664e1f6055201e2102925ba0a728b5ace03111"},
+			{"b0b9327f31fcb742b868acc2086d53bb9aabf159ae60716be277cfcfd69c391f", "047e7fa1948b6ab1fc218860d654ee7aee7ef655a4ede1d6a6bf5a8ebb96529b"},
+		},
+	},
+	{
+		model: "picostill", display: "",
+		current: releaseBuild{"72763294a4519947c0f4ca18bbcae708ca8968da7019eb7c26fe658864bcee97", "6423d7b35011434c9e0415122e6cc70062147709a669247b766f4f7b4d5c7c54"},
+		prior: []releaseBuild{
+			{"a62558590ad3c839172c003f0b70aba630ed261285857a458b3be1268ea3928a", "7b6377092a7f18e4498d6b218835e37e88149dfded7aaec727bb1f981c89ea58"},
+			{"0b5c955921aae38bccbb60cc47578d54d50d364bbf303f6eb7c45d3ffa7f58d5", "dabfe7f8b814d6f94aba10585a6beeb7479df0835c2414194b5b5ea9cbbcdbeb"},
+		},
+	},
 }
