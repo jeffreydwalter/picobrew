@@ -86,6 +86,8 @@ class ProductionReleaseTest(unittest.TestCase):
                 notices = assets / f"usb-notices-{key}.zip"
                 with zipfile.ZipFile(notices, "w") as archive:
                     archive.writestr("versions.json", "{}")
+                    for notice in ("PicoBrew-LICENSES.md", "PicoBrew-LICENSE.txt", "Hub-LICENSE.txt", "AVRDUDE-LICENSE.txt"):
+                        archive.writestr(notice, notice)
                 metadata = {"name": name, "platform": key, "bytes": worker.stat().st_size,
                             "sha256": release.sha(worker), "inputs_sha256": fingerprint,
                             "notices_sha256": release.sha(notices)}

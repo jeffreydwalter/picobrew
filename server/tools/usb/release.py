@@ -120,7 +120,8 @@ def workers(directory):
         ):
             raise ValueError("USB artifact differs from this checkout or its provenance: " + key)
         with zipfile.ZipFile(notices) as archive:
-            if archive.testzip() is not None or "versions.json" not in archive.namelist():
+            required = {"versions.json", "PicoBrew-LICENSES.md", "PicoBrew-LICENSE.txt", "Hub-LICENSE.txt", "AVRDUDE-LICENSE.txt"}
+            if archive.testzip() is not None or not required.issubset(archive.namelist()):
                 raise ValueError("Invalid USB notices for " + key)
         assets[key] = asset
     return assets
