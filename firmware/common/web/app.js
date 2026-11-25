@@ -474,7 +474,9 @@ function editRecipe(recipe, existing=false) {
   $('stepDrain').textContent=program ? 'Drain (min:sec)' : 'Drain min';
   $('recipeLimits').textContent=program ? 'Up to 15 steps. A pause waits for the operator to continue.' : 'Up to 15 steps. A target of 0 means unheated circulation.';
   $('recipeRoutingHint').textContent=program ? 'Import or export Z Program Maker JSON. Use minutes:seconds for exact timing.' : 'Choose the flow path for each step.';
-  state.editorId=existing ? recipe.id : null;state.dirty=false;
+  state.editorId=existing ? recipe.id : null;
+  state.editorRevision=existing ? recipe.revision : undefined;
+  state.dirty=false;
   $('recipeName').value=program?.Name || recipe.name || '';$('recipeId').value=recipe.id || programId($('recipeName').value);$('recipeId').readOnly=existing;
   $('recipeId').dataset.auto=existing ? 'false' : 'true';
   $('editorHeading').textContent=existing ? 'Edit recipe' : 'New recipe';$('steps').replaceChildren();
@@ -646,12 +648,12 @@ $('recipeName').addEventListener('input',()=>{if($('recipeId').dataset.auto==='t
 $('recipeId').addEventListener('input',()=>{$('recipeId').dataset.auto='false';});
 $('recipeForm').addEventListener('submit',async event=>{
   event.preventDefault();const recipe=recipeFromForm();if(!recipe)return;
-  try{await api('/recipes/'+encodeURIComponent(recipe.id),'PUT',{...(recipe.z_program ? {z_program:recipe.z_program} : {name:recipe.name,steps:recipe.steps}),...(!state.editorId && {create_only:true})});editRecipe(recipe,true);await refreshRecipes();notify('Recipe saved on the Pico.');}
+  try{const saved=await api('/recipes/'+encodeURIComponent(recipe.id),'PUT',{...(recipe.z_program ? {z_program:recipe.z_program} : {name:recipe.name,steps:recipe.steps}),...(state.editorId ? {if_revision:state.editorRevision} : {create_only:true})});editRecipe(saved,true);await refreshRecipes();notify('Recipe saved on the Pico.');}
   catch(error){notify(error.message,true);}
 });
 $('deleteRecipe').addEventListener('click',async()=>{
   if(!state.editorId || !confirm('Delete this recipe from the Pico?'))return;
-  try{await api('/recipes/'+encodeURIComponent(state.editorId),'DELETE');editRecipe({});await refreshRecipes();notify('Recipe deleted.');}
+  try{await api('/recipes/'+encodeURIComponent(state.editorId),'DELETE',state.editorRevision ? {if_revision:state.editorRevision} : undefined);editRecipe({});await refreshRecipes();notify('Recipe deleted.');}
   catch(error){notify(error.message,true);}
 });
 $('importRecipe').addEventListener('click',()=>$('importFile').click());

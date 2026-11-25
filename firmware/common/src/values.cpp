@@ -183,7 +183,7 @@ void z_program_json(Writer& writer, const Recipe& recipe) {
 }
 }
 
-bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only) {
+bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only, std::uint32_t& revision) {
     if (!valid_id(id) || !json.token('{') || json.peek('}')) return false;
     copy(recipe.id, sizeof(recipe.id), id);
     unsigned seen = 0;
@@ -195,6 +195,10 @@ bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only)
             if (!json.string(supplied, sizeof(supplied)) || std::strcmp(supplied, id)) return false;
         } else if (!std::strcmp(key, "create_only")) {
             bit = 8; if (!json.boolean(create_only)) return false;
+        } else if (!std::strcmp(key, "if_revision") || !std::strcmp(key, "revision")) {
+            std::int64_t number;
+            bit = 32; if (!json.integer(1, UINT32_MAX, number)) return false;
+            revision = static_cast<std::uint32_t>(number);
         } else if (!std::strcmp(key, "name")) {
             bit = 2; if (!json.string(recipe.name, sizeof(recipe.name))) return false;
         } else if (!std::strcmp(key, "z_program")) {
@@ -230,7 +234,7 @@ bool parse_recipe(Json& json, const char* id, Recipe& recipe, bool& create_only)
         if (seen & bit) return false;
         seen |= bit;
     } while (json.next('}'));
-    return json.token('}') && json.done() && ((seen & 22) == 6 || (seen & 22) == 16);
+    return json.token('}') && json.done() && !(create_only && revision) && ((seen & 22) == 6 || (seen & 22) == 16);
 }
 bool parse_command(Json& json, Command& command) {
     if (!json.token('{') || json.peek('}')) return false;
@@ -273,8 +277,8 @@ unsigned error(Writer& writer, Result result) {
 void reading(Writer& writer, Reading value) {
     if (value.valid) writer.number(value.value); else writer.text("null");
 }
-void recipe_json(Writer& writer, const Recipe& recipe) {
-    writer.text("{\"id\":"); writer.quote(recipe.id);
+void recipe_json(Writer& writer, const Recipe& recipe, std::uint32_t revision) {
+    writer.format("{\"revision\":%lu,\"id\":", static_cast<unsigned long>(revision)); writer.quote(recipe.id);
     if (recipe.z_program) {
         writer.text(",\"z_program\":"); z_program_json(writer, recipe); writer.text("}"); return;
     }

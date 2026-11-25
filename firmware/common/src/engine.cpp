@@ -269,7 +269,7 @@ Result Engine::recipe_get(const char* id, Recipe& output) const {
     for (unsigned i = 0; i < RecipeCapacity; ++i) if (!std::strcmp(impl_->recipes[i].id, id)) return impl_->recipe_read(i, output);
     return Result(404, "recipe_not_found", "Recipe not found");
 }
-Result Engine::Impl::recipe_write(const Recipe& recipe, bool* created, bool create_only) {
+Result Engine::Impl::recipe_write(const Recipe& recipe, bool* created, bool create_only, std::uint32_t revision) {
     if (created) *created = false;
     if (!(capabilities.flags & Recipes)) return Result(404, "not_found", "Recipes are unavailable");
     if (!persistent) return storage_error();
@@ -283,6 +283,7 @@ Result Engine::Impl::recipe_write(const Recipe& recipe, bool* created, bool crea
         if (!std::strcmp(recipes[i].id, recipe.id)) { slot = i; existing = true; break; }
         if (!recipes[i].id[0] && slot < 0) slot = i;
     }
+    if (revision && (!existing || revision != catalogue_generation)) return Result(409, "recipe_changed", "Saved recipes changed. Reopen this recipe before editing.");
     if (existing && create_only) return Result(409, "recipe_exists", "Recipe ID is already in use. Choose another ID or open the saved recipe to edit it.");
     if (slot < 0) return Result(507, "recipe_capacity", "The recipe catalogue is full");
     RecipeEntry staged[RecipeCapacity]; std::memcpy(staged, recipes, sizeof(staged));
@@ -299,11 +300,12 @@ Result Engine::Impl::recipe_write(const Recipe& recipe, bool* created, bool crea
 Result Engine::recipe_store(const Recipe& recipe, bool* created) {
     return impl_ ? impl_->recipe_write(recipe, created) : Result(503, "not_ready", "Standalone initialization is incomplete");
 }
-Result Engine::Impl::recipe_delete(const char* id) {
+Result Engine::Impl::recipe_delete(const char* id, std::uint32_t revision) {
     if (!(capabilities.flags & Recipes)) return Result(404, "not_found", "Recipes are unavailable");
     if (!persistent) return storage_error();
     if (!idle()) return Result(409, "busy", "Change recipes only while the appliance is idle");
     if (!valid_id(id)) return Result(400, "invalid_recipe", "Invalid recipe ID");
+    if (revision && revision != catalogue_generation) return Result(409, "recipe_changed", "Saved recipes changed. Reopen this recipe before editing.");
     for (unsigned i = 0; i < RecipeCapacity; ++i) if (!std::strcmp(recipes[i].id, id)) {
         RecipeEntry staged[RecipeCapacity]; std::memcpy(staged, recipes, sizeof(staged));
         // Preserve the bank generation after deletion. Reusing this slot must
@@ -312,6 +314,7 @@ Result Engine::Impl::recipe_delete(const char* id) {
         if (!save_catalogue(staged)) return storage_error();
         owner.event("recipe", "deleted"); return Result();
     }
+    if (revision) return Result(409, "recipe_changed", "Saved recipes changed. Reopen this recipe before editing.");
     return Result(404, "recipe_not_found", "Recipe not found");
 }
 Result Engine::recipe_remove(const char* id) {

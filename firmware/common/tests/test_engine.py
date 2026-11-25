@@ -287,6 +287,31 @@ class EngineTests(unittest.TestCase):
         self.command("brew", recipe_id="new", world=brewer)
         self.request("/api/v1/recipes/new", self.recipe(), 2, expected=409, world=brewer)
 
+    def test_conditional_recipe_write_and_delete(self):
+        brewer = self.new(0)
+        path = "/api/v1/recipes/pale"
+        self.assertTrue(self.request("/api/v1", world=brewer)["recipe_conditional_write"])
+        saved = self.request(path, self.recipe(), 2, expected=201, world=brewer)
+        revision = saved["revision"]
+        self.assertGreater(revision, 0)
+        def write(body, expected):
+            return self.request(path, body, 2, expected=expected, world=brewer)
+        for invalid in (0, -1, 1.5, "1", 4294967296):
+            write(dict(self.recipe(), if_revision=invalid), 400)
+            self.request(path, {"if_revision": invalid}, 4, expected=400, world=brewer)
+        write(dict(saved, if_revision=revision), 400)
+        write(dict(saved, create_only=True), 400)
+        updated = write(dict(saved, name="Edited"), 200)
+        self.assertGreater(updated["revision"], revision)
+        self.lib.world_reboot(brewer)
+        self.assertEqual(write(saved, 409)["error"], "recipe_changed")
+        self.request(path, {"if_revision": revision}, 4, expected=409, world=brewer)
+        self.assertEqual(self.request(path, world=brewer), updated)
+        self.request(path, {"if_revision": updated["revision"]}, 4, world=brewer)
+        write(updated, 409)
+        write(self.recipe(), 201)
+        write(updated, 409)
+
     def test_partial_write_never_returns_success(self):
         self.fault(1, 1)
         self.request("/api/v1/settings", {"temperature_unit": "C"}, 3, expected=503)
