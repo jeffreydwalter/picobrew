@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -29,7 +30,7 @@ func validEvent(e *device.GroupSource) bool {
 	if e.Action == "brew" {
 		return e.RecipeID != "" && e.Revision != 0
 	}
-	return e.RecipeID == "" && e.Revision == 0
+	return e.RecipeID == "" && e.Revision == 0 && !e.GroupKitSelection.Present()
 }
 func groupEventID(parts ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
@@ -127,6 +128,9 @@ func (s *Server) syncBrewGroup(ctx context.Context, d *runtimeDevice, status dom
 		}
 		invite.State = "unavailable"
 		invite.Message = "This firmware does not support group invitations."
+		if invite.GroupKitSelection.Present() {
+			invite.Message = kitGroupRequirement
+		}
 		return s.saveInvite(*invite)
 	}
 	observed := time.Now()
@@ -187,17 +191,32 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 		}
 		if rev != e.Revision || p.ID != e.RecipeID {
 			problem = "The source recipe changed after the brew started."
+		} else if err = validateGroupKit(view, p, e.GroupKitSelection); err != nil {
+			src.Program.Name = p.Name
+			problem = err.Error()
 		} else {
 			src, err = s.identifyGroupRecipe(view, p)
 			if err != nil {
 				return err
 			}
-			if _, err = s.db.Put("group-brew-program", key, src, -1); err != nil {
+			src.GroupKitSelection = e.GroupKitSelection
+			if _, err = s.db.Put("group-brew-program", key, src, 0); errors.Is(err, store.ErrConflict) {
+				// A Hub restart can resume partway through issuing invitations.
+				// Keep the first program and dose authoritative for this event.
+				var first groupRecipe
+				if _, err = s.db.Get("group-brew-program", key, &first); err != nil {
+					return err
+				}
+				if !reflect.DeepEqual(first.Program, src.Program) || !reflect.DeepEqual(first.GroupKitSelection, src.GroupKitSelection) {
+					problem = "The source brewer reported different settings for the same brew."
+				}
+				src = first
+			} else if err != nil {
 				return err
 			}
 		}
 	}
-	source := brewInvite{SourceHistoryID: e.HistoryID, GroupID: g.ID, GroupName: g.Name, GroupSessionID: key, SourceDeviceID: view.ID, SourceName: view.Name, SourceUID: view.Status.DeviceUID, SourceEvent: e.ID, Action: e.Action, RecipeName: src.Program.Name, RecipeID: src.LibraryID, RecipeRevision: src.Revision, ExpiresAt: started.Add(inviteLifetime)}
+	source := brewInvite{GroupKitSelection: src.GroupKitSelection, SourceHistoryID: e.HistoryID, GroupID: g.ID, GroupName: g.Name, GroupSessionID: key, SourceDeviceID: view.ID, SourceName: view.Name, SourceUID: view.Status.DeviceUID, SourceEvent: e.ID, Action: e.Action, RecipeName: src.Program.Name, RecipeID: src.LibraryID, RecipeRevision: src.Revision, ExpiresAt: started.Add(inviteLifetime)}
 	for _, id := range g.DeviceIDs {
 		if id == view.ID || (view.Status.StockSerial != "" && id == stockMemberPrefix+view.Status.StockSerial) || started.Before(g.MemberSince[id]) {
 			continue
@@ -241,6 +260,11 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 	_, err := s.db.Put("group-brew-event", key, true, 0)
 	return err
 }
+func (i *brewInvite) matchesOffer(live *device.GroupOffer) bool {
+	return live != nil && live.ID == i.ID && live.From == groupWireName(i.SourceName) && live.Action == i.Action && live.RecipeID == i.TargetSlot &&
+		live.Revision == i.SlotRevision && reflect.DeepEqual(live.GroupKitSelection, i.GroupKitSelection)
+}
+
 func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v domain.DeviceView, w device.GroupBrewer, live *device.GroupOffer, i *brewInvite) error {
 	if v.Status.DeviceUID != "" && i.SourceUID == v.Status.DeviceUID && activeInvite(i.State) {
 		i.State = "unavailable"
@@ -258,12 +282,22 @@ func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v d
 		return nil
 	}
 	if !activeInvite(i.State) {
-		if i.State == "accepted" && matched && live.State == "accepted" {
+		if i.State == "accepted" && i.matchesOffer(live) && live.State == "accepted" {
 			return s.retryGroupHistory(ctx, d, v, i.GroupSessionID)
 		}
 		return nil
 	}
 	if matched {
+		if !i.matchesOffer(live) {
+			if live.State == "pending" {
+				if err := w.GroupRespond(ctx, device.GroupOffer{Op: "withdraw", ID: i.ID}); err != nil {
+					return err
+				}
+			}
+			i.State = "unconfirmed"
+			i.Message = "The brewer reported different recipe or kit settings for this invitation."
+			return s.saveInvite(*i)
+		}
 		switch live.State {
 		case "pending":
 			if i.State == "responding" {
@@ -331,7 +365,7 @@ func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v d
 	if err := s.saveInvite(*i); err != nil {
 		return err
 	}
-	offer := device.GroupOffer{Op: "offer", TTLMS: uint32(remaining), ID: i.ID, Action: i.Action, From: groupWireName(i.SourceName), RecipeID: i.TargetSlot, Revision: i.SlotRevision}
+	offer := device.GroupOffer{GroupKitSelection: i.GroupKitSelection, Op: "offer", TTLMS: uint32(remaining), ID: i.ID, Action: i.Action, From: groupWireName(i.SourceName), RecipeID: i.TargetSlot, Revision: i.SlotRevision}
 	if err := w.GroupRespond(ctx, offer); err != nil {
 		var problem *device.Error
 		if errors.As(err, &problem) && !problem.UnknownOutcome {

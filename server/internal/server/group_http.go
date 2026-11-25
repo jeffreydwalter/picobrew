@@ -111,6 +111,10 @@ func (s *Server) respondBrewInvite(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		v := groupView(d)
+		if *input.Accept && i.GroupKitSelection.Present() && (!groupKitCapable(v) || i.HubConfirmation || i.MenuSerial != "") {
+			s.fail(w, 409, "unsupported", kitGroupRequirement)
+			return
+		}
 		if i.HubConfirmation {
 			if !ccGroupCapable(v) {
 				s.fail(w, 409, "unsupported", "The brewer cannot verify a group start")
@@ -134,7 +138,7 @@ func (s *Server) respondBrewInvite(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			matched = state.Invite
-			if matched == nil || matched.ID != i.ID || matched.State != "pending" || matched.Action != i.Action || matched.RecipeID != i.TargetSlot {
+			if !i.matchesOffer(matched) || matched.State != "pending" {
 				s.fail(w, 409, "invitation", "The brewer no longer has this pending invitation")
 				return
 			}
@@ -221,7 +225,7 @@ func (s *Server) respondBrewInvite(w http.ResponseWriter, r *http.Request) {
 		var failure *device.Error
 		if errors.As(err, &failure) && !failure.UnknownOutcome {
 			state, readErr := wire.GroupState(r.Context())
-			if readErr == nil && state.Invite != nil && state.Invite.ID == i.ID && state.Invite.State == "pending" {
+			if readErr == nil && i.matchesOffer(state.Invite) && state.Invite.State == "pending" {
 				i.State = "pending"
 				i.Message = failure.Message
 				if persistErr := s.saveInvite(*i); persistErr != nil {

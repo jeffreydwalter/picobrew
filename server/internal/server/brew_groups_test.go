@@ -411,3 +411,115 @@ func TestCCPhysicalRinseKeepsOneInvite(t *testing.T) {
 		t.Fatal(events, i)
 	}
 }
+
+func TestGroupOriginalKitSelection(t *testing.T) {
+	ctx := context.Background()
+	s, h, c := newTestServer(t)
+	csrf := signIn(t, c, h.URL)
+	source, a := groupTestBrewer(t, s, "origin", "z-series")
+	target, b := groupTestBrewer(t, s, "peer", "z-series")
+	pico, p := groupTestBrewer(t, s, "pico", "pico-pro")
+	older, o := groupTestBrewer(t, s, "older", "z-series")
+	a.caps.ZPicoPakV1 = true
+	b.caps.ZPicoPakV1 = true
+	p.caps.GroupBrewingV1 = false
+	p.caps.GroupRecipeV1 = true
+	g := brewGroup{ID: "g", Name: "Batch", DeviceIDs: []string{"origin", "peer", "pico", "older", stockMemberPrefix + "ABC"}}
+	if _, err := s.db.Put(groupKind, g.ID, g, 0); err != nil {
+		t.Fatal(err)
+	}
+	steps := []domain.MachineStep{{Name: "Mash", Location: 2, TargetF: 150, Minutes: 10}, {Name: "Hops", Location: 3, TargetF: 203, Minutes: 10}}
+	minimum, maximum, savedABV, savedIBU := 5, 15, 7, 10
+	program := domain.MachineRecipe{ID: "kit", Name: "Pico Pale", Steps: steps, ZPak: &domain.ZPicoPak{RecipeID: 64, BeerID: 40, ABV: 4, IBU: 6, SelectedABV: &savedABV, SelectedIBU: &savedIBU, StepOptions: []domain.ZPakStep{{MinTime: &minimum, MaxTime: &maximum}, {MinTime: &minimum, MaxTime: &maximum}}}}
+	a.slots[program.ID] = program
+	b.slots[program.ID] = program
+	o.slots[program.ID] = program
+	zero, baseline, age := 0, 6, uint32(0)
+	dose := device.GroupKitSelection{SelectedABV: &zero, SelectedIBU: &baseline}
+	a.state.Source = &device.GroupSource{GroupKitSelection: dose, ID: "9600000000000001", AgeMS: &age, Action: "brew", RecipeID: program.ID, Revision: a.rev}
+	for _, d := range []*runtimeDevice{source, target, older, pico, source, target} {
+		if err := s.syncBrewGroup(ctx, d, *d.view.Status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{"pico", "older", stockMemberPrefix + "ABC"} {
+		i, err := s.memberInvite(id)
+		if err != nil || i == nil || i.State != "unavailable" || i.Message != kitGroupRequirement {
+			t.Fatalf("%s: %+v, %v", id, i, err)
+		}
+	}
+	if len(a.calls) != 0 || len(o.calls) != 0 || len(p.calls) != 0 || len(b.calls) != 1 || b.st.Busy {
+		t.Fatalf("unexpected commands: %+v, %+v, %+v, %+v", a.calls, b.calls, o.calls, p.calls)
+	}
+	offer := b.calls[0]
+	if offer.Op != "offer" || offer.RecipeID != program.ID || offer.Revision != b.rev || !reflect.DeepEqual(offer.GroupKitSelection, dose) {
+		t.Fatal(offer)
+	}
+	i, err := s.memberInvite("peer")
+	if err != nil || i == nil {
+		t.Fatal(i, err)
+	}
+	for _, path := range []string{"/brew-invites", "/devices/peer/brew-invite"} {
+		code, raw := request(t, c, "GET", h.URL+"/api/v1"+path, csrf, nil, nil)
+		if code != 200 || !strings.Contains(string(raw), `"selected_abv":0`) || !strings.Contains(string(raw), `"selected_ibu":6`) {
+			t.Fatalf("%s: %d %s", path, code, raw)
+		}
+	}
+	post := h.URL + "/api/v1/devices/peer/brew-invite/" + i.ID + "/respond"
+	b.state.Invite.SelectedABV = nil
+	if code, _ := request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 409 || b.st.Busy {
+		t.Fatal("accepted an invitation whose strength differed from the source", code)
+	}
+	b.state.Invite.SelectedABV = &zero
+	if code, raw := request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 200 || !b.st.Busy {
+		t.Fatalf("%d %s", code, raw)
+	}
+	for _, w := range []*groupTestDevice{a, b} {
+		kit := w.slots[program.ID].ZPak
+		if *kit.SelectedABV != 7 || *kit.SelectedIBU != 10 {
+			t.Fatal("group start changed the saved slot", kit)
+		}
+	}
+
+	// A changed or incomplete echo of the same ID must be withdrawn rather
+	// than becoming a pending invitation again on the next poll.
+	i.State = "pending"
+	b.state.Invite.State = "pending"
+	b.state.Invite.SelectedIBU = nil
+	if err = s.reconcileGroupInvite(ctx, target, target.view, b, b.state.Invite, i); err != nil || i.State != "unconfirmed" || b.calls[len(b.calls)-1].Op != "withdraw" {
+		t.Fatal(i, b.calls, err)
+	}
+	a.state.Source.ID = "9600000000000002"
+	a.state.Source.Revision++
+	if err = s.syncBrewGroup(ctx, source, a.st); err != nil {
+		t.Fatal(err)
+	}
+	i, err = s.memberInvite("peer")
+	if err != nil || i == nil || i.State != "unavailable" || !strings.Contains(i.Message, "source recipe changed") {
+		t.Fatal("accepted a stale source slot", i, err)
+	}
+}
+
+func TestGroupKitValidatesAuthoredRangesAndStoredSlot(t *testing.T) {
+	s, _, _ := newTestServer(t)
+	dst, w := groupTestBrewer(t, s, "target", "z-series")
+	w.caps.ZPicoPakV1 = true
+	lo, hi, mid, out := 3, 20, 5, 11
+	p := domain.MachineRecipe{ID: "kit", Name: "Kit", Steps: []domain.MachineStep{{Name: "Mash", Location: 2, TargetF: 151, Minutes: 10}}, ZPak: &domain.ZPicoPak{RecipeID: 7, BeerID: 8, ABV: mid, IBU: mid, StepOptions: []domain.ZPakStep{{MinTime: &lo, MaxTime: &hi}}}}
+	dose := device.GroupKitSelection{SelectedABV: &mid}
+	if err := validateGroupKit(dst.view, p, dose); err != nil {
+		t.Fatal(err)
+	}
+	for _, selection := range []device.GroupKitSelection{{SelectedABV: &out}, {SelectedIBU: &mid}} {
+		if err := validateGroupKit(dst.view, p, selection); err == nil {
+			t.Fatal("unsupported strength accepted", selection)
+		}
+	}
+	if err := validateGroupKit(dst.view, domain.MachineRecipe{}, dose); err == nil {
+		t.Fatal("kit strength accepted on an ordinary program")
+	}
+	ref := groupRecipe{GroupKitSelection: dose, Program: p, Model: "z-series", LibraryID: "library", Revision: 1}
+	if _, _, err := s.groupTargetRecipe(context.Background(), dst, dst.view, w, ref); err == nil || len(w.slots) != 0 {
+		t.Fatal("missing stored kit was created for a one-brew dose")
+	}
+}
