@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"sort"
 	"time"
@@ -105,12 +106,17 @@ func (s *Server) respondBrewInvite(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, 409, "identity", "The brewer identity changed")
 			return
 		}
-		if *input.Accept && (status.Busy || status.Stopped || !status.Ready) {
+		if *input.Accept && (status.Stopped || ((status.Busy || !status.Ready) && (i.MenuSerial != "" || i.HubConfirmation))) {
 			s.fail(w, 409, "busy", "The brewer must be ready to join")
 			return
 		}
 		v := groupView(d)
-		if i.MenuSerial != "" {
+		if i.HubConfirmation {
+			if !ccGroupCapable(v) {
+				s.fail(w, 409, "unsupported", "The brewer cannot verify a group start")
+				return
+			}
+		} else if i.MenuSerial != "" {
 			if status.StockSerial != i.MenuSerial {
 				s.fail(w, 409, "identity", "The Zymatic serial changed")
 				return
@@ -157,6 +163,49 @@ func (s *Server) respondBrewInvite(w http.ResponseWriter, r *http.Request) {
 		s.json(w, 200, i)
 		return
 	}
+	if i.HubConfirmation {
+		if !*input.Accept {
+			i.State = "declined"
+		} else {
+			starter, ok := d.adapter.(device.GuardedGroupStarter)
+			if !ok {
+				s.fail(w, 409, "unsupported", "The brewer cannot verify a group start")
+				return
+			}
+			i.State = "responding"
+			if err = s.saveInvite(*i); err != nil {
+				s.storeError(w, err)
+				return
+			}
+			if err = starter.StartGroupAction(r.Context(), i.Action, i.TargetSlot, i.SlotRevision); err != nil {
+				i.State = "unconfirmed"
+				i.Message = "Check the brewer before starting another recipe."
+				var failure *device.Error
+				if errors.As(err, &failure) && !failure.UnknownOutcome {
+					i.State = "unavailable"
+					i.Message = failure.Message
+				}
+				if persistErr := s.saveInvite(*i); persistErr != nil {
+					s.storeError(w, persistErr)
+					return
+				}
+				s.deviceError(w, err)
+				return
+			}
+			i.State = "accepted"
+			i.Message = "The brewer accepted the start. Follow its normal preparation prompts."
+			if err = s.watchGroupHistory(r.Context(), d, groupView(d), *i, time.Now()); err != nil {
+				s.cfg.Logger.Debug("Group journal link unavailable", "error", err)
+			}
+		}
+		if err = s.saveInvite(*i); err != nil {
+			s.storeError(w, err)
+			return
+		}
+		s.json(w, 200, i)
+		return
+	}
+
 	op := "decline"
 	if *input.Accept {
 		op = "accept"

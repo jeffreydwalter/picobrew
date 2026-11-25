@@ -24,6 +24,11 @@ type Maintenance struct {
 	Due       []string `json:"due"`
 }
 type Status struct {
+	GroupRinseStartedMS *uint32 `json:"group_rinse_started_ms,omitempty"`
+	GroupAgeMS          *uint32 `json:"group_age_ms,omitempty"`
+	GroupRevision       uint32  `json:"group_revision,omitempty"`
+	GroupRecipeID       string  `json:"group_recipe_id,omitempty"`
+
 	Model            string     `json:"model,omitempty"`
 	ModelName        string     `json:"model_name,omitempty"`
 	ModelFamily      string     `json:"model_family,omitempty"`
@@ -102,6 +107,8 @@ type FieldMetadata struct {
 	Kind  string `json:"kind"`
 }
 type Capabilities struct {
+	GroupRecipeV1 bool `json:"group_recipe_v1,omitempty"`
+
 	GroupBrewingV1          bool                     `json:"group_brewing_v1,omitempty"`
 	ReleaseChannel          string                   `json:"release_channel,omitempty"`
 	EventsPersistent        *bool                    `json:"events_persistent,omitempty"`
