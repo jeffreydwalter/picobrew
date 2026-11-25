@@ -21,7 +21,8 @@ struct World {
     std::vector<std::vector<std::uint8_t>> frames;
     std::map<unsigned,bool> pins;
     std::vector<HeadWifiNetwork> access_points;
-    bool reject_network=false;
+    bool reject_network=false,reject_save=false;
+    unsigned switches=0;std::uint32_t wired_ip=0;
     std::uint32_t pending_pair=0;
     unsigned approved_pair=0, cancelled_pair=0;
     int scan_result=-1;
@@ -44,7 +45,7 @@ struct World {
             w.files[name]=std::vector<std::uint8_t>(data,data+size);return api::StorageResult::Ok;};
         io.remove=[](void* p,const char* name){return self(p).files.erase(name)?api::StorageResult::Ok:api::StorageResult::Missing;};return io;
     }
-    explicit World(const std::map<std::string,std::vector<std::uint8_t>>* restored=nullptr){
+    explicit World(const std::map<std::string,std::vector<std::uint8_t>>* restored=nullptr,bool wired=false){
         if(restored)files=*restored;
         head.bind_settings(core.eeprom.data);std::strcpy(core.identifier.data(),"112233445566");
         core.ports.context=this;core.ports.millis=[](void* p){return self(p).now;};
@@ -97,7 +98,11 @@ struct World {
         zseries::standalone::Ports ports;ports.context=this;ports.millis=core.ports.millis;ports.storage=storage();
         ports.http_poll=[](void* p,std::uint32_t){++self(p).http_polls;};
         ports.serial_poll=[](void*){};ports.save_network=[](void* p,const char*,const char*){return !self(p).reject_network;};ports.reconnect_network=[](void*){return true;};
-        ports.lan_ready=[](void* p,std::uint32_t){return self(p).lan;};ports.save_configuration=[](void*){return true;};
+        ports.lan_ready=[](void* p,std::uint32_t){return self(p).lan;};ports.save_configuration=[](void* p){return !self(p).reject_save;};
+        if(wired){
+            ports.wired_address=[](void* p){return self(p).wired_ip;};
+            ports.apply_interface=[](void* p){++self(p).switches;};
+        }
         ports.pair_prompt=[](void* p,std::uint32_t,char code[9]){
             std::strcpy(code,"f82f8f33");return self(p).pending_pair;};
         ports.pair_decide=[](void* p,std::uint32_t,std::uint32_t serial,bool allow){
@@ -529,6 +534,31 @@ void stable_wifi_picker_and_local_lease(){
     assert(!std::strcmp(wifi.state.requested.ssid.data(),"saved")&&!w.core.system_error);
     assert(menu.count==1&&menu.items[0].event.command==UiCommand::ConfigureNetworkAsBack);
 }
+void wired_interface_selection(){
+    World w(nullptr,true);
+    auto select=[&](UiCommand cmd){HeadUiEvent event;event.command=cmd;assert(w.head.receive_ui(event));w.head_tick();};
+    auto title=[&](const char* expected){assert(!std::strcmp(w.head.screens.state.title.data(),expected));};
+    auto listed=[&](UiCommand cmd){const auto& menu=w.head.screens.menu_data;
+        return std::any_of(menu.items.begin(),menu.items.begin()+menu.count,[&](const decltype(menu.items)::value_type& item){return item.event.command==cmd;});};
+    select(UiCommand::ConfigureNetwork);title("Network");assert(listed(UiCommand::ConfigureEthernet));
+    select(UiCommand::ConfigureEthernet);title("Ethernet");assert(listed(UiCommand::EthernetConnect));
+    std::strcpy(w.core.eeprom.data.wifi_ssid.data(),"saved-wifi");
+    w.reject_save=true;select(UiCommand::EthernetConnect);title("Save failed");
+    assert(!w.core.eeprom.data.use_ethernet&&!w.switches);
+    w.reject_save=false;w.core.runtime.state.id=RuntimeStateId::Running;
+    select(UiCommand::EthernetConnect);title("Machine busy");assert(!w.switches);
+    w.core.runtime.state.id=RuntimeStateId::Standby;
+    select(UiCommand::EthernetConnect);title("Waiting for Ethernet");
+    assert(w.core.eeprom.data.use_ethernet&&w.switches==1&&!listed(UiCommand::EthernetConnect));
+    w.wired_ip=0x2A00000a;assert(w.adapter.tick_wifi(w.now)&&w.core.network==2);
+    select(UiCommand::ConfigureEthernet);title("10.0.0.42");
+    w.wired_ip=0;assert(w.adapter.tick_wifi(w.now)&&w.core.network==0);
+    select(UiCommand::ConfigureNetworkAsBack);title("Network");
+    assert(listed(UiCommand::WiFiReconnect)&&!listed(UiCommand::WiFiScan));
+    select(UiCommand::WiFiReconnect);assert(!w.core.eeprom.data.use_ethernet&&w.switches==2);
+    assert(!std::strcmp(w.core.eeprom.data.wifi_ssid.data(),"saved-wifi"));
+    assert(listed(UiCommand::WiFiScan)&&!w.core.system_error);
+}
 void rejected_resume_retains_checkpoint(){World before;running_hold(before);World after(&before.files);
     api::Command resume;std::strcpy(resume.name,"resume-interrupted");resume.confirm=true;
     assert(after.adapter.execute(resume).status==202);after.fail_write=1;assert(after.dispatch());
@@ -553,7 +583,7 @@ int main(int argc,char** argv){assert(argc==2);const std::string test=argv[1];
     else if(test=="recovery-corrupt")recovery_corruption_and_discard();else if(test=="recovery-end")recovery_failure_and_terminal_state();
     else if(test=="sensor-fault")sensor_fault_cutoff();else if(test=="coffee-buffer")buffered_coffee();
     else if(test=="recipe-menu")recipe_menu_and_retired_manual_command();else if(test=="standby-start")standby_remote_start();else if(test=="step-indices")recipe_step_indices();
-    else if(test=="wifi-picker")stable_wifi_picker_and_local_lease();
+    else if(test=="wired-network")wired_interface_selection();else if(test=="wifi-picker")stable_wifi_picker_and_local_lease();
     else if(test=="pairing")physical_pairing();
     else if(test=="network-menus")native_network_menus();else if(test=="recovery-rejected")rejected_resume_retains_checkpoint();
     else if(test=="recovery-preflight")recovery_preflight_has_no_diagnostics();else return 2;

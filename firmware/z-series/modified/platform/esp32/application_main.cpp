@@ -8,6 +8,7 @@
 #include "network_ports.hpp"
 #include "storage_ports.hpp"
 #include "msp_bus.hpp"
+#include "wired_network.hpp"
 #include "factory_flash.hpp"
 #include "output_cutoff.hpp"
 #include <esp_system.h>
@@ -19,6 +20,9 @@
 #include <cstring>
 #include <cstdio>
 #include <new>
+
+// Same TCP/IP initialization used by ETH.cpp in the pinned Arduino core.
+extern void tcpipInit();
 
 extern "C" const char z_field_identity[64] __attribute__((section(".rodata_custom_desc"),used)) = PB_FIELD_IDENTITY;
 
@@ -40,6 +44,7 @@ struct Application {
     std::uint32_t restart_ms = 0;
     platform::HttpSocket listener;
     platform::TelemetrySocket telemetry;
+    WiredNetwork ethernet{firmware.system.spi};
     PicoHttpIo http_io{};
     PicoHttpServer http{};
     MspBus bus;
@@ -54,6 +59,7 @@ struct Application {
                 a.firmware.core.core.state.id!=oem::CoreStateId::Starting&&a.firmware.core.core.state.id!=oem::CoreStateId::Running&&a.firmware.core.core.state.id!=oem::CoreStateId::Stopping);}),
         bus(firmware.system.controller_bus){}
     bool bind(){
+        ethernet.prepare(firmware.core.ethernet_mac.data());
         original_wifi=firmware.core.wifi.services;
         firmware.core.wifi.services.context=this;
         firmware.core.wifi.services.millis=[](void*)->std::uint32_t{return ::millis();};
@@ -88,8 +94,17 @@ struct Application {
         ports.millis=[](void*)->std::uint32_t{return ::millis();};
         ports.http_poll=[](void* p,std::uint32_t now){static_cast<Application*>(p)->http_poll(now);};
         ports.serial_poll=[](void* p){static_cast<Application*>(p)->serial_poll();};
-        ports.lan_ready=[](void*,std::uint32_t network){return network==1?WiFi.status()==WL_CONNECTED&&static_cast<std::uint32_t>(WiFi.localIP())!=0:
-            false;};
+        ports.lan_ready=[](void* p,std::uint32_t network){auto& app=*static_cast<Application*>(p);
+            return network==2 ? app.ethernet.address()!=0 : network==1&&!app.firmware.core.eeprom.data.use_ethernet&&
+                WiFi.status()==WL_CONNECTED&&static_cast<std::uint32_t>(WiFi.localIP())!=0;};
+        ports.wired_address=[](void* p){return static_cast<Application*>(p)->ethernet.address();};
+        ports.apply_interface=[](void* p){auto& app=*static_cast<Application*>(p);
+            pico_http_server_disconnect(&app.http);app.telemetry.close();
+            if(app.firmware.core.eeprom.data.use_ethernet){
+                app.firmware.core.wifi.select_target(oem::WiFiStateId::Idle);
+                WiFi.mode(WIFI_OFF);
+            }else {WiFi.mode(WIFI_STA);app.apply_network();}
+            app.update_capability();};
         ports.save_network=[](void* p,const char* ssid,const char* password){auto& a=*static_cast<Application*>(p);
             char line[104];const int length=::snprintf(line,sizeof line,"wifi %s\t%s",ssid,password);
             if(length<=0||static_cast<std::size_t>(length)>=sizeof line)return false;
@@ -142,7 +157,7 @@ struct Application {
         std::strncpy(data.wifi_password.data(),saved.password,data.wifi_password.size()-1);
     }
     void apply_network(){
-        if(!provisioning.network_configured())return;
+        if(firmware.core.eeprom.data.use_ethernet||!provisioning.network_configured())return;
         sync_network();oem::WifiCredentials credentials;const auto& network=provisioning.network();
         std::memcpy(credentials.ssid.data(),network.ssid,sizeof network.ssid);
         std::memcpy(credentials.password.data(),network.password,sizeof network.password);credentials.internet_expected=false;
@@ -150,7 +165,7 @@ struct Application {
     }
     void update_capability(){
         update_ready=controller_ready && !fault_reported && update_store_ready && provisioning.key_configured() &&
-            provisioning.network_configured() && flash.role()==picobrew::esp32_ota::Role::Application;
+            !firmware.core.eeprom.data.use_ethernet && provisioning.network_configured() && flash.role()==picobrew::esp32_ota::Role::Application;
         adapter.wireless_capable(update_ready);
     }
     void serial_poll(){
@@ -186,7 +201,9 @@ struct Application {
         const auto stored=engine.begin();
         if(!stored.ok())Serial.println("Pico Z persistent store unavailable; starting sessions is disabled");
         controller_ready=controller_ready&&adapter.begin();
-        WiFi.mode(WIFI_STA); // Initialize lwIP before opening its listener.
+        WiFi.persistent(false);
+        tcpipInit(); // Ethernet-only sites also need the SDK TCP/IP thread.
+        WiFi.mode(firmware.core.eeprom.data.use_ethernet ? WIFI_OFF : WIFI_STA);
         std::size_t total=0,used=0;
         update_store_ready=stored.ok() && files.capacity(total,used) && total>=1300000u;
         update_capability();
@@ -200,6 +217,7 @@ struct Application {
     }
     void poll(){
         const std::uint32_t now=::millis();
+        ethernet.poll(firmware.core.eeprom.data.use_ethernet!=0,now);
         if(update.reboot_pending()){
             http_poll(now);
             if(http.client<0 || now-restart_ms>=2000u)esp_restart();

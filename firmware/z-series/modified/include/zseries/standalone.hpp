@@ -12,6 +12,8 @@ struct Ports {
     void (*http_poll)(void*, std::uint32_t) = nullptr;
     void (*serial_poll)(void*) = nullptr;
     bool (*lan_ready)(void*, std::uint32_t network) = nullptr;
+    std::uint32_t (*wired_address)(void*) = nullptr;
+    void (*apply_interface)(void*) = nullptr;
     bool (*save_network)(void*, const char* ssid, const char* password) = nullptr;
     bool (*reconnect_network)(void*) = nullptr;
     bool (*save_configuration)(void*) = nullptr;
@@ -90,6 +92,8 @@ private:
     bool show_pairing();
     std::uint32_t pairing_ticket_ = 0;
     bool show_network();
+    bool show_ethernet();
+    bool select_interface(bool wired);
     bool start_wifi_scan();
     bool show_wifi_results(std::int32_t count);
     bool select_wifi(const oem::HeadUiEvent&);
