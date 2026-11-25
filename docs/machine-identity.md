@@ -14,7 +14,7 @@ The canonical identifiers are recorded in [`firmware/models.json`](../firmware/m
 | `z-series` | Pico Z | `z-series` | Complete source/reference image build; physical Z1/Z2 mapping unassigned |
 | `picostill` | PicoStill | `picostill` | Complete standalone accessory source/reference package |
 | `picoferm` | PicoFerm | `picoferm` | Complete standalone sensor source/reference package |
-| `zymatic` | PicoBrew Zymatic | `zymatic` | OEM-based applications with USB installation and stock restoration. The extended profile adds Ethernet dial control, local pairing and history on qualified boot layouts. Physical trials pending |
+| `zymatic` | PicoBrew Zymatic | `zymatic` | OEM-based applications with USB installation and stock restoration. The extended profile adds remote dial control, local pairing and history on qualified boot layouts. Physical trials pending |
 
 The root build router accepts a model through `MODEL` or `MACHINE`:
 

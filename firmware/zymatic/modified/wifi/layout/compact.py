@@ -214,12 +214,15 @@ def main():
     parser.add_argument("--oem-file", required=True, type=Path, help="Verified original Zymatic 1.1.14 ZIP or HEX")
     parser.add_argument("--toolchain", required=True, type=Path, help="Directory containing pinned avr-gcc")
     parser.add_argument("--simulate", action="store_true", help="Run OEM table and compact application tests in simavr")
+    parser.add_argument("--write-release", type=Path, help="Export the reproducible USB installer template here")
     args = parser.parse_args()
     original_hex = usb_stock.unpack_source(args.oem_file.read_bytes())
     original = usb_stock.decode_application(original_hex)
     with tempfile.TemporaryDirectory() as temporary:
         directory = Path(temporary)
         image, symbols, low_end = compact_layout(original, args.toolchain.resolve(), directory)
+        import release
+        release.export(original, image, symbols, "compact", args.write_release)
         if args.simulate:
             simulate(directory, original, image, symbols, original_hex, args.toolchain.resolve())
         # AVR instruction alignment rules out the odd final byte of the table.

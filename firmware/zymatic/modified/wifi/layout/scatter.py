@@ -204,6 +204,7 @@ def main():
     parser.add_argument("--toolchain", type=Path, required=True)
     parser.add_argument("--oem-file", type=Path, required=True)
     parser.add_argument("--with-listener", action="store_true", help="Exercise the radio with its normal firmware foreground hooks")
+    parser.add_argument("--write-release", type=Path, help="Export the reproducible USB installer template here")
     args = parser.parse_args()
     original_hex = usb_stock.unpack_source(args.oem_file.read_bytes())
     original = usb_stock.decode_application(original_hex)
@@ -237,6 +238,9 @@ def main():
             subprocess.run([sys.executable, compiler, "--toolchain", toolchain, "--out-dir", runtime / "extension"], check=True)
         tail_budget.check(root, root / "original.bin", original, tails)
         manifest = simulator(root, runtime, original, packed, asset, original_hex, prologue_ranges, toolchain)
+        if args.with_listener:
+            import release
+            release.export(original, (root / "extended.bin").read_bytes(), manifest["symbols"], "extended", args.write_release)
         low_free = build.tables.POOL_END - build.tables.SEEK_END - manifest["low_bytes"]
         high_free = build.LIMIT - build.START - manifest["extension_bytes"]
         print(f"{len(asset)} site bytes in {len(index)} fragments with a {index_size}-byte index. "

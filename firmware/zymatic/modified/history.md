@@ -1,6 +1,6 @@
 # Zymatic brew history
 
-The Zymatic records a brew on its ATmega1284P even with Ethernet disconnected. A paired Hub can read the journal after the brewer reconnects. Local and Hub-selected recipes use the original interpreter. An OEM recovery that reenters the interpreter starts a new history ID so the earlier interrupted record remains identifiable.
+The extended Zymatic build records a brew on its ATmega1284P while offline and while the Wi-Fi radio is busy with the stock brew controller. A paired Hub can read the journal after the brewer reconnects. Local and Hub-selected recipes use the original interpreter. An OEM recovery that reenters the interpreter starts a new history ID so the earlier interrupted record remains identifiable.
 
 | Stored measurement | Source in stock 1.1.14 |
 | --- | --- |
