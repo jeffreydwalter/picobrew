@@ -51,6 +51,7 @@ void Device::off() {
     if (board_ready_ && !hardware.sensors_enabled) hardware.enable_sensors(true);
 }
 void Device::stop(const char* reason) {
+    lease_[0]=owner_[0]=0;link_running_=false;
     stopped_ = true; stop_reason_ = reason; off(); was_running_ = false; menu_ = false;
     if (engine_) engine_->cancel_prepared_session();
     leds.start(oem::Animation::SteadyYellow);
@@ -85,6 +86,7 @@ api::Result Device::execute(const api::Command& command) {
     for (const auto& candidate : commands) if (!std::strcmp(candidate.name, command.name)) descriptor = &candidate;
     if (!descriptor || (command.fields & ~descriptor->allowed_fields) ||
         (command.fields & descriptor->required_fields) != descriptor->required_fields) return invalid();
+    if (lease_[0] && std::strcmp(command.name,"stop")) return {409,"brewer_link_active","Stop the paired brewer session before operating PicoStill separately"};
     if (!std::strcmp(command.name, "ack-clean-condenser")) {
         if (!idle()) return {409, "busy", "Wait for PicoStill to stop before cleaning"};
         if (!engine_) return {503, "not_ready", "Care record unavailable"};
@@ -125,7 +127,7 @@ void Device::buttons() {
     const auto now = output.millis(); const bool pressed = !output.digital_read(13);
     if (pressed && !pressed_) {
         pressed_ = true; held_ = false; button_changed_ = now; if (clicks_ < 3) ++clicks_;
-        if (controller.running()) { stop("physical-button"); clicks_ = 0; held_ = true; }
+        if (lease_[0] || controller.running()) { stop("physical-button"); clicks_ = 0; held_ = true; }
     } else if (!pressed && pressed_) { pressed_ = false; button_released_ = now; }
     if (pressed_ && !held_ && now - button_changed_ >= 5000) {
         held_ = true; button_event(true, clicks_); clicks_ = 0;
@@ -147,6 +149,7 @@ void Device::button_event(bool held, unsigned count) {
 }
 void Device::poll() {
     if (!begun_) return;
+    expire_link();
     buttons();
     if (board_ready_) controller.poll();
     // A manual pump-off request is latched at the GPIO port, so a native state
@@ -162,11 +165,12 @@ void Device::poll() {
         } else { off(); leds.start(oem::Animation::SteadyGreen); }
         was_running_ = false;
     }
+    if (link_running_ && (!controller.running() || !sensors_healthy())) stop("brewer-link-interlock");
     leds.poll();
 }
 api::Result Device::snapshot(api::Snapshot& result) {
     result = api::Snapshot(); result.uptime_ms = output.millis(); result.ready = begun_ && board_ready_ && storage_ready_;
-    result.busy = controller.running(); result.stopped = stopped_; result.stop_reason = stop_reason_; result.command = command_;
+    result.busy = lease_[0] || controller.running(); result.stopped = stopped_; result.stop_reason = stop_reason_; result.command = command_;
     result.state = !begun_ ? "initializing" : !board_ready_ ? "hardware-unavailable" : !storage_ready_ ? "storage-unavailable" :
         stopped_ ? "stopped" : controller.running() ? oem::to_string(controller.state) : menu_ ? "selecting-program" : "idle";
     result.device_state = static_cast<unsigned>(controller.program); result.phase = static_cast<unsigned>(controller.state);
@@ -205,6 +209,7 @@ api::DeviceServices Device::services() noexcept {
         id.model = id.model_family = "picostill"; id.model_name = "PicoStill"; id.firmware_version = update::Version; id.device_uid = device.uid_; return id; };
     ports.capabilities = [](void* p) { api::Capabilities c;
         if (static_cast<Device*>(p)->wireless_) c.ota_protocol = update::Protocol;
+        c.picostill_brewer_link_v1 = true;
         c.flags = api::Pump | api::Fans | api::Temperature | api::Pressure;
         c.settings = api::TemperatureUnit; c.commands = commands; c.command_count = sizeof(commands) / sizeof(commands[0]); return c; };
     ports.snapshot = [](void* p, api::Snapshot& result) { return static_cast<Device*>(p)->snapshot(result); };

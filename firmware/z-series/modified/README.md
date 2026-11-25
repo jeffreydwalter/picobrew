@@ -17,7 +17,7 @@ The idle home screen suggests Rinse after a brew and Clean after three brews. A 
 
 Hub USB setup can provision an individually identified Z-series module with protected recovery. The Hub backs up the whole device and verifies the active stock image and partition layout first. For previously paired standalone installations, it also saves the running flash before repartitioning, checks the existing key, and verifies each migrated file and its metadata. Unreadable storage, an unknown application, or data that cannot fit stops setup before a write.
 
-A provisioned module advertises `esp32-factory-v1`. From the machine’s Firmware panel, an idle module can restart into recovery, accept a matching application, read it back, and select it for boot. Recovery uses the existing Wi-Fi settings and device key and leaves the heater and pumps off. The 4 MiB layout reserves 896 KiB for recovery, 1,668 KiB for the application and 1,468 KiB for SPIFFS. USB recovery and OTA still require operating trials on physical hardware.
+A provisioned module advertises `esp32-factory-v1`. From the machine’s Firmware panel, an idle module can restart into recovery, accept a matching application, read it back, and select it for boot. Recovery uses the existing device key and selected network interface. The factory receiver keeps the heater and pumps off. Earlier receivers support Wi-Fi only. The 4 MiB layout reserves 896 KiB for recovery, 1,668 KiB for the application and 1,468 KiB for SPIFFS. USB recovery and OTA still require operating trials on physical hardware.
 
 ## Implemented local operation
 
@@ -83,6 +83,42 @@ offer can still be accepted for up to two minutes from the original receipt.
 Repeating the same pending offer leaves that deadline in place. A reboot clears
 the offer. Each brewer tracks its own session independently.
 
+## Using a PicoStill with the Z
+
+Pair an idle Z with a PicoStill running compatible standalone firmware. The
+Hub can supply its saved accessory address and device key. The Z verifies the
+accessory UID with an authenticated request before replacing its saved pairing.
+The devices must be able to reach one another on the local network during use.
+After pairing, **PicoStill** on the Z opens its original manual and boil-point
+programs. Both retain the native setup screens, filter check, operator prompts,
+temperature and pressure logic. A cleaning reminder must be acknowledged on
+the brewer after physically cleaning the condenser.
+
+The Z holds its heater and pump outputs off through setup and waits for the
+accessory to acknowledge starting its native controller. It receives the
+four temperatures in Celsius, pressure in psi, pump state, cooling fan state
+and controller activity. These readings feed the recovered controller’s
+native sample windows and statistics. The Z’s **PicoStill** setting in
+**Settings** controls recording the brewer session in local history. The
+accessory independently records its own sensor and actuator history.
+
+Authenticated `GET /api/v1/picostill` reports the pairing, logging preference
+and latest sample during a session. `PUT` stages an address, port, UID and key.
+Poll GET until `checking` clears and verify the saved UID and `error`.
+After a reboot, `paired` identifies a saved binding and `verified` becomes
+true when the accessory next proves its identity. `PATCH` takes
+`{"session_logging":true}` or `false` for that field. `DELETE` clears the
+binding. Both devices advertise `picostill_brewer_link_v1`. The commands
+`picostill-manual` and `picostill-boil-point` use the same prompts as the dial.
+
+The Z requests fresh data every 1.5 seconds and cuts its outputs on a failed
+exchange or invalid reading. Requests time out after 3 seconds. PicoStill
+independently cuts its outputs if the Z fails to renew its session for 6.5
+seconds. Either machine can stop its session. Restoring network connectivity
+requires a fresh operator start. Physical tests are still needed for heat
+and pressure response, cooling, filter removal, operator stop, network loss
+and power loss on each controller.
+
 ## Restart recovery and output inhibition
 
 A local brew reserves its history identity and saves an owned recipe/program
@@ -143,9 +179,12 @@ The local website, authenticated API, and optional Hub telemetry share the
 selected network connection. On an idle Z, choose **Settings → Network →
 Ethernet → Use Ethernet** and reopen **Ethernet** to see the DHCP address.
 **Use Wi-Fi** switches back to the saved wireless settings. The brewer saves
-the selection in its original Ethernet preference. The released factory
-receiver requires Wi-Fi for firmware updates. Choose Wi-Fi before starting
-an update. Physical Ethernet operation still needs verification on a Z.
+the selection and boiler configuration in verified flash records. USB setup
+imports the original board settings when it identifies the factory EEPROM
+layout. Ethernet updates require a protected receiver with the W5500 transport.
+A Z provisioned with an earlier Wi-Fi-only receiver can update over Wi-Fi
+or use USB setup to install the new receiver. Physical Ethernet operation
+still needs verification on a Z.
 
 The W5500 uses socket 0 in MACRAW mode with the original SPI bus and chip
 select. The firmware exchanges at most one frame per control pass; DHCP, DNS

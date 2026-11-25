@@ -14,7 +14,7 @@ On Pico S, Pro, C and Z, **Brew Recipe** runs a saved machine recipe. On S, Pro 
 | Authenticated API v1 and device identity | Implemented | Includes display variant | Z family identity | Ethernet and Wi-Fi during the foreground service window | Implemented | Implemented |
 | Device website | Implemented | Implemented | Shared browser | Compact supports monitoring. Extended adds paired dial control. | Shared browser | Shared browser |
 | Optional Hub connection and live readings | Implemented | Implemented | Implemented | Continuous Ethernet monitoring, Wi-Fi access at Home and programmed pauses, and outbound recipe sync over either interface | Implemented | Implemented |
-| Firmware updates after initial USB setup | Wi-Fi with verified recovery | Wi-Fi with display-matched recovery | Wi-Fi on a provisioned module | Rear USB | Wi-Fi with protected recovery | Wi-Fi with dual-bank layout |
+| Firmware updates after initial USB setup | Wi-Fi with verified recovery | Wi-Fi with display-matched recovery | Wi-Fi on a provisioned module, or Ethernet with a wired-capable recovery image | Rear USB | Wi-Fi with protected recovery | Wi-Fi with dual-bank layout |
 | Persistent history | Eight sessions sharing 4,224 samples | Eight sessions sharing 4,224 samples | Eight sessions sharing 4,224 samples | Extended retains eight sessions sharing 222 samples. Compact relies on Hub polling. | Eight sessions sharing 4,224 samples | Eight sessions sharing 4,224 samples |
 | Default periodic history interval | 15 seconds | 15 seconds | 15 seconds | Extended samples about once a minute during a program | 15 seconds | 300 seconds, configurable from 60 to 86,400 seconds |
 | Available controls and readings | Brewer profile | Brewer profile | Native Z profile | Monitoring on both profiles and eligible dial inputs on extended | Accessory profile | Sensor profile |
@@ -54,11 +54,13 @@ A paired PicoFerm turns off its radio between reporting windows while fermentati
 PicoFerm's pressure reading retains its evidenced raw units; battery readings
 use the recovered ADC-to-voltage conversion and are reported in volts.
 
-The modified Z profile uses Wi-Fi for its local API. Its recovered OEM source
-also retains the original W5500 Ethernet and vendor protocols. Modified
-firmware does not expose those cloud settings as required setup steps.
+On Z, the local website, API and Hub connection run on the network interface selected under **Settings → Network**. Both Wi-Fi and the original W5500 Ethernet port support DHCP. New USB installations also enable Ethernet in protected recovery. A Z with the earlier Wi-Fi-only receiver uses Wi-Fi for updates until it is reprovisioned over USB. [Z network settings](../firmware/z-series/modified/README.md)
 
-On stock Z firmware, Group Brewing offers a session started on one unit to the other units. Standalone 1.0.0 supports independent programs on each registered unit. The factory group invitation and multi-machine starts are unavailable in the Hub. [Z Series manual](https://www.picobrew.com/about/manual?p=z_manual.txt)
+### Group Brewing
+
+In **Brewery → Group machines**, select the individual brewers that will brew together. A Z stack can join as separate modules. When a member starts a compatible recipe or routine, the Hub offers it only to the other selected members. Each participant confirms independently. The Hub checks the actual recipe and target capabilities and links the separate journal entries so you can compare brews.
+
+A compatible Z can accept from its physical dial, its local website or the Hub. A Pico S, Pro or C can originate a group recipe or rinse from its dial and accept an invitation in the Hub. For a configured Zymatic menu, acceptance stages the recipe and the operator starts it on the dial. Each machine retains its own preparation prompts and interlocks. [Z Group Brewing](../firmware/z-series/modified/README.md#group-brewing)
 
 ## Recipe checks and manufacturer care
 

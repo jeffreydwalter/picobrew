@@ -41,6 +41,7 @@ def main():
                         if name in descriptors: descriptors[name]={'allowed':fields,'required':[] if name=='encoder' else fields[:2] if name=='set-fan' else fields}
                     info = {'api_version':1,'mode':'standalone','model':model,'model_name':{'z-series':'Pico Z','picoferm':'PicoFerm','picostill':'PicoStill'}[model],'model_family':model,'firmware_version':'1.2.0-fixture','commands':allowed,'command_fields':descriptors,'settings_fields':['temperature_unit','language','detailed_status'] if brewing else ['temperature_unit'],'recipe_capacity':16 if brewing else 0,'step_capacity':15 if brewing else 0,'front_panel':brewing,'telemetry_forwarding':True,'capabilities':{'recipes':brewing,'brewing':brewing,'heating':brewing,'front_panel':brewing,'temperature':True,'pressure':not brewing,'battery':model=='picoferm','fermentation':model=='picoferm','pump':model!='picoferm','fans':model=='picostill'}}
                     info['z_program_maker']=brewing;info['z_state_v1']=brewing
+                    info['z_cloud_program_v1']=brewing;info['group_brewing_v1']=brewing
                     info['zero_minute_steps']=brewing
                     info['history_sample_interval_ms']=720000 if model=='picoferm' else 15000
                     saved_recipes={}
@@ -56,6 +57,7 @@ def main():
                     hub_launch=width==390
                     ticket="43"*32 if hub_launch else None
                     claims=0
+                    invite={'id':'0123456789abcdef','state':'pending','action':'rinse','from':'Test brewer'}
                     def route_api(route):
                         nonlocal ticket,claims
                         request=route.request;path=request.url.split('/api/v1',1)[1];requests.append((request.method,path))
@@ -77,6 +79,11 @@ def main():
                             else:result={'api_key':KEY};ticket=None
                         elif path=='': result=info
                         elif path=='/status':result=status
+                        elif path=='/group-brew' and brewing:
+                            if request.method=='POST':
+                                assert request.post_data_json=={'op':'decline','id':invite['id']}
+                                invite['state']='declined'
+                            result={'source':None,'invite':invite if not status['recovery']['available'] and status['recovery']['valid'] else None}
                         elif path=='/settings':result={'temperature_unit':'F','language':'en','detailed_status':False} if brewing else {'temperature_unit':'F'}
                         elif path=='/recipes':
                             result={'capacity':16,'recipes':[{'id':key,'name':program['Name'],'steps':len(program['Steps'])} for key,program in saved_recipes.items()]}
@@ -181,6 +188,10 @@ def main():
                         expect(page.locator('#recoveryPanel')).to_be_hidden()
                         assert commands[-1]=={'command':'discard-interrupted'}
                         expect(page.locator('#runProgram')).to_be_enabled()
+                        expect(page.locator('#groupDetail')).to_contain_text('Test brewer')
+                        assert ('POST','/group-brew') not in requests
+                        page.locator('#declineGroup').click()
+                        expect(page.locator('#groupInvite')).to_be_hidden()
                         page.locator('[data-tab="recipes"]').click()
                         page.locator('#newRecipe').click()
                         expect(page.locator('#zProgramOptions')).to_be_visible()
@@ -243,6 +254,19 @@ def main():
                             page.locator('#exportRecipe').click()
                         exported=json.loads(native_download.value.path().read_text())
                         assert exported['steps']==[dict(base_step,target_f=0,minutes=0,drain_minutes=0)]
+                        cloud={'id':'archive','name':'Archived Z recipe','z_cloud':{'start_water_ml':13100,'is_beer':True},
+                               'steps':[dict(base_step,location=0,drain_minutes=2),dict(base_step,name='Connect chiller',location=6,minutes=0,drain_minutes=0),
+                                        dict(base_step,name='Chill',location=0,target_f=54,minutes=0,drain_minutes=0)]}
+                        page.once('dialog',lambda d:d.accept())
+                        import_wire(json.dumps(cloud))
+                        expect(page.locator('#cloudWater')).to_have_value('13.1')
+                        expect(page.locator('#steps select').first.locator('option:checked')).to_have_text('Keg circulation')
+                        expect(page.locator('#steps tr').nth(1).locator('[data-field=target_f]')).to_be_disabled()
+                        with page.expect_download() as captured:
+                            page.locator('#exportRecipe').click()
+                        assert json.loads(captured.value.path().read_text())==cloud
+                        page.locator('#cloudWater').fill('17')
+                        assert not page.locator('#cloudWater').evaluate('(e)=>e.checkValidity()')
                         page.locator('[data-tab="overview"]').click()
                         status['ready']=False
                         expect(page.locator('#runProgram')).to_be_disabled()
@@ -255,9 +279,15 @@ def main():
                         expect(pause_button).to_be_disabled()
                         expect(resume_button).to_be_disabled()
                         status['state']='Running'
+                        expect(pause_button).to_be_disabled()
+                        expect(resume_button).to_be_disabled()
+                        status.update(can_pause=True,can_resume=False)
                         expect(pause_button).to_be_enabled()
+                        expect(resume_button).to_be_disabled()
+                        status.update(can_pause=False,can_resume=True)
                         expect(resume_button).to_be_enabled()
-                        status['state']='Stopping'
+                        expect(pause_button).to_be_disabled()
+                        status.update(state='Stopping',can_pause=False,can_resume=False)
                         expect(pause_button).to_be_disabled()
                         expect(resume_button).to_be_disabled()
                     else:

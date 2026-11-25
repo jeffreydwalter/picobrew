@@ -41,11 +41,26 @@ func Import(data []byte, format string) ([]domain.Recipe, error) {
 				return nil, err
 			}
 			if _, oem := keys["Steps"]; oem {
-				r, err := importZProgram(trimmed)
+				read := importZProgram
+				if _, kit := keys["PicoRecipeID"]; kit {
+					read = ImportPicoPak
+				}
+				r, err := read(trimmed)
 				if err != nil {
 					return nil, err
 				}
 				recipes = []domain.Recipe{r}
+				break
+			}
+			if _, ok := keys["z_pak"]; ok {
+				var program domain.MachineRecipe
+				if err := decoder.Decode(&program); err != nil {
+					return nil, err
+				}
+				if program.ZPak == nil {
+					return nil, errors.New("missing original PicoPak settings")
+				}
+				recipes = []domain.Recipe{{Kind: "native-program", SourceModel: "pico", Name: program.Name, NativeProgram: &program}}
 				break
 			}
 			var r domain.Recipe

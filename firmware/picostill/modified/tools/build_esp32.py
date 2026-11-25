@@ -35,7 +35,7 @@ def main():
     flags=['-Os','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-mlongcalls','-ffunction-sections','-fdata-sections',
            '-fno-fast-math','-ffp-contract=off','-DESP_PLATFORM','-DESP32','-DARDUINO_ARCH_ESP32','-DARDUINO=10805',
            '-DF_CPU=240000000L','-DCORE_DEBUG_LEVEL=0','-DHAVE_CONFIG_H']
-    includes=[ROOT/'include',ROOT/'platform/esp32',OEM/'include',OEM/'platform/esp32',COMMON/'include',COMMON/'platform/esp32',COMMON/'platform/esp32/ota',
+    includes=[ROOT/'include',ROOT/'platform/esp32',OEM/'include',OEM/'platform/esp32',COMMON/'include',COMMON/'src',COMMON/'platform/esp32',COMMON/'platform/esp32/ota',
               arduino/'cores/esp32',arduino/'variants/esp32']
     sdk_sources=[p for p in sorted((arduino/'cores/esp32').iterdir()) if p.suffix in ('.c','.cpp','.S') and p.name!='main.cpp']
     for library in ('Wire','WiFi'):

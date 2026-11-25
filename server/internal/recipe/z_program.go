@@ -41,6 +41,9 @@ func ExportZProgram(r domain.Recipe, profile domain.Profile) ([]byte, error) {
 		return nil, fmt.Errorf("cannot compile this Z program: %v", plan.DeploymentBlockers)
 	}
 	native := plan.MachineRecipe
+	if native.ZPak != nil {
+		return nil, errors.New("the physical PicoPak setup, water and timing controls require standalone Z firmware")
+	}
 	if native.ZCloud != nil {
 		return nil, errors.New("stock Z Program Maker cannot represent cloud recipe water, heat and setup prompts; send the original schedule to standalone Z firmware")
 	}

@@ -16,13 +16,14 @@ import (
 
 type groupTestDevice struct {
 	device.Adapter
-	st    domain.Status
-	caps  domain.Capabilities
-	state device.GroupState
-	slots map[string]domain.MachineRecipe
-	hist  domain.History
-	calls []device.GroupOffer
-	rev   uint32
+	st          domain.Status
+	caps        domain.Capabilities
+	state       device.GroupState
+	slots       map[string]domain.MachineRecipe
+	hist        domain.History
+	calls       []device.GroupOffer
+	rev         uint32
+	responseErr error
 }
 
 func (a *groupTestDevice) Discover(context.Context) (domain.Capabilities, error) { return a.caps, nil }
@@ -30,6 +31,9 @@ func (a *groupTestDevice) Status(context.Context) (domain.Status, error)        
 func (a *groupTestDevice) GroupState(context.Context) (device.GroupState, error) { return a.state, nil }
 func (a *groupTestDevice) GroupRespond(_ context.Context, p device.GroupOffer) error {
 	a.calls = append(a.calls, p)
+	if a.responseErr != nil {
+		return a.responseErr
+	}
 	if p.Op == "offer" {
 		p.State = "pending"
 		a.state.Invite = &p
@@ -139,13 +143,21 @@ func TestGroupConsentAndIsolation(t *testing.T) {
 		t.Fatal(code)
 	}
 	target.st.Stopped = false
+	target.responseErr = &device.Error{StatusCode: 409, Code: "busy", Message: "Finish the current prompt"}
+	if code, _ = request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 409 {
+		t.Fatal(code)
+	}
+	if fresh, _ := s.memberInvite("two"); fresh.State != "pending" {
+		t.Fatal(fresh)
+	}
+	target.responseErr = nil
 	// Z is busy while showing the group prompt. Native acceptance checks idle
 	// and all interlocks inside the brewer; history can appear a poll later.
 	target.st.Busy = true
 	if code, raw = request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 200 {
 		t.Fatalf("%d %s", code, raw)
 	}
-	if code, _ = request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 409 || len(target.calls) != 2 {
+	if code, _ = request(t, c, "POST", post, csrf, map[string]bool{"accept": true}, nil); code != 409 || len(target.calls) != 3 {
 		t.Fatal(code, target.calls)
 	}
 	target.hist = domain.History{Sessions: []domain.HistorySession{{Available: true, ID: 21, Command: "rinse", State: "recording"}}}
@@ -168,6 +180,24 @@ func TestGroupConsentAndIsolation(t *testing.T) {
 	sync(b, target)
 	if target.calls[len(target.calls)-1].Op != "withdraw" {
 		t.Fatal(target.calls)
+	}
+	// Re-create the native prompt and unregister the reachable recipient.
+	target.state.Invite.State = "pending"
+	i, _ = s.memberInvite("two")
+	i.State, i.TargetUID, i.ExpiresAt = "pending", target.st.DeviceUID, time.Now().Add(inviteLifetime)
+	if err := s.saveInvite(*i); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.withdrawBeforeUnregister(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+	if target.state.Invite.State != "withdrawn" {
+		t.Fatal(target.state.Invite)
+	}
+	i.State, i.ExpiresAt = "pending", time.Now().Add(inviteLifetime)
+	target.state.Invite.State = "unavailable"
+	if err := s.reconcileGroupInvite(ctx, b, groupView(b), target, target.state.Invite, i); err != nil || i.State != "unavailable" {
+		t.Fatal(i, err)
 	}
 	if i, _ := s.memberInvite("other"); i != nil {
 		t.Fatal(i)
@@ -233,6 +263,9 @@ func TestGroupRecipeProofAndZymaticMenu(t *testing.T) {
 	}
 }
 func TestGroupRejectsOldAndInvalidEvents(t *testing.T) {
+	if _, fresh := sourceAge(119000, time.Now().Add(-2*time.Second)); fresh {
+		t.Fatal("An old observation gained a new invitation window")
+	}
 	age := uint32(120000)
 	e := device.GroupSource{ID: "deadbeefdeadbeef", Action: "clean", AgeMS: &age}
 	if validEvent(&e) {

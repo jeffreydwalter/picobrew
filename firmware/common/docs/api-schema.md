@@ -59,6 +59,12 @@ Malformed metadata produces an explicit invalid-snapshot error, not a resumable
 button. An invalid stored checkpoint uses `valid:false`, even when
 `available:false`, and remains visible for explicit discard.
 
+When dedicated session controls are supported, the authenticated status response
+includes `can_pause` and `can_resume`. Each flag refers to the current native
+runtime step. The brewer rechecks the same conditions when executing the
+command. Use the front panel for setup instructions and program-specific choices.
+A client must see a true flag before offering the corresponding shortcut.
+
 ### Native Z state
 
 A device advertising `z_state_v1:true` serves authenticated `GET /api/v1/z/state`.

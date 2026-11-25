@@ -107,6 +107,20 @@ func validLabel(value string, max int) bool {
 }
 
 func validateRecipe(recipe domain.MachineRecipe) error {
+	if recipe.ZPak != nil {
+		if !recipeID.MatchString(recipe.ID) || !validLabel(recipe.Name, 31) || recipe.ZProgram != nil {
+			return invalid("invalid PicoPak identity or conflicting program")
+		}
+		for _, step := range recipe.Steps {
+			if !validLabel(step.Name, 21) {
+				return invalid("invalid PicoPak step name")
+			}
+		}
+		if err := recipe.ZPak.Validate(recipe.Steps); err != nil {
+			return invalid(err.Error())
+		}
+		return nil
+	}
 	if recipe.ZCloud != nil {
 		if !recipeID.MatchString(recipe.ID) {
 			return invalid("invalid Z cloud recipe ID")

@@ -129,6 +129,8 @@ func recipeCapabilityIssue(caps domain.Capabilities, recipe domain.MachineRecipe
 	switch {
 	case !caps.Supports("recipes") || caps.RecipeCapacity < 1:
 		return "This firmware does not advertise recipe storage"
+	case recipe.ZPak != nil && (caps.Model != "z-series" || !caps.ZPicoPakV1):
+		return "This brewer does not support original PicoPak programs on the Z adapter"
 	case recipe.ZCloud != nil && (caps.Model != "z-series" || !caps.ZCloudProgramV1):
 		return "This brewer needs firmware with original Z schedule support"
 	case recipe.ZProgram != nil && (caps.Model != "z-series" || !caps.ZProgramMaker):

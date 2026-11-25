@@ -49,6 +49,7 @@ struct Capabilities {
     bool z_picopak_v1 = false;
     bool z_state_v1 = false;
     bool group_brewing_v1 = false;
+    bool picostill_brewer_link_v1 = false;
     const char* ota_protocol = nullptr;
     // Advertise only when the adapter supplies attributed, validated defaults.
     const struct Recipe* starter_recipes = nullptr;
@@ -105,6 +106,7 @@ struct Snapshot {
     char recipe_name[32] = {};
     char step_name[32] = {};
     bool filter_known = false, filter_inserted = false;
+    bool can_pause = false, can_resume = false;
     std::int32_t encoder_position = 0, encoder_min = 0, encoder_max = 0;
     Sensor sensors[SensorCapacity];
     std::size_t sensor_count = 0;

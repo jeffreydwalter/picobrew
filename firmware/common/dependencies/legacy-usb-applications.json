@@ -96,5 +96,63 @@
       "binary_bytes": 1651632,
       "binary_sha256": "c9bb8ea1d76c17b9477bcd64adf9d6e56a3648400b8ae61e905e5e44811dbc64"
     }
+  ],
+  "picoferm-ab": [
+    {
+      "version": "1.2.7",
+      "archive_sha256": "ed29a1e4992d04ac7dcfdaedd73ed34a0e923f0fe20d32c070a7d290d5820457",
+      "banks": [
+        {
+          "binary_bytes": 399888,
+          "binary_sha256": "55be464c324efe991b60e27773bccefe13e785de5d869031bccc3507f65d6366"
+        },
+        {
+          "binary_bytes": 399888,
+          "binary_sha256": "4822723788f9509299fbd23cac626bd70a60ceb7a6da77b77667458c33530f8c"
+        }
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "archive_sha256": "d0caf8def33240ba1691f22e5befe7c9f77de99d105f7d1743eca5df852d4172",
+      "banks": [
+        {
+          "binary_bytes": 399952,
+          "binary_sha256": "ca275c87a9faeba6db641ddb9099cd45b422182bad0374b2857906d5cbf1ff1a"
+        },
+        {
+          "binary_bytes": 399952,
+          "binary_sha256": "e7e1b7dd2291cec178e2da0415a1be971a1a1617cc400c8cc2aa8ec1ff5f583e"
+        }
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "archive_sha256": "af97c3cae40eeb8b6652248ab9772e52a534ebad86e616e5a934eeed5c8ee592",
+      "banks": [
+        {
+          "binary_bytes": 401424,
+          "binary_sha256": "52825cbd6f46d391c77405636d181c7c57f70a044f2b91b0faa503a44872f55f"
+        },
+        {
+          "binary_bytes": 401424,
+          "binary_sha256": "6cdf8e92990e43063dac934499e1474d461c1015dc8c6bd06119c3eb36d4716f"
+        }
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "archive_sha256": "d167f9471ab0635efa3030014b6f31af97c73865ab10540cb7fb3c6dfe984934",
+      "banks": [
+        {
+          "binary_bytes": 403536,
+          "binary_sha256": "08720ca7f1c6ada02fa08613a28ba7308d3cfacaaaa2994e3da1e77d706a99ff"
+        },
+        {
+          "binary_bytes": 403536,
+          "binary_sha256": "29c626ef117bbe101dde294eb43f9c01da88cc610431a585e582ee7822716b7b"
+        }
+      ]
+    }
   ]
 }

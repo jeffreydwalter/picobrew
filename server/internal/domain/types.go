@@ -24,6 +24,8 @@ type Maintenance struct {
 	Due       []string `json:"due"`
 }
 type Status struct {
+	CanPause            *bool   `json:"can_pause,omitempty"`
+	CanResume           *bool   `json:"can_resume,omitempty"`
 	GroupJoined         bool    `json:"group_joined,omitempty"`
 	GroupRinseStartedMS *uint32 `json:"group_rinse_started_ms,omitempty"`
 	GroupAgeMS          *uint32 `json:"group_age_ms,omitempty"`
@@ -108,6 +110,7 @@ type FieldMetadata struct {
 	Kind  string `json:"kind"`
 }
 type Capabilities struct {
+	ZPicoPakV1            bool `json:"z_picopak_v1,omitempty"`
 	PicoStillBrewerLinkV1 bool `json:"picostill_brewer_link_v1,omitempty"`
 	GroupRecipeV1         bool `json:"group_recipe_v1,omitempty"`
 
@@ -228,6 +231,7 @@ type MachineStep struct {
 	DrainMinutes int    `json:"drain_minutes"`
 }
 type MachineRecipe struct {
+	ZPak     *ZPicoPak      `json:"z_pak,omitempty"`
 	ZCloud   *ZCloudProgram `json:"z_cloud,omitempty"`
 	ZProgram *ZProgram      `json:"z_program,omitempty"`
 	ID       string         `json:"id"`

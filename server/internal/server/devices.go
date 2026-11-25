@@ -549,6 +549,11 @@ func (s *Server) deleteDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	d.commandMu.Lock()
 	defer d.commandMu.Unlock()
+	if err := s.withdrawBeforeUnregister(r.Context(), d); err != nil {
+		// Network/identity failure never justifies further commands to this address.
+		// Offline removal remains available, and the brewer expires its pending offer.
+		s.cfg.Logger.Debug("Could not withdraw group invitation before removal", "error", err)
+	}
 	d.mu.RLock()
 	busy := d.view.Status != nil && d.view.Status.Busy && !d.identityMismatch
 	id := d.view.ID
@@ -775,6 +780,15 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		switch in.Command.Command {
+		case "pause", "resume":
+			available := status.CanPause
+			if in.Command.Command == "resume" {
+				available = status.CanResume
+			}
+			if !status.Ready || status.Stopped || available == nil || !*available {
+				s.fail(w, 409, "session_control_unavailable", "Use the current options on the brewer's front panel")
+				return
+			}
 		case "restart", "restore-starter-recipes":
 			if status.Busy || status.Stopped || !status.Ready || (in.Command.Command == "restart" && status.Phase != 4) {
 				s.fail(w, 409, "machine_not_idle", "Return to the main menu and unlock the idle brewer first")

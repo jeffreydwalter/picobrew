@@ -3,6 +3,7 @@
 #include "zseries/core_application.hpp"
 #include "zseries/head_application.hpp"
 #include "zseries/brew_recovery.hpp"
+#include "zseries/still_peer.hpp"
 
 namespace zseries { namespace standalone {
 namespace api = picobrew::standalone;
@@ -21,6 +22,7 @@ struct Ports {
     bool (*pair_decide)(void*, std::uint32_t, std::uint32_t, bool) = nullptr;
     std::uint32_t group_boot_nonce = 0;
     api::Storage storage;
+    api::TelemetryIo still_io;
 };
 
 // Owns custom policy and input copies; executes through the recovered controller.
@@ -43,6 +45,7 @@ public:
     bool show_home();
     bool show_recipes();
     bool native_state_http(const PicoHttpRequest&, PicoHttpResponse&, char*, std::size_t);
+    bool picostill_http(const PicoHttpRequest&, PicoHttpResponse&, char*, std::size_t);
     bool group_http(const PicoHttpRequest&, PicoHttpResponse&, char* arena, std::size_t capacity);
     bool tick_wifi(std::uint32_t now);
     bool service_stage(oem::CoreTickStage, std::uint32_t);
@@ -90,6 +93,8 @@ private:
     bool queue_program(std::uint32_t);
     bool wake_standby();
     bool clear_stop();
+    bool can_control_session(oem::RuntimeCommandId) const;
+    oem::RuntimeCommandId session_input_ = oem::RuntimeCommandId::None;
     bool show_settings();
     bool show_about();
     bool show_pairing();
@@ -138,6 +143,25 @@ private:
     api::Result receive_invite(const GroupInvitation&);
     api::Result respond_invite(const char* id, const char* op);
     void group_started(std::uint32_t native_id, bool local_brew);
+    StillPeer still_peer_;
+    StillAddress still_address_, still_candidate_;
+    std::uint32_t still_generation_ = 0, last_still_sample_ = 0;
+    char still_lease_[17] = {};
+    const char* still_error_ = "";
+    bool still_verified_ = false, still_session_ = false;
+    bool still_active_ = false, still_checking_ = false;
+    volatile std::uint32_t still_output_hold_ = 0;
+    void hold_still_outputs();
+    void release_still_outputs(bool armed);
+    void stop_pumps();
+    void load_still_address();
+    bool save_still_address(const StillAddress&);
+    void tick_still(std::uint32_t);
+    void still_state(oem::PicoStillStateId);
+    void close_still(bool fault);
+    bool start_still_request(StillPeer::Op,std::uint32_t);
+    bool recordable(std::uint32_t) const;
+    bool set_still_logging(bool);
     void sensor_failure();
     const char* text(const char*, const char*, const char*) const noexcept;
     static void ZSERIES_HEATER_IRAM guarded_write(void*, std::uint8_t, bool);

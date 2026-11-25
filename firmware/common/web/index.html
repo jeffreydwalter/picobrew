@@ -101,6 +101,17 @@
                 <label><input type="checkbox" id="zBeer"> Show beer setup instructions</label>
                 <label><input type="checkbox" id="zPak"> Use PicoPak adjunct compartments</label>
               </div>
+              <fieldset id="zKitOptions" hidden disabled>
+                <legend>Z PicoPak adapter</legend>
+                <p>Set up the original PicoPak in its adapter with 6.81 L of water.</p>
+                <label id="kitStrengthRow">Kit strength<select id="kitStrength"></select></label>
+                <label id="kitBitternessRow">Kit bitterness<select id="kitBitterness"></select></label>
+              </fieldset>
+              <fieldset id="zCloudOptions" hidden disabled>
+                <legend>Original Z recipe setup</legend>
+                <label>Starting water (L)<input id="cloudWater" type="number" min="0.001" max="16.163" step="0.001" required></label>
+                <label><input id="cloudBeer" type="checkbox"> Show beer setup instructions</label>
+              </fieldset>
               <div class="steps-heading"><label>Brewing steps</label><button id="addStep" type="button" class="button small">+ Add step</button></div><div class="table-scroll"><table class="steps-table"><thead><tr><th>Step</th><th id="zStepType" hidden>Type</th><th id="recipeRoutingHeader">Location</th><th id="stepTarget">Target °F</th><th id="stepTimeHeading">Minutes</th><th id="stepDrain">Drain min</th><th><span class="sr-only">Remove</span></th></tr></thead><tbody id="steps"></tbody></table></div>
               <p id="recipeRoutingHint" class="hint">Use verified locations 1–6 for this device.</p><p id="recipeLimits" class="hint">Up to 15 steps. A target of 0 means unheated circulation. Changes can be saved while the brewer is idle.</p>
               <div class="editor-actions"><button id="deleteRecipe" type="button" class="button text-danger" disabled>Delete recipe</button><button id="saveRecipe" type="submit" class="button primary" disabled>Save to Pico</button></div>

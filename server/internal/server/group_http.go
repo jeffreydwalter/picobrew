@@ -216,6 +216,20 @@ func (s *Server) respondBrewInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = wire.GroupRespond(r.Context(), device.GroupOffer{Op: op, ID: i.ID}); err != nil {
+		// Only an explicit device rejection is safe to retry. A lost response
+		// remains in progress until the next poll reads the brewer's outcome.
+		var failure *device.Error
+		if errors.As(err, &failure) && !failure.UnknownOutcome {
+			state, readErr := wire.GroupState(r.Context())
+			if readErr == nil && state.Invite != nil && state.Invite.ID == i.ID && state.Invite.State == "pending" {
+				i.State = "pending"
+				i.Message = failure.Message
+				if persistErr := s.saveInvite(*i); persistErr != nil {
+					s.storeError(w, persistErr)
+					return
+				}
+			}
+		}
 		s.deviceError(w, err)
 		return
 	}
@@ -225,7 +239,7 @@ func (s *Server) respondBrewInvite(w http.ResponseWriter, r *http.Request) {
 		s.deviceError(w, err)
 		return
 	}
-	if state.Invite != nil && state.Invite.ID == i.ID && (state.Invite.State == "accepted" || state.Invite.State == "declined" || state.Invite.State == "withdrawn" || state.Invite.State == "expired") {
+	if state.Invite != nil && state.Invite.ID == i.ID && (state.Invite.State == "accepted" || state.Invite.State == "declined" || state.Invite.State == "withdrawn" || state.Invite.State == "expired" || state.Invite.State == "unavailable") {
 		if _, err = s.verifiedStatus(r.Context(), d); err == nil {
 			err = s.reconcileGroupInvite(r.Context(), d, groupView(d), wire, state.Invite, i)
 		}
