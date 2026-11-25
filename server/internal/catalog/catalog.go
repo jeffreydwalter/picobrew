@@ -407,6 +407,22 @@ func (a *Archive) Detail(id string) (Detail, error) {
 			result.Recipe.Style = result.Style
 		}
 	}
+	if result.SourceID == "picopak-library" && result.SourceModel == "pico" && result.NativeProgram != nil && result.Recipe != nil && result.Recipe.NativeProgram != nil {
+		data, _, err := a.originalRecord(result, "")
+		if err != nil {
+			return Detail{}, err
+		}
+		source, err := recipe.ImportPicoPak(data)
+		if err != nil {
+			return Detail{}, fmt.Errorf("catalog PicoPak %s: %w", id, err)
+		}
+		p := source.NativeProgram
+		if p.Name != result.NativeProgram.Name || !slices.Equal(p.Steps, result.NativeProgram.Steps) || !slices.Equal(p.Steps, result.Recipe.NativeProgram.Steps) {
+			return Detail{}, fmt.Errorf("catalog PicoPak %s differs from the original schedule", id)
+		}
+		result.NativeProgram.ZPak = p.ZPak
+		result.Recipe.NativeProgram.ZPak = p.ZPak
+	}
 	if product, ok := a.kitEditions[id]; ok {
 		result.Marketplace = &product
 	}
@@ -420,6 +436,10 @@ func (a *Archive) Original(id, recordID string) ([]byte, SourceRecord, error) {
 	if err != nil {
 		return nil, SourceRecord{}, err
 	}
+	return a.originalRecord(detail, recordID)
+}
+
+func (a *Archive) originalRecord(detail Detail, recordID string) ([]byte, SourceRecord, error) {
 	if recordID == "" {
 		recordID = detail.SourceRecords[0].ID
 	}

@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import type { MachineRecipe, MachineStep, RecipeProvenance } from '../types'
 import { archivePause, externalURL, programTiming, routeLabel } from '../lib/programs'
+import { ZPicoPakFields } from './ZPicoPakFields'
 import { zDuration } from '../lib/zProgram'
 import { Button, Field, IconButton, SectionHeading } from './ui'
 
@@ -58,14 +59,18 @@ export function ProgramTable({
           ))}
           {!program.z_program &&
             program.steps.map((step, index) => {
-              const path = routeLabel(step.location, model, archived)
+              const kitPause = program.z_pak?.step_options[index]?.action === 1
+              const path = kitPause
+                ? 'Pause until operator continues'
+                : routeLabel(step.location, program.z_pak ? 'z' : model, !program.z_pak && archived)
               return (
                 <tr key={index}>
                   <td>
                     <span className="muted">{index + 1}. </span>
                     {step.name}
                   </td>
-                  {archived && archivePause(step.location, model) ? (
+                  {kitPause ||
+                  (archived && !program.z_pak && archivePause(step.location, model)) ? (
                     <td colSpan={4}>{path}</td>
                   ) : (
                     <>
@@ -117,6 +122,12 @@ export function ProgramFields({
   model?: string
   archived?: boolean
 }) {
+  if (program.z_pak)
+    return (
+      <ZPicoPakFields program={program} onChange={onChange} library={!device}>
+        <ProgramTable program={program} model="z" />
+      </ZPicoPakFields>
+    )
   const stock = targetModel === 'zymatic'
   const cloud = program.z_cloud
   const bounded = device || !!targetModel || !!cloud

@@ -68,6 +68,14 @@ func validateNativeLibrary(r domain.Recipe) error {
 	if !nativeID.MatchString(p.ID) || p.Name != r.Name {
 		return errors.New("native program requires a valid ID and the same name as its library record")
 	}
+	if p.ZPak != nil {
+		if p.ZProgram != nil || r.Kind != "native-program" || r.SourceModel != "pico" {
+			return errors.New("original PicoPak metadata requires a matching Pico library program")
+		}
+		if err := p.ZPak.Validate(p.Steps); err != nil {
+			return err
+		}
+	}
 	if p.ZProgram != nil {
 		if r.Kind != "native-program" || r.SourceModel != "z" || len(p.Steps) != 0 || p.ZProgram.Name != p.Name {
 			return errors.New("a Z Program Maker program requires a matching Z record and one original schedule")
@@ -81,7 +89,7 @@ func validateNativeLibrary(r domain.Recipe) error {
 		if !text(step.Name, 512) || step.Location < 0 || step.Location > 6 || step.TargetF < 0 || step.TargetF > 212 || step.Minutes < 0 || step.Minutes > 43200 || step.DrainMinutes < 0 || step.DrainMinutes > 1440 {
 			return fmt.Errorf("native source step %d has invalid data", i+1)
 		}
-		if strings.HasPrefix(r.SourceModel, "pico") && (step.Location == 0 || step.TargetF != 0 && step.TargetF < 60) {
+		if p.ZPak == nil && strings.HasPrefix(r.SourceModel, "pico") && (step.Location == 0 || step.TargetF != 0 && step.TargetF < 60) {
 			return fmt.Errorf("native Pico step %d requires verified locations 1–6 and target 0 or 60–212F", i+1)
 		}
 	}
@@ -114,6 +122,34 @@ func adaptNative(r domain.Recipe, profile, builtIn domain.Profile, batchLiters f
 	}}
 	if r.Provenance != nil {
 		plan.Warnings = append(plan.Warnings, r.Provenance.Warnings...)
+	}
+	if pak := copy.NativeProgram.ZPak; pak != nil {
+		program := *copy.NativeProgram
+		if profile.ID == "z" {
+			if _, err := NativeJSON(program); err != nil {
+				plan.DeploymentBlockers = append(plan.DeploymentBlockers, err.Error())
+				return plan, nil
+			}
+			if !profile.ControlSupported || !builtIn.ControlSupported || len(program.Steps) > profile.MaxSteps {
+				return plan, errors.New("this target cannot run the original PicoPak schedule")
+			}
+			plan.Warnings = append(plan.Warnings, "Load the physical PicoPak and Z PicoPak adapter. The original Z setup calls for 6.81 L of process water.")
+			plan.CanDeploy = true
+			plan.MachineRecipe = &program
+			return plan, nil
+		}
+		if pak.SelectedABV != nil || pak.SelectedIBU != nil {
+			plan.DeploymentBlockers = append(plan.DeploymentBlockers, "Selected PicoPak strength adjustments require the Z PicoPak controller.")
+			return plan, nil
+		}
+		for _, s := range pak.StepOptions {
+			if s.Action != 0 {
+				plan.DeploymentBlockers = append(plan.DeploymentBlockers, "This PicoPak contains an operator pause that requires the Z PicoPak controller.")
+				return plan, nil
+			}
+		}
+		program.ZPak = nil
+		copy.NativeProgram = &program
 	}
 	if z := copy.NativeProgram.ZProgram; z != nil {
 		if profile.ID != "z" || !profile.ControlSupported || !builtIn.ControlSupported {

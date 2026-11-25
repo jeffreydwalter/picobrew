@@ -68,8 +68,10 @@ export function programTiming(program: MachineRecipe, archivedModel?: string) {
       (steps.some((s) => s.StepType === 2) ? ' + pauses' : '')
     )
   }
-  const active = program.steps.filter(
-    (step) => !archivePause(step.location, program.z_cloud ? 'z' : archivedModel)
+  const active = program.steps.filter((step, i) =>
+    program.z_pak
+      ? program.z_pak.step_options[i]?.action !== 1
+      : !archivePause(step.location, program.z_cloud ? 'z' : archivedModel)
   )
   const minutes = active.reduce((sum, step) => sum + step.minutes + step.drain_minutes, 0)
   return `${minutes} min${active.some((step) => step.target_f > 0) ? ' + heating' : ''}${active.length < program.steps.length ? ' + pauses' : ''}`

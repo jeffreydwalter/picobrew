@@ -167,7 +167,17 @@ export interface ZProgram {
   UsePicoPakMode: boolean
   Steps: ZProgramStep[]
 }
+export interface ZPicoPak {
+  recipe_id: number
+  beer_id: number
+  abv: number
+  ibu: number
+  selected_abv?: number
+  selected_ibu?: number
+  step_options: { action: number; min_time?: number; max_time?: number }[]
+}
 export interface MachineRecipe {
+  z_pak?: ZPicoPak
   z_program?: ZProgram
   z_cloud?: { start_water_ml: number; is_beer: boolean }
   id: string

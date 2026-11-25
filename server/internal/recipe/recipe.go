@@ -555,6 +555,24 @@ func NativeJSON(r domain.MachineRecipe) ([]byte, error) {
 		}
 		return true
 	}
+	if r.ZPak != nil {
+		if r.ZProgram != nil || !nativeID.MatchString(r.ID) || !validLabel(r.Name, 31) {
+			return nil, errors.New("choose a printable PicoPak device name up to 31 characters and one program format")
+		}
+		if err := r.ZPak.Validate(r.Steps); err != nil {
+			return nil, err
+		}
+		for _, s := range r.Steps {
+			if !validLabel(s.Name, 21) {
+				return nil, errors.New("PicoPak device step names must use up to 21 printable characters")
+			}
+		}
+		data, err := json.Marshal(r)
+		if len(data) > 4095 {
+			return nil, errors.New("PicoPak exceeds the device request limit")
+		}
+		return data, err
+	}
 	if r.ZProgram != nil {
 		if !nativeID.MatchString(r.ID) || r.Name != r.ZProgram.Name || len(r.Steps) != 0 {
 			return nil, errors.New("invalid Z program identity or conflicting steps")

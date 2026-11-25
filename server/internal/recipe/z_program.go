@@ -41,6 +41,9 @@ func ExportZProgram(r domain.Recipe, profile domain.Profile) ([]byte, error) {
 		return nil, fmt.Errorf("cannot compile this Z program: %v", plan.DeploymentBlockers)
 	}
 	native := plan.MachineRecipe
+	if native.ZPak != nil {
+		return nil, errors.New("the physical PicoPak setup, water and timing controls require standalone Z firmware")
+	}
 	p := native.ZProgram
 	if p == nil {
 		p = &domain.ZProgram{Name: r.Name, IsBeer: true}
