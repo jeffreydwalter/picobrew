@@ -7,6 +7,7 @@ import * as api from '../lib/api'
 import { HubContext, type HubState } from '../context'
 import type { Recipe } from '../types'
 import { StockZymaticTransfer, offlineTarget } from './StockZymaticTransfer'
+import { StockSetupGuide } from './StockSetupGuide'
 import { TransferDialog } from './TransferDialog'
 
 const program = {
@@ -91,6 +92,90 @@ it('downloads an offline program from the normal target chooser without a brewer
   })
   expect(JSON.parse(contents)).toEqual({ model: 'zymatic', ...program })
 })
+it('starts USB setup with the exact reviewed offline program without a file or serial', async () => {
+  const click = userEvent.setup()
+  const port = 'serial-' + 'ab'.repeat(16)
+  fetchMock.mockImplementation(async (url) => {
+    if (String(url).endsWith('/usb/devices'))
+      return json({
+        available: true,
+        devices: [{ port, models: ['zymatic'], label: 'Test Zymatic' }],
+      })
+    if (String(url).endsWith('/usb/jobs'))
+      return json({
+        id: 'job',
+        action: 'install',
+        model: 'zymatic',
+        state: 'waiting',
+        confirmation: 'nonce',
+        offline_program: program,
+        message: 'Connect the idle Zymatic.',
+      })
+    return json({ items: [{ recipe_id: saved.id, revision: saved.revision, program }] })
+  })
+  render(
+    createElement(
+      HubContext.Provider,
+      { value: { devices: [], recipes: [saved] } as unknown as HubState },
+      createElement(StockZymaticTransfer, { ...props, offline: true })
+    )
+  )
+  await click.click(screen.getByRole('button', { name: 'Preview offline programs' }))
+  await click.click(await screen.findByRole('button', { name: 'Use in USB setup' }))
+  await click.click(await screen.findByRole('button', { name: 'Install standalone firmware' }))
+  await screen.findByText('Connect the idle Zymatic.')
+  const req = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/usb/jobs'))
+  expect(JSON.parse(String(req?.[1]?.body))).toEqual({
+    action: 'install',
+    model: 'zymatic',
+    port,
+    offline_program: { ...program, model: 'zymatic' },
+  })
+})
+
+it('rejects a mismatched file and sends an exported Zymatic file only during installation', async () => {
+  const click = userEvent.setup()
+  const port = 'serial-' + 'ac'.repeat(16)
+  fetchMock.mockImplementation(async (url) =>
+    String(url).endsWith('/usb/devices')
+      ? json({ available: true, devices: [{ port, label: 'Test Zymatic', models: ['zymatic'] }] })
+      : json({
+          id: 'job',
+          action: 'install',
+          model: 'zymatic',
+          state: 'waiting',
+          confirmation: 'nonce',
+          message: 'Confirm installation.',
+        })
+  )
+  render(
+    createElement(
+      HubContext.Provider,
+      { value: {} as HubState },
+      createElement(StockSetupGuide, { onClose: vi.fn() })
+    )
+  )
+  const input = await screen.findByLabelText(/Offline recipe \(optional\)/)
+  const install = screen.getByRole('button', { name: 'Install standalone firmware' })
+  const file = (model: string) =>
+    new File([JSON.stringify({ ...program, model })], 'recipe.json', { type: 'application/json' })
+  await click.upload(input, file('pico-s'))
+  await click.click(install)
+  await screen.findByText('Choose an offline program exported for the Zymatic.')
+  expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/usb/jobs'))).toBe(false)
+  await click.selectOptions(screen.getByLabelText('USB operation'), 'backup')
+  expect(screen.queryByLabelText(/Offline recipe/)).toBeNull()
+  await click.selectOptions(screen.getByLabelText('USB operation'), 'install')
+  await click.upload(screen.getByLabelText(/Offline recipe \(optional\)/), file('zymatic'))
+  await click.click(screen.getByRole('button', { name: 'Install standalone firmware' }))
+  await screen.findByText('Confirm installation.')
+  const req = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/usb/jobs'))
+  expect(JSON.parse(String(req?.[1]?.body)).offline_program).toEqual({
+    ...program,
+    model: 'zymatic',
+  })
+})
+
 it('routes both preview and publish exclusively to the selected paired brewer', async () => {
   const click = userEvent.setup()
   const serial = '012345ABCDEF'

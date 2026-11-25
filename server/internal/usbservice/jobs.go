@@ -4,11 +4,13 @@ package usbservice
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +20,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/domain"
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/privatefs"
+	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/recipe"
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/store"
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/usbservice/helper"
 )
@@ -45,12 +49,42 @@ type USBDevices struct {
 	Devices   []USBDevice `json:"devices"`
 	Job       *USBJob     `json:"job,omitempty"`
 }
+type OfflineProgram struct {
+	Model string `json:"model"`
+	domain.MachineRecipe
+}
+
+// Keep a missing route, temperature or duration from silently becoming zero.
+func (p *OfflineProgram) UnmarshalJSON(data []byte) error {
+	type wire OfflineProgram
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode((*wire)(p)); err != nil {
+		return err
+	}
+	var source struct {
+		Steps []map[string]*json.RawMessage `json:"steps"`
+	}
+	if err := json.Unmarshal(data, &source); err != nil {
+		return err
+	}
+	for i, step := range source.Steps {
+		for _, field := range []string{"location", "target_f", "minutes", "drain_minutes"} {
+			if step[field] == nil {
+				return fmt.Errorf("step %d requires %s", i+1, field)
+			}
+		}
+	}
+	return nil
+}
+
 type USBInput struct {
-	Action   string `json:"action"`
-	Model    string `json:"model"`
-	Port     string `json:"port"`
-	Display  string `json:"display,omitempty"`
-	DeviceID string `json:"device_id,omitempty"`
+	OfflineProgram *OfflineProgram `json:"offline_program,omitempty"`
+	Action         string          `json:"action"`
+	Model          string          `json:"model"`
+	Port           string          `json:"port"`
+	Display        string          `json:"display,omitempty"`
+	DeviceID       string          `json:"device_id,omitempty"`
 }
 type USBJob struct {
 	ID string `json:"id"`
@@ -315,6 +349,14 @@ func (m *Manager) Devices(ctx context.Context) USBDevices {
 }
 
 func (m *Manager) Start(in USBInput, expectedUID, hubHost string) (USBJob, error) {
+	if in.OfflineProgram != nil {
+		if in.Action != "install" || in.Model != "zymatic" || in.OfflineProgram.Model != "zymatic" {
+			return USBJob{}, fmt.Errorf("%w Offline programs require a Zymatic installation.", ErrInput)
+		}
+		if err := recipe.ValidateStockZymaticProgram(in.OfflineProgram.MachineRecipe); err != nil {
+			return USBJob{}, fmt.Errorf("%w %s", ErrInput, err)
+		}
+	}
 	if !m.available {
 		return USBJob{}, ErrUnavailable
 	}
@@ -344,9 +386,12 @@ func (m *Manager) Start(in USBInput, expectedUID, hubHost string) (USBJob, error
 }
 func (m *Manager) run(j USBJob, uid, host string) {
 	defer m.wg.Done()
-	req := map[string]string{"job_id": j.ID, "action": j.Action, "model": j.Model, "port": j.Port, "display": j.Display, "data_dir": m.dir}
+	req := map[string]any{"job_id": j.ID, "action": j.Action, "model": j.Model, "port": j.Port, "display": j.Display, "data_dir": m.dir}
 	if uid != "" {
 		req["expected_uid"] = uid
+	}
+	if j.OfflineProgram != nil {
+		req["offline_program"] = j.OfflineProgram
 	}
 	if host != "" && j.Model == "zymatic" && j.Action == "install" {
 		req["hub_host"] = host

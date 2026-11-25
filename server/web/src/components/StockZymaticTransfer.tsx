@@ -3,6 +3,7 @@ import { api, errorMessage, saveBlob } from '../lib/api'
 import { useResource } from '../context'
 import type { Recipe, MachineRecipe } from '../types'
 import { Button, ErrorBanner, Field, Modal } from './ui'
+import { StockSetupGuide } from './StockSetupGuide'
 import { ProgramTable } from './Program'
 import { TransferLoadingSheet } from './RecipeLoadingSheet'
 
@@ -35,6 +36,7 @@ export function StockZymaticTransfer({
 }) {
   const reported =
     paired?.serial && /^[a-f0-9]{12}$/i.test(paired.serial) ? paired.serial.toUpperCase() : ''
+  const [installProgram, setInstallProgram] = useState<MachineRecipe>()
   const [machine, setMachine] = useState(() =>
     offline ? '' : paired ? reported : localStorage.getItem('stock-zymatic-serial') || ''
   )
@@ -104,6 +106,8 @@ export function StockZymaticTransfer({
       setBusy(false)
     }
   }
+  if (installProgram)
+    return <StockSetupGuide program={installProgram} onClose={() => setInstallProgram(undefined)} />
   return (
     <Modal
       title={
@@ -141,7 +145,7 @@ export function StockZymaticTransfer({
     >
       <p>
         {offline
-          ? 'Download a program for USB setup. Each installation can include one offline program.'
+          ? 'Review a recipe to install it for offline use. The Zymatic holds one offline recipe.'
           : paired
             ? 'Open the recipe menu on the brewer to fetch the published recipes from its configured Hub.'
             : 'The stock brewer fetches its menu over HTTP. Point its PicoBrew hostname to this Hub on LAN port 80, then open the recipe menu on the machine.'}
@@ -234,10 +238,7 @@ export function StockZymaticTransfer({
         <p role="status">Published for {id}. The brewer can now fetch the selected programs.</p>
       )}
       {offline && preview && (
-        <p>
-          Choose a program below. Use the downloaded JSON file with <code>--offline-program</code>{' '}
-          during Zymatic USB setup.
-        </p>
+        <p>Choose a program to install during USB setup, or download a copy.</p>
       )}
       {preview?.map((item) => (
         <section key={item.recipe_id}>
@@ -248,6 +249,9 @@ export function StockZymaticTransfer({
             slots={item.hop_slots_by_minute}
           />
           <ProgramTable program={item.program} model="zymatic" archived />
+          {offline && (
+            <Button onClick={() => setInstallProgram(item.program)}>Use in USB setup</Button>
+          )}
           <Button
             variant="secondary"
             onClick={() => {

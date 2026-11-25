@@ -26,15 +26,21 @@ func TestWorkerProcess(t *testing.T) {
 	}
 	d := json.NewDecoder(os.Stdin)
 	e := json.NewEncoder(os.Stdout)
-	var req map[string]string
+	var req map[string]any
 	if d.Decode(&req) != nil {
 		os.Exit(2)
 	}
 	if req["action"] == "list" {
 		_ = e.Encode(event{Type: "devices", Devices: []USBDevice{{Port: fakePort, Label: "Test adapter", Models: []string{"pico-s"}}}})
 	} else {
-		if req["expected_uid"] != "machine-from-pin" || !filepath.IsAbs(req["data_dir"]) || len(req["job_id"]) != 32 {
+		if req["expected_uid"] != "machine-from-pin" || !filepath.IsAbs(req["data_dir"].(string)) || len(req["job_id"].(string)) != 32 {
 			os.Exit(3)
+		}
+		if mode == "offline" {
+			program, ok := req["offline_program"].(map[string]any)
+			if !ok || program["model"] != "zymatic" || program["name"] != "Local ale" || req["hub_host"] != "hub.lan:8080" {
+				os.Exit(7)
+			}
 		}
 		for _, id := range []string{promptOne, promptTwo} {
 			_ = e.Encode(event{Type: "confirm", ID: id, Message: "Confirm local service step."})
@@ -264,4 +270,45 @@ func TestPairingReadyRequiresVerifiedInstallAndPrivateHandoff(t *testing.T) {
 	if got, err = m.Get(id); err != nil || got.PairingReady {
 		t.Fatal("accepted an unverified install")
 	}
+}
+
+func TestOfflineProgramUSBAdmission(t *testing.T) {
+	const raw = `{"model":"zymatic","name":"Local ale","id":"0123456789abcdef0123456789abcdef","steps":[{"name":"Mash","location":1,"target_f":152,"minutes":50,"drain_minutes":0}]}`
+	for _, bad := range []string{strings.Replace(raw, `"drain_minutes":0`, `"drain_minutes":null`, 1),
+		strings.Replace(raw, `"target_f":152,`, "", 1), strings.Replace(raw, `"location":1`, `"slot":1`, 1)} {
+		var program OfflineProgram
+		if json.Unmarshal([]byte(bad), &program) == nil {
+			t.Fatal("accepted missing or invalid step field")
+		}
+	}
+	var program OfflineProgram
+	if err := json.Unmarshal([]byte(raw), &program); err != nil {
+		t.Fatal(err)
+	}
+	m := newJobs(t, "offline")
+	input := USBInput{Action: "install", Model: "zymatic", Port: fakePort, OfflineProgram: &program}
+	for _, variation := range []struct{ action, model string }{{"restore", "zymatic"}, {"install", "pico-s"}} {
+		bad := input
+		bad.Action = variation.action
+		bad.Model = variation.model
+		if _, err := m.Start(bad, "machine-from-pin", ""); !errors.Is(err, ErrInput) {
+			t.Fatal(err)
+		}
+	}
+	program.Steps[0].Location = 6
+	if _, err := m.Start(input, "machine-from-pin", ""); !errors.Is(err, ErrInput) {
+		t.Fatal("accepted terminal pause")
+	}
+	program.Steps[0].Location = 1
+	job, err := m.Start(input, "machine-from-pin", "hub.lan:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{promptOne, promptTwo} {
+		withPrompt(t, m, job.ID, id)
+		if _, err = m.Answer(job.ID, id, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	withPrompt(t, m, job.ID, "complete")
 }
