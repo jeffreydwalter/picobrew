@@ -60,8 +60,8 @@ UID_BLOCK = 106
 PROFILE_UID_SHA256 = "7290674610eca1cf26581779a71c7f41a9c2fc367eb7189d0e93918319964bc7"
 ORIGINAL_SIZE = 162792
 ORIGINAL_SHA256 = "e18c240fa1cf35222674bf3b4fa992a306c6e63b0b99be8793604f199085d702"
-CANDIDATE_SIZE = 169312
-CANDIDATE_SHA256 = "fe522d90285ab2d48fd3f28b55887192c7661f06a0a2a3037e8c1e2f59dc8a95"
+CANDIDATE_SIZE = 169808
+CANDIDATE_SHA256 = "f9746997a6726f0c21785488a6911edd503b98d9df63b1ad10d82bf9f0ab7c75"
 # Earlier 1.0.0 builds, taken from the v1.0.0 tag. The printed version
 # matches the new menu build, so the USB installer uses per-model hashes.
 STABLE_1_0_0_APPLICATIONS = {
@@ -69,6 +69,14 @@ STABLE_1_0_0_APPLICATIONS = {
     "pico-s": (170392, "5b221f2f52afceab4c9fe7d1c391071b708f439d9e1be8cf883addef584852af"),
     "pico-c-ssd1325": (168496, "e52c444322bd78e58c1bf641fd2d1dc56ba003cfbfff3d1cc761737131bad383"),
     "pico-c-ssd1309": (168400, "02783efd34cba08a19d7fd719db2732b9fa12554997dbac4f9f85961fa55dc31"),
+}
+
+# Model-specific applications shipped on master before guarded recipe edits.
+PREVIOUS_STABLE_APPLICATIONS = {
+    "pico-s": (169304, "d92b1b073ada25ef62ebbb7c501fdf5d1a220393c873d838d480f3e1a59d7801"),
+    "pico-pro": (169312, "fe522d90285ab2d48fd3f28b55887192c7661f06a0a2a3037e8c1e2f59dc8a95"),
+    "pico-c-ssd1325": (167400, "66af92c03c9f94d6388ae141b596252a8992ee3847919af87d2247c4bfffa112"),
+    "pico-c-ssd1309": (167296, "736fdc386e0c9ffd7a4f5bff371cc059f71bd5aceb1a5a77065ea4813809b5e1"),
 }
 
 # Pre-release applications can be recognized as USB migration sources.
@@ -157,7 +165,7 @@ APPLICATION_PAYLOAD_LIMIT = (APPLICATION_ALLOCATION_BLOCKS - 2) * 4096
 KEY_NAME = "/local/api.key"
 KEY_SIZE = 65
 # Shared by the stable Pico S and Pico Pro packages.
-WEB_MANIFEST_SHA256 = "d73a32cbefab32c3a660ff5b1cbb1d47ab6a5161fd75dba6787290b574374864"
+WEB_MANIFEST_SHA256 = "60c83d575e902b620a266088fbb6e7fb8a2aa6f5d40babd85e103c638915f955"
 WEB_DIRECTORY = Path(__file__).resolve().parents[1] / "firmware/web"
 C_FIRMWARE = Path(__file__).resolve().parents[3] / "pico-c/modified/firmware"
 C_RECOVERY = {
@@ -174,10 +182,10 @@ C_STOCK = {
     "pico-c-ssd1309": (155864, "6f2dedfcd7ab10b5a421b05dc4ee792cd44753d7e302fd8ee645ca4f6556c226"),
 }
 C_STANDALONE = {
-    "pico-c-ssd1325": (167400, "66af92c03c9f94d6388ae141b596252a8992ee3847919af87d2247c4bfffa112"),
-    "pico-c-ssd1309": (167296, "736fdc386e0c9ffd7a4f5bff371cc059f71bd5aceb1a5a77065ea4813809b5e1"),
+    "pico-c-ssd1325": (167848, "050bba58f516070695d2d9c74ddced71ea7d30a1368558d61e8dda98b98c22fe"),
+    "pico-c-ssd1309": (167768, "59ee93b0a53ba01faaa50030d7a8028d4ad1c58bb0397f9c6dfd23734e75a83e"),
 }
-C_WEB_MANIFEST_SHA256 = "fd7ff21ba9fb005ff2dc40523a36bfcb943c1def131bd46eebc2b245c0161df0"
+C_WEB_MANIFEST_SHA256 = "f36f04abd8d4f9596724d7500ff636d37a903e39412f2f06d41addbf287b6b2f"
 UID_NAME = "/sys/uid.txt"
 LOADER_NAME = "/sys/mcuimg.bin"
 # These counts, flags and mirroring define the supported TI allocation shape.
@@ -385,7 +393,7 @@ def candidate_identity(model):
     if model == "pico-pro":
         return CANDIDATE_SIZE, CANDIDATE_SHA256
     if model == "pico-s":
-        return 169304, "d92b1b073ada25ef62ebbb7c501fdf5d1a220393c873d838d480f3e1a59d7801"
+        return 169792, "6bba8df4cc845f7e7c853391a2858b4e1aa2b63d058466e6514faae7f8efaa95"
     if model in C_STANDALONE:
         return C_STANDALONE[model]
     raise InstallError("Unknown target model")
@@ -472,10 +480,10 @@ def _approved_current_applications(mode, model="pico-pro"):
                                (RELEASED_1_0_1_SIZE, RELEASED_1_0_1_SHA256),
                                (RELEASED_1_1_0_SIZE, RELEASED_1_1_0_SHA256)))
         identities.extend(LEGACY_APPLICATIONS[model])
-        identities.append(STABLE_1_0_0_APPLICATIONS[model])
+        identities.extend((STABLE_1_0_0_APPLICATIONS[model], PREVIOUS_STABLE_APPLICATIONS[model]))
         identities.append(candidate_identity(model))
     if mode == "install-recovery":
-        identities = [STABLE_1_0_0_APPLICATIONS[model], candidate_identity(model)]
+        identities = [STABLE_1_0_0_APPLICATIONS[model], PREVIOUS_STABLE_APPLICATIONS[model], candidate_identity(model)]
     return tuple({"size_bytes": size, "sha256": digest} for size, digest in identities)
 
 

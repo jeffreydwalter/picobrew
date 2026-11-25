@@ -454,7 +454,8 @@ class InstallWireTests(unittest.TestCase):
         self.assertEqual(recovery.files[KEY_NAME], KEY)
 
     def test_stable_predecessor_can_upgrade_or_provision_recovery_only_on_matching_model(self):
-        for model, (length, digest) in installer.STABLE_1_0_0_APPLICATIONS.items():
+        for model, (length, digest) in (*installer.STABLE_1_0_0_APPLICATIONS.items(),
+                                        *installer.PREVIOUS_STABLE_APPLICATIONS.items()):
             self.assertNotEqual((length, digest), installer.candidate_identity(model))
             record = {"size_bytes": length, "sha256": digest}
             for operation in ("install", "install-recovery"):
