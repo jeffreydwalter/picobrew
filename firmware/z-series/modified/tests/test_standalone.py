@@ -33,6 +33,7 @@ class StandaloneTests(unittest.TestCase):
             '-I'+str(ROOT/'include'),'-I'+str(OEM/'include'),'-I'+str(COMMON/'include'),'-I'+str(COMMON/'src')]+
             [str(p) for p in sources]+[str(http),str(OEM/'build/libzseries_oem_json.a'),'-o',str(cls.binary)],check=True)
     def run_case(self,name):subprocess.run([str(self.binary),name],check=True,timeout=15)
+    def test_kit_strength_dial_keeps_the_saved_recipe_and_resumes_the_chosen_dose(self):self.run_case("kit-dial")
     def test_group_brewing_two_brewers_and_real_dial(self):self.run_case("group-brew")
     def test_group_brewing_native_programs(self):self.run_case("group-routines")
     def test_group_brewing_interlocks_and_replay(self):self.run_case("group-interlocks")

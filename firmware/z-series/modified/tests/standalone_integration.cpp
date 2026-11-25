@@ -780,6 +780,102 @@ void physical_group_button(World& w, unsigned row) {
     CoreButtonEvent click;click.id=1;click.argument=1;
     assert(w.head.receive_button(click)); w.head_tick(); w.head_tick();
 }
+void kit_strength_on_dial(){
+    auto kit=recipe();
+    kit.pak.recipe_id=83;kit.pak.beer_id=29;kit.pak.abv=4;kit.pak.ibu=5;kit.pak.selected_ibu=7;
+    for(unsigned i=0;i<2;++i){
+        auto& step=kit.steps[i];step.location=i+2;step.minutes=10;step.target_f=i?200:148;
+        step.pak.minimum=3;step.pak.maximum=20;
+    }
+    const auto pick=[](World& w,UiCommand command){
+        const auto& menu=w.head.screens.menu_data;
+        for(unsigned i=0;i<menu.count;++i)if(menu.items[i].event.command==command){
+            assert(w.head.receive_ui(menu.items[i].event));w.head_tick();return;
+        }
+        assert(false&&"Expected native menu command");
+    };
+    const auto open=[](World& w){
+        assert(w.adapter.show_recipes());assert(w.head.receive_ui(w.head.screens.menu_data.items[0].event));w.head_tick();
+    };
+    for(bool change:{false,true}){
+        World w;assert(w.engine.recipe_store(kit).ok());const auto before=w.engine.recipe_revision();
+        open(w);assert(w.head.screens.menu_data.count==4);
+        assert(w.head.numeric.state.parameters.abv==-1&&w.head.numeric.state.parameters.ibu==7);
+        pick(w,UiCommand::PicoPakRecipeTweakAbv);
+        assert(w.head.encoder.state.strength.enabled&&w.head.encoder.state.strength.value==4);
+        if(change){assert(w.head.receive_encoder(3));w.head_tick();}
+        const int chosen= w.head.encoder.state.strength.value;
+        if(change)assert(chosen!=4);
+        physical_group_button(w,0);
+        assert(w.head.numeric.state.parameters.abv==chosen);
+        pick(w,UiCommand::Exit);
+        assert(w.head.screens.menu_data.count==2&&!w.core.core.commands.pending);
+        open(w);assert(w.head.numeric.state.parameters.abv==-1&&w.head.numeric.state.parameters.ibu==7);
+        pick(w,UiCommand::PicoPakRecipeTweakAbv);
+        if(change){assert(w.head.receive_encoder(3));w.head_tick();}
+        physical_group_button(w,0);
+        const auto frames=w.frames.size();pick(w,UiCommand::PicoPakRecipeLoadTweaked);
+        assert(w.frames.size()==frames&&!w.core.core.commands.pending&&!w.core.heater.state.started);
+        const int expected=change?chosen:-1;
+        // Some native displays receive the ready message on the next tick.
+        w.head_tick();pick(w,UiCommand::StartLoadedProgram);
+        assert(w.dispatch()); // Dispatcher posts the buffered native StartProgram.
+        if(w.core.core.commands.pending)assert(w.dispatch());
+        assert(w.core.core.state.id==CoreStateId::Starting);
+        const auto group=w.request(PICO_HTTP_GET,group_path,nullptr,200);
+        assert(group.find("\"action\":\"brew\"")!=std::string::npos);
+        assert((group.find("\"selected_abv\":"+std::to_string(chosen))!=std::string::npos)==change);
+        assert(group.find("selected_ibu")==std::string::npos);
+        api::Recipe stored;assert(w.engine.recipe_get(kit.id,stored).ok());
+        assert(w.engine.recipe_revision()==before&&stored.pak.selected_abv==-1&&stored.pak.selected_ibu==7);
+        zseries::standalone::BrewRecovery recovered;assert(recovered.load(w.storage()).ok()&&recovered.present());
+        ProgramBuffer restored;assert(recovered.restore(restored,101325).ok());
+        assert(recovered.recipe().pak.selected_abv==expected&&recovered.recipe().pak.selected_ibu==7);
+        assert(restored.parameters.abv==expected&&restored.parameters.ibu==7&&restored.parameters.water.value==6.81);
+        const auto& run=w.core.program.record().view;const auto& resume=restored.record().view;
+        assert(run.code_size==resume.code_size);
+        for(unsigned i=0;i<run.code_size;++i)
+            assert(run.code[i].opcode==resume.code[i].opcode&&run.code[i].argument==resume.code[i].argument);
+        auto& runtime=w.core.runtime;assert(run.code[0].opcode==OpCode::Setup);
+        assert(runtime.dispatch(run.code[0])==RuntimeResult::Ok);
+        unsigned next_prompt=16;
+        while(runtime.stack.size()){
+            Instruction op;assert(runtime.stack.pop(op)==RuntimeResult::Ok);
+            if(op.opcode==OpCode::ShowScreen)assert(op.argument==next_prompt++);
+        }
+        assert(next_prompt==24&&!w.core.heater.state.started);
+    }
+    World peer;assert(peer.engine.recipe_store(kit).ok());
+    auto fields=[&](const char* extra,const char* id="1000000000000002"){
+        auto payload=group_recipe_offer(peer.engine.recipe_revision(),id);payload.pop_back();payload+=extra;return payload+"}";
+    };
+    const auto offered=fields(R"(,"selected_abv":0,"selected_ibu":5)");
+    peer.request(PICO_HTTP_POST,group_path,fields(R"(,"selected_abv":11)").c_str(),400);
+    auto routine=std::string(rinse_invite);routine.pop_back();routine+=R"(,"selected_abv":0})";
+    peer.request(PICO_HTTP_POST,group_path,routine.c_str(),400);
+    const auto invitation=peer.request(PICO_HTTP_POST,group_path,offered.c_str(),200);
+    assert(invitation.find("\"selected_abv\":0")!=std::string::npos&&invitation.find("\"selected_ibu\":5")!=std::string::npos);
+    assert(!peer.core.core.commands.pending&&!peer.core.heater.state.started); // no start until accepted at this brewer.
+    peer.request(PICO_HTTP_POST,group_path,fields(R"(,"selected_abv":9,"selected_ibu":5)").c_str(),409);
+    physical_group_button(peer,1);assert(peer.dispatch());
+    zseries::standalone::BrewRecovery confirmed;assert(confirmed.load(peer.storage()).ok()&&confirmed.present());
+    assert(confirmed.recipe().pak.selected_abv==0&&confirmed.recipe().pak.selected_ibu==5);
+    api::Recipe local;assert(peer.engine.recipe_get(kit.id,local).ok()&&local.pak.selected_abv==-1&&local.pak.selected_ibu==7);
+    assert(peer.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"source\":null")!=std::string::npos);
+    World incompatible;assert(incompatible.engine.recipe_store(recipe()).ok());
+    auto bad=group_recipe_offer(incompatible.engine.recipe_revision());bad.pop_back();bad+=R"(,"selected_abv":1})";
+    incompatible.request(PICO_HTTP_POST,group_path,bad.c_str(),409);assert(!incompatible.core.core.commands.pending);
+    World stale;assert(stale.engine.recipe_store(kit).ok());open(stale);
+    kit.steps[0].pak.minimum=-1;assert(!stale.engine.recipe_store(kit).ok()); // Slot writes require idle home.
+    HeadUiEvent old_load;
+    for(unsigned i=0;i<stale.head.screens.menu_data.count;++i)
+        if(stale.head.screens.menu_data.items[i].event.command==UiCommand::PicoPakRecipeLoadTweaked)old_load=stale.head.screens.menu_data.items[i].event;
+    assert(old_load.command==UiCommand::PicoPakRecipeLoadTweaked&&stale.adapter.show_home());
+    assert(stale.engine.recipe_store(kit).ok());assert(stale.head.receive_ui(old_load));stale.head_tick();
+    assert(!stale.core.core.commands.pending);
+    open(stale);assert(stale.head.screens.menu_data.count==3);
+    for(unsigned i=0;i<3;++i)assert(stale.head.screens.menu_data.items[i].event.command!=UiCommand::PicoPakRecipeTweakAbv);
+}
 void group_brew() {
     World origin, target;
     auto r = recipe();
@@ -998,7 +1094,7 @@ void group_interlocks() {
 }
 int main(int argc,char** argv){if(argc==4&&!std::strcmp(argv[1],"original-z")){for(double boil:{100.,93.})compare_archived_program(test_file(argv[2]),test_file(argv[3]),false,boil);return 0;}
     if(argc==3&&!std::strcmp(argv[1],"pak-corpus")){compare_pak_corpus(argv[2]);return 0;}assert(argc==2);const std::string test=argv[1];
-    if(test=="still-programs")still_native_programs();else if(test=="still-pairing")still_pairing();else if(test=="still-session")still_session();else if(test=="pak-input")reject_pak_changes();else if(test=="group-brew")group_brew();else if(test=="group-routines")group_routines();else if(test=="group-interlocks")group_interlocks();
+    if(test=="kit-dial")kit_strength_on_dial();else if(test=="still-programs")still_native_programs();else if(test=="still-pairing")still_pairing();else if(test=="still-session")still_session();else if(test=="pak-input")reject_pak_changes();else if(test=="group-brew")group_brew();else if(test=="group-routines")group_routines();else if(test=="group-interlocks")group_interlocks();
     else if(test=="maker")maker_program();else if(test=="recipe")owned_recipe();else if(test=="storage")storage_preflight();else if(test=="unheated")no_target();
     else if(test=="stop")stop_guard();else if(test=="input")input_order();else if(test=="offline")offline_and_reservation();
     else if(test=="settings")settings_and_display();else if(test=="status")status_fields();

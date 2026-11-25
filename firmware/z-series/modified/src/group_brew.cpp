@@ -29,6 +29,15 @@ api::Result invalid_body() {
 }
 }
 
+api::Result Adapter::apply_group_strength(const GroupProgram& program,api::Recipe& recipe){
+    if((program.selected_abv>=0&&!kit_adjustable(recipe,true))||
+       (program.selected_ibu>=0&&!kit_adjustable(recipe,false)))
+        return {409,"kit_adjustment_unavailable","This saved recipe cannot apply the requested PicoPak setting"};
+    if(program.selected_abv>=0)recipe.pak.selected_abv=program.selected_abv;
+    if(program.selected_ibu>=0)recipe.pak.selected_ibu=program.selected_ibu;
+    return {};
+}
+
 bool Adapter::group_ready() const {
     return begun_ && !stopped() && engine_ && engine_->persistence_ready() &&
            !core_.system_error && core_.msp_state.id == Z_MSP_APP_RUNNING && !core_.msp_state.errors &&
@@ -42,7 +51,17 @@ void Adapter::group_started(std::uint32_t id, bool local_brew) {
     if (local_brew) {
         // The selected slot may have been changed while the native Start screen was open.
         api::Recipe saved;
-        if (!engine_->recipe_get(selected_recipe_.id, saved).ok() || !same_recipe(saved, selected_recipe_)) return;
+        if (!engine_->recipe_get(selected_recipe_.id, saved).ok()) return;
+        // Publish an ephemeral native dose only against the exact saved revision
+        // selected by the operator. Every other serialized field must match.
+        if(selected_recipe_.pak.recipe_id){
+            const auto& choice=selected_recipe_.pak;
+            if(saved.pak.selected_abv!=choice.selected_abv)program.selected_abv=choice.selected_abv;
+            if(saved.pak.selected_ibu!=choice.selected_ibu)program.selected_ibu=choice.selected_ibu;
+            if((program.selected_abv>=0||program.selected_ibu>=0)&&
+               (selected_revision_!=engine_->recipe_revision()||!apply_group_strength(program,saved).ok()))return;
+        }
+        if(!same_recipe(saved,selected_recipe_))return;
         std::strcpy(program.action, "brew");
         std::strcpy(program.recipe_id, selected_recipe_.id);
         program.revision = engine_->recipe_revision();
@@ -81,12 +100,18 @@ bool Adapter::show_invite() {
                                                       text("Accept and start","Aceptar e iniciar","Accepter et demarrer");
     if (!screens.menu_data.append(decline, text("Decline","Rechazar","Refuser")) ||
         !screens.menu_data.append(accept, accept_label)) return false;
-    const char* lines[] = {group_invite_.from, invite_name_};
+    char strength[24]={};
+    const auto& program=group_invite_.program;
+    if(program.selected_abv>=0&&program.selected_ibu>=0)
+        ::snprintf(strength,sizeof strength,"ABV %d  IBU %d",program.selected_abv,program.selected_ibu);
+    else if(program.selected_abv>=0)::snprintf(strength,sizeof strength,"ABV %d",program.selected_abv);
+    else if(program.selected_ibu>=0)::snprintf(strength,sizeof strength,"IBU %d",program.selected_ibu);
+    const char* lines[] = {group_invite_.from, invite_name_,strength};
     HeadScreenRequest request;
     request.title = text("Group Brewing","Grupo de coccion","Brassage groupe");
     request.screen.layout = 17;
     request.has_body = true;
-    request.body.lines = lines; request.body.count = 2;
+    request.body.lines = lines; request.body.count = strength[0]?3:2;
     request.menu_rows = 2;
     page_ = Page::Group;
     return screens.show(request) == HeadScreenResult::Ok;
@@ -121,7 +146,8 @@ api::Result Adapter::receive_invite(const GroupInvitation& offer) {
     const auto now = ports_.millis(ports_.context);
     if (!std::strcmp(offer.id, group_invite_.id) && invite_state_ != InviteState::Empty) {
         if (std::strcmp(offer.from, group_invite_.from) || std::strcmp(offer.program.action, group_invite_.program.action) ||
-            std::strcmp(offer.program.recipe_id, group_invite_.program.recipe_id) || offer.program.revision != group_invite_.program.revision)
+            std::strcmp(offer.program.recipe_id, group_invite_.program.recipe_id) || offer.program.revision != group_invite_.program.revision ||
+            offer.program.selected_abv!=group_invite_.program.selected_abv || offer.program.selected_ibu!=group_invite_.program.selected_ibu)
             return {409,"invitation_conflict","This invitation ID already identifies a different program"};
         return {}; // A duplicate reports the current state without extending the original deadline.
     }
@@ -140,6 +166,8 @@ api::Result Adapter::receive_invite(const GroupInvitation& offer) {
         if (offer.program.revision != engine_->recipe_revision()) return changed();
         const auto loaded = engine_->recipe_get(offer.program.recipe_id, recipe);
         if (!loaded.ok()) return loaded;
+        const auto adjusted=apply_group_strength(offer.program,recipe);
+        if(!adjusted.ok())return adjusted;
         label = recipe.name;
     } else {
         label = !std::strcmp(offer.program.action, "rinse") ? text("Rinse","Enjuague","Rincage") : text("Clean","Limpieza","Nettoyage");
@@ -182,6 +210,7 @@ api::Result Adapter::respond_invite(const char* id, const char* op) {
         if (program.revision != engine_->recipe_revision()) { finish_invite(InviteState::Unavailable); return changed(); }
         api::Recipe recipe;
         auto result = engine_->recipe_get(program.recipe_id, recipe);
+        if(result.ok())result=apply_group_strength(program,recipe);
         if (result.ok()) result = load_recipe(recipe, true);
         if (!result.ok()) { finish_invite(InviteState::Unavailable); return result; }
     } else if (!queue_program(static_cast<unsigned>(native_id))) {
@@ -221,6 +250,11 @@ bool Adapter::group_http(const PicoHttpRequest& req, PicoHttpResponse& response,
                 } else if (!std::strcmp(key,"revision")) {
                     std::int64_t number = 0; field = 32; valid = json.integer(1,UINT32_MAX,number);
                     offer.program.revision = static_cast<std::uint32_t>(number);
+                } else if (!std::strcmp(key,"selected_abv")||!std::strcmp(key,"selected_ibu")) {
+                    std::int64_t number=0;const bool abv=!std::strcmp(key,"selected_abv");field=abv?128:256;
+                    valid=json.integer(0,10,number);
+                    if(abv)offer.program.selected_abv=static_cast<std::int8_t>(number);
+                    else offer.program.selected_ibu=static_cast<std::int8_t>(number);
                 } else if (!std::strcmp(key,"ttl_ms")) {
                     std::int64_t number = 0; field = 64; valid = json.integer(1,OfferLifetime,number);
                     offer.ttl_ms = static_cast<std::uint32_t>(number);
@@ -234,7 +268,7 @@ bool Adapter::group_http(const PicoHttpRequest& req, PicoHttpResponse& response,
             else if (!std::strcmp(op,"offer")) {
                 const bool brew = !std::strcmp(offer.program.action,"brew");
                 const bool routine = !std::strcmp(offer.program.action,"rinse") || !std::strcmp(offer.program.action,"clean");
-                if ((brew && (seen & ~64u) == 63) || (routine && (seen & ~64u) == 15)) result = receive_invite(offer);
+                if ((brew && (seen & 63u) == 63) || (routine && (seen & ~64u) == 15)) result = receive_invite(offer);
                 else result = invalid_body();
             } else if (seen == 3 && (!std::strcmp(op,"accept") || !std::strcmp(op,"decline") || !std::strcmp(op,"withdraw"))) {
                 result = respond_invite(offer.id,op);
@@ -249,6 +283,8 @@ bool Adapter::group_http(const PicoHttpRequest& req, PicoHttpResponse& response,
             if (program.recipe_id[0]) {
                 writer.text(",\"recipe_id\":"); writer.quote(program.recipe_id);
                 writer.format(",\"revision\":%lu",static_cast<unsigned long>(program.revision));
+                if(program.selected_abv>=0)writer.format(",\"selected_abv\":%d",program.selected_abv);
+                if(program.selected_ibu>=0)writer.format(",\"selected_ibu\":%d",program.selected_ibu);
             }
         };
         writer.text("{\"source\":");
