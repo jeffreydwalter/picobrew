@@ -252,71 +252,51 @@ describe('Hub firmware packages', () => {
       )
     }
   )
-  it('only offers a revised build for the exact package authorized by the Hub', async () => {
+  it('blocks every archive for the running version, including a different local upload', async () => {
     const user = userEvent.setup()
     const path = '/devices/pico-s/firmware'
-    const revisedID = '6c10f4f546687da07ef748573db3c5ed26294391edc192dfdee7c9abc6cd6c8b'
-    const revised = { ...uploaded, id: revisedID, firmware_version: '1.0.0', hub_ota_protocol: 1 }
-    const original = { ...revised, kind: 'standalone', archive_sha256: 'd'.repeat(64) }
-    let approved: string | undefined = revisedID
+    const local = { ...uploaded, firmware_version: '1.0.0', hub_ota_protocol: 1 }
+    const catalog = { ...local, kind: 'standalone', archive_sha256: 'd'.repeat(64) }
     fetchMock.mockImplementation(async (url, opts) => {
       if (String(url).endsWith(path))
         return json({
           model: 'pico-s',
           current_version: '1.0.0',
           install_supported: true,
-          revised_package_id: approved,
           device_uid: 'paired-brewer',
-          packages: [revised],
+          packages: [local],
         })
-      if (String(url).endsWith('/firmware/updates')) return json({ releases: [original] })
-      if (String(url).endsWith('/install')) {
-        approved = undefined
-        return json({ state: 'running' }, 202)
-      }
+      if (String(url).endsWith('/firmware/updates')) return json({ releases: [catalog] })
       return response(url, opts)
     })
     show(createElement(MachineFirmwareDialog, { deviceID: 'pico-s', onClose: close }))
     const select = (await screen.findByLabelText('Firmware version')) as HTMLSelectElement
-    const release = await screen.findByRole('option', {
-      name: '1.0.0 · Release catalog (dddddddddddd)',
-    })
-    const local = screen.getByRole('option', {
-      name: '1.0.0 · Revised build · Local upload (6c10f4f54668)',
-    })
-    expect(select.value).toBe(revised.id)
-    await user.selectOptions(select, release)
-    const blocked = screen.getByRole('button', { name: 'Already installed' }) as HTMLButtonElement
-    expect(blocked.disabled).toBe(true)
-    await user.click(blocked)
+    const options = await screen.findAllByRole('option', { name: /1\.0\.0 · Current version/ })
+    expect(options.map((option) => option.textContent)).toEqual([
+      '1.0.0 · Current version · Release catalog (dddddddddddd)',
+      '1.0.0 · Current version · Local upload (cccccccccccc)',
+    ])
+    for (const option of options) {
+      await user.selectOptions(select, option)
+      const button = screen.getByRole('button', { name: 'Already installed' }) as HTMLButtonElement
+      expect(button.disabled).toBe(true)
+      await user.click(button)
+    }
     expect(calls(path + '/install', 'POST')).toHaveLength(0)
-    await user.selectOptions(select, local)
-    await user.click(screen.getByRole('button', { name: 'Install revised build' }))
-    await waitFor(() => expect(calls(path + '/install', 'POST')).toHaveLength(1))
-    expect(JSON.parse(String(calls(path + '/install', 'POST')[0][1]?.body))).toEqual({
-      device_uid: 'paired-brewer',
-      package_id: revised.id,
-      confirm: true,
-    })
     expect(calls('/stage', 'POST')).toHaveLength(0)
-    expect(
-      ((await screen.findByRole('button', { name: 'Already installed' })) as HTMLButtonElement)
-        .disabled
-    ).toBe(true)
   })
 
-  it('keeps a newer release ahead of the permitted same-version revision', async () => {
+  it('selects the newest available version ahead of the installed version', async () => {
     const path = '/devices/pico-s/firmware'
-    const revised = { ...uploaded, hub_ota_protocol: 1, firmware_version: '1.0.0' }
-    const newer = { ...revised, id: 'd'.repeat(64), firmware_version: '1.0.1' }
+    const installed = { ...uploaded, hub_ota_protocol: 1, firmware_version: '1.0.0' }
+    const newer = { ...installed, id: 'd'.repeat(64), firmware_version: '1.0.1' }
     fetchMock.mockImplementation(async (url, opts) => {
       if (String(url).endsWith(path))
         return json({
           model: 'pico-s',
           current_version: '1.0.0',
           install_supported: true,
-          revised_package_id: revised.id,
-          packages: [revised, newer],
+          packages: [installed, newer],
         })
       return response(url, opts)
     })

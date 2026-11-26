@@ -615,7 +615,7 @@ func (s *Server) machineFirmware(w http.ResponseWriter, r *http.Request) {
 			receipt.Message = "Hub restarted before it recorded the result. Check the brewer before continuing."
 		}
 		out.LastInstall = &receipt
-		if !active && retryEnabled && (!out.InstallSupported || pendingFirmwareConflict(receipt) != "" || receipt.ReplacesPackageID != "") && (out.Model == "" || out.Model == receipt.Model && out.DeviceUID == receipt.UID && out.DisplayVariant == receipt.DisplayVariant) && receipt.State != "installed" && !s.cfg.Demo {
+		if !active && retryEnabled && canResumeFirmware(receipt) && (!out.InstallSupported || pendingFirmwareConflict(receipt) != "") && (out.Model == "" || out.Model == receipt.Model && out.DeviceUID == receipt.UID && out.DisplayVariant == receipt.DisplayVariant) && !s.cfg.Demo {
 			matches, err := s.savedFirmwareIdentity(out.DeviceID, receipt.UID)
 			if err != nil {
 				s.storeError(w, err)
@@ -694,9 +694,6 @@ func (s *Server) machineFirmware(w http.ResponseWriter, r *http.Request) {
 		} else if verified != out.DisplayVariant {
 			out.Reason += " The firmware-reported display differs from the independently verified controller."
 		}
-	}
-	if out.InstallSupported && out.RetryPackageID == "" && !stockPending(stock) {
-		out.RevisedPackageID = receipt.RevisedPackageID(out.DeviceUID, out.Model, out.DisplayVariant, out.CurrentVersion)
 	}
 	if out.Model != "" {
 		catalog, err := s.savedCatalog()

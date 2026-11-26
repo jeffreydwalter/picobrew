@@ -483,7 +483,7 @@ func addFirmwareSchemas(values schemaMap) {
 	releaseProps["source_commit"] = commit
 	releaseProps["archive_sha256"] = hash
 	values["FirmwareRelease"] = schemaObject(releaseProps, append(append([]string{}, required...), "kind", "source_commit", "archive_sha256")...)
-	values["FirmwareUpdates"] = schemaObject(schemaMap{"checked": schemaMap{"type": "string", "format": "date-time"}, "releases": schemaArray(schemaRef("FirmwareRelease")), "notices": schemaArray(schemaObject(schemaMap{"name": stringSchema(), "version": stringSchema(), "device_id": stringSchema(), "revised": boolSchema()}, "name", "version", "device_id"))}, "releases", "notices")
+	values["FirmwareUpdates"] = schemaObject(schemaMap{"checked": schemaMap{"type": "string", "format": "date-time"}, "releases": schemaArray(schemaRef("FirmwareRelease")), "notices": schemaArray(schemaObject(schemaMap{"name": stringSchema(), "version": stringSchema(), "device_id": stringSchema()}, "name", "version", "device_id"))}, "releases", "notices")
 	values["FirmwareCatalog"] = schemaObject(schemaMap{"repository": stringSchema(), "ref": stringSchema(), "commit": commit, "packages": schemaArray(schemaRef("FirmwareCandidate"))}, "repository", "ref", "commit", "packages")
 	values["MachineFirmware"] = schemaObject(schemaMap{
 		"device_id":                      stringSchema(),
@@ -495,12 +495,11 @@ func addFirmwareSchemas(values schemaMap) {
 		"hardware_verification_required": boolSchema(),
 		"stock_restore_guide":            boolSchema(),
 		"can_confirm_stock_startup":      boolSchema(), "stock_restore_wireless": boolSchema(), "stock_restore_upgrade": boolSchema(), "last_stock_restore": schemaRef("FirmwareStockReceipt"),
-		"install_supported":  boolSchema(),
-		"retry_package_id":   hash,
-		"revised_package_id": hash,
-		"last_install":       schemaRef("FirmwareInstallReceipt"),
-		"reason":             stringSchema(),
-		"packages":           schemaArray(schemaRef("FirmwarePackage")),
+		"install_supported": boolSchema(),
+		"retry_package_id":  hash,
+		"last_install":      schemaRef("FirmwareInstallReceipt"),
+		"reason":            stringSchema(),
+		"packages":          schemaArray(schemaRef("FirmwarePackage")),
 	}, "device_id", "model", "current_version", "install_supported", "reason", "packages")
 }
 

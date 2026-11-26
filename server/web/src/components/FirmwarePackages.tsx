@@ -158,11 +158,10 @@ export function MachineFirmwareDialog({
     versionCounts.set(firmware_version, (versionCounts.get(firmware_version) || 0) + 1)
   }
   const versions = [...items].sort(
-    ([aID, a], [bID, b]) =>
+    ([, a], [, b]) =>
       Number(a.firmware_version.startsWith('preview')) -
         Number(b.firmware_version.startsWith('preview')) ||
-      b.firmware_version.localeCompare(a.firmware_version, 'en', { numeric: true }) ||
-      Number(bID === machine?.revised_package_id) - Number(aID === machine?.revised_package_id)
+      b.firmware_version.localeCompare(a.firmware_version, 'en', { numeric: true })
   )
   const id = items.has(chosen)
     ? chosen
@@ -176,17 +175,13 @@ export function MachineFirmwareDialog({
     !!selected &&
     (machine.model !== 'pico-c' || machine.verified_display_variant === selected.display_variant) &&
     (!machine.retry_package_id || resuming)
-  const currentVersionSelected =
+  const alreadyInstalled =
     !!selected && selected.firmware_version === machine?.current_version && !resuming
-  const revisedBuild = currentVersionSelected && id === machine?.revised_package_id
-  const alreadyInstalled = currentVersionSelected && !revisedBuild
   const installLabel = resuming
     ? 'Resume update'
     : alreadyInstalled
       ? 'Already installed'
-      : revisedBuild
-        ? 'Install revised build'
-        : 'Install'
+      : 'Install'
   async function checkUpdates() {
     setActivity('Checking…')
     setVerificationError('')
@@ -381,9 +376,6 @@ export function MachineFirmwareDialog({
                 </form>
               </details>
             )}
-            {machine?.revised_package_id && !items.has(machine.revised_package_id) && (
-              <p>Check for updates to look for the revised build of {machine.current_version}.</p>
-            )}
             <Field label="Firmware version">
               <select
                 value={id || ''}
@@ -397,13 +389,10 @@ export function MachineFirmwareDialog({
                   <option key={key} value={key}>
                     {v.firmware_version}
                     {v.display_variant ? ' · ' + v.display_variant.toUpperCase() : ''}
-                    {key === machine?.revised_package_id ? ' · Revised build' : ''}
+                    {v.firmware_version === machine?.current_version ? ' · Current version' : ''}
                     {(versionCounts.get(v.firmware_version) ?? 0) > 1
                       ? ` · ${packageSources[v.source]} (${key.slice(0, 12)})`
-                      : key !== machine?.revised_package_id &&
-                          v.firmware_version === machine?.current_version
-                        ? ' · Current version'
-                        : ''}
+                      : ''}
                   </option>
                 ))}
               </select>

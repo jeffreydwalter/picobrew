@@ -91,7 +91,6 @@ func ReadFactoryUpdate(archive []byte, candidate Candidate) (UpdatePayload, erro
 		return out, invalid("Invalid ESP32 application segments, checksum or appended digest")
 	}
 	out.Candidate = candidate
-	out.ArchiveSHA256 = Digest(archive)
 	out.Files[0] = app
 	return out, nil
 }

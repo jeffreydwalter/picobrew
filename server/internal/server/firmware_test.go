@@ -691,9 +691,9 @@ func TestInstallUsesTheConnectedBrewersVersion(t *testing.T) {
 	}
 }
 
-// The real revised archive is the authorization boundary. Exercise it when
-// running the repository integration suite; the standalone Hub checkout has no firmware tree.
-func TestPicoSOriginalReceiptOffersRevisedBuildOnce(t *testing.T) {
+// Earlier beta Hubs allowed this exact pair of 1.0.0 packages. A historical
+// receipt must never re-enable that exception or advertise a firmware update.
+func TestSameVersionBlockedWithEarlierBetaReceipt(t *testing.T) {
 	root := os.Getenv("PICO_FIRMWARE_LIBRARY")
 	if root == "" {
 		t.Skip("repository version library is outside the standalone Hub")
@@ -726,79 +726,40 @@ func TestPicoSOriginalReceiptOffersRevisedBuildOnce(t *testing.T) {
 	install := func() (int, []byte) {
 		return request(t, client, "POST", path+"/install", csrf, map[string]any{"package_id": pkg.ID, "device_uid": uid, "confirm": true}, nil)
 	}
-	checkOffer := func(want string) {
-		t.Helper()
-		code, data := request(t, client, "GET", path, "", nil, nil)
-		var result firmware.MachineFirmware
-		if code != 200 || json.Unmarshal(data, &result) != nil || result.RevisedPackageID != want {
-			t.Fatalf("wrong revised package offer: %d %s", code, data)
-		}
+	prior := firmware.InstallReceipt{UID: uid, Model: "pico-s", PackageID: original, State: "installed"}
+	if _, err := s.db.Put("firmware-install", registered.ID, prior, -1); err != nil {
+		t.Fatal(err)
 	}
-	checkDenied := func() {
-		t.Helper()
-		checkOffer("")
-		if code, body := install(); code != 409 || !bytes.Contains(body, []byte("firmware_already_installed")) {
-			t.Fatalf("same version accepted: %d %s", code, body)
-		}
-	}
-	save := func(receipt firmware.InstallReceipt) {
-		t.Helper()
-		if _, err := s.db.Put("firmware-install", registered.ID, receipt, -1); err != nil {
-			t.Fatal(err)
-		}
-	}
-	checkDenied()
-	prior := firmware.InstallReceipt{UID: "other-brewer", Model: "pico-s", PackageID: original, State: "installed"}
-	save(prior)
-	checkDenied()
-	prior.UID = uid
-	prior.Model = "pico-pro"
-	save(prior)
-	checkDenied()
-	prior.Model = "pico-s"
-	save(prior)
-	// The daily fleet notice must refer to the actual release in the selected
-	// catalog. A cached older archive with the same version is not a revision.
 	catalog := firmware.ReleaseCatalog{Settings: firmware.Settings{Repository: firmware.DefaultRepository}, ReleaseChannel: "stable", Checked: time.Now().UTC(),
-		Releases: []firmware.Release{{Candidate: pkg.Candidate, ArchiveSHA256: original, Kind: "standalone"}}}
-	checkNotice := func(id string, want bool) {
-		t.Helper()
-		catalog.Releases[0].ArchiveSHA256 = id
-		if _, err := s.db.Put("config", firmwareCatalogKey, catalog, -1); err != nil {
-			t.Fatal(err)
+		Releases: []firmware.Release{{Candidate: pkg.Candidate, ArchiveSHA256: pkg.ID, Kind: "standalone"}}}
+	if _, err := s.db.Put("config", firmwareCatalogKey, catalog, -1); err != nil {
+		t.Fatal(err)
+	}
+	code, data := request(t, client, "GET", h.URL+"/api/v1/firmware/updates", "", nil, nil)
+	var view releaseView
+	if code != 200 || json.Unmarshal(data, &view) != nil || len(view.Notices) != 0 || len(view.Releases) != 1 {
+		t.Fatalf("unexpected firmware notice or missing catalog: %d %s", code, data)
+	}
+	for _, state := range []string{"installed", "unconfirmed"} {
+		if state == "unconfirmed" {
+			// A legacy revision receipt without an entering checkpoint never verified its source.
+			prior.State, prior.PackageID, prior.ReplacesPackageID = state, pkg.ID, original
+			if _, err := s.db.Put("firmware-install", registered.ID, prior, -1); err != nil {
+				t.Fatal(err)
+			}
 		}
-		code, data := request(t, client, "GET", h.URL+"/api/v1/firmware/updates", "", nil, nil)
-		var view releaseView
-		if code != 200 || json.Unmarshal(data, &view) != nil || len(view.Notices) > 1 || (len(view.Notices) == 1) != want ||
-			want && (!view.Notices[0].Revised || view.Notices[0].DeviceID != registered.ID) {
-			t.Fatalf("wrong revision notice: %d %s", code, data)
+		code, data := request(t, client, "GET", path, "", nil, nil)
+		if code != 200 || bytes.Contains(data, []byte("revised_package_id")) || bytes.Contains(data, []byte("retry_package_id")) {
+			t.Fatalf("%s receipt advertised same-version install: %d %s", state, code, data)
+		}
+		if code, data := install(); code != 409 || !bytes.Contains(data, []byte("firmware_already_installed")) {
+			t.Fatalf("%s receipt accepted same-version install: %d %s", state, code, data)
+		}
+		var after firmware.InstallReceipt
+		if _, err := s.db.Get("firmware-install", registered.ID, &after); err != nil || after != prior || len(a.stages) != 0 {
+			t.Fatalf("rejected install changed the receipt or contacted the updater: %+v, %v", after, err)
 		}
 	}
-	checkNotice(original, false)
-	checkNotice(pkg.ID, true)
-	checkOffer(pkg.ID)
-	if code, data := install(); code != 202 {
-		t.Fatalf("eligible revision rejected: %d %s", code, data)
-	}
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		var receipt firmware.InstallReceipt
-		if _, err := s.db.Get("firmware-install", registered.ID, &receipt); err != nil {
-			t.Fatal(err)
-		}
-		d.mu.RLock()
-		active := d.updatingFirmware
-		d.mu.RUnlock()
-		if !active && receipt.State == "installed" && receipt.PackageID == pkg.ID && receipt.ReplacesPackageID == original {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("revised package was not confirmed: %+v", receipt)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	checkNotice(pkg.ID, false)
-	checkDenied()
 }
 
 func TestInterruptedFirmwareKeepsReceiptAndCanResume(t *testing.T) {

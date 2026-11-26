@@ -419,7 +419,7 @@ export interface FirmwareRelease extends FirmwareCandidate {
 export interface FirmwareUpdates {
   checked?: string
   releases: FirmwareRelease[]
-  notices: { device_id: string; name: string; version: string; revised?: boolean }[]
+  notices: { device_id: string; name: string; version: string }[]
 }
 export interface FirmwareCatalog extends FirmwareSettings {
   commit: string
@@ -458,7 +458,6 @@ export interface MachineFirmware {
   device_uid?: string
   hardware_verification_required?: boolean
   retry_package_id?: string
-  revised_package_id?: string
   install_supported: boolean
   last_install?: { package_id: string; started: string; state: string; message: string }
   reason: string

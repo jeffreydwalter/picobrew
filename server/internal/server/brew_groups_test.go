@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"reflect"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/device"
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/domain"
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/recipe"
+	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/store"
 )
 
 type groupTestDevice struct {
@@ -203,6 +205,118 @@ func TestGroupConsentAndIsolation(t *testing.T) {
 		t.Fatal(i)
 	}
 }
+func TestGroupDialOutcomeAfterHubDeadline(t *testing.T) {
+	s, h, c := newTestServer(t)
+	csrf := signIn(t, c, h.URL)
+	d, target := groupTestBrewer(t, s, "peer", "z-series")
+	group := brewGroup{ID: "double", DeviceIDs: []string{"origin", "peer"}}
+	if _, err := s.db.Put(groupKind, group.ID, group, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, decision := range []string{"accepted", "declined"} {
+		t.Run(decision, func(t *testing.T) {
+			// A user answered at the dial just before its deadline. The Hub's
+			// browser reads the invitation after the deadline, before the next poll.
+			invite := brewInvite{ID: "1111111111111111", GroupID: group.ID, GroupSessionID: decision,
+				SourceDeviceID: "origin", SourceName: "Kitchen", TargetDeviceID: "peer", TargetUID: target.st.DeviceUID,
+				Action: "rinse", State: "pending", ExpiresAt: time.Now().UTC().Add(-time.Second)}
+			if err := s.saveInvite(invite); err != nil {
+				t.Fatal(err)
+			}
+			target.state.Invite = &device.GroupOffer{ID: invite.ID, From: "Kitchen", Action: "rinse", State: decision}
+			target.st.Busy = decision == "accepted"
+			target.hist = domain.History{Sessions: []domain.HistorySession{{Available: true, ID: 7, Command: "rinse", State: "recording"}}}
+			path := h.URL + "/api/v1/devices/peer/brew-invite"
+			if code, body := request(t, c, "GET", path, csrf, nil, nil); code != 200 || strings.Contains(string(body), invite.ID) {
+				t.Fatalf("expired invitation shown: %d %s", code, body)
+			}
+			if code, _ := request(t, c, "POST", path+"/"+invite.ID+"/respond", csrf, map[string]bool{"accept": true}, nil); code != 409 {
+				t.Fatalf("response past deadline: %d", code)
+			}
+			if err := s.syncBrewGroup(context.Background(), d, target.st); err != nil {
+				t.Fatal(err)
+			}
+			result, err := s.memberInvite("peer")
+			if err != nil || result == nil || result.State != decision || !result.ExpiresAt.Equal(invite.ExpiresAt) || len(target.calls) != 0 {
+				t.Fatalf("Hub invitation %+v, dial state %s, commands %v, error %v", result, decision, target.calls, err)
+			}
+			if decision == "accepted" {
+				var link groupJournal
+				if _, err := s.db.Get("group-journal", "peer-7", &link); err != nil || link.GroupSessionID != invite.GroupSessionID {
+					t.Fatalf("missing recording link: %+v, %v", link, err)
+				}
+			}
+		})
+	}
+}
+
+func TestGroupNativeStartRejectedAfterAcceptance(t *testing.T) {
+	s, _, _ := newTestServer(t)
+	d, target := groupTestBrewer(t, s, "peer", "z-series")
+	group := brewGroup{ID: "double", DeviceIDs: []string{"origin", "peer"}}
+	if _, err := s.db.Put(groupKind, group.ID, group, 0); err != nil {
+		t.Fatal(err)
+	}
+	invite := brewInvite{ID: "1111111111111111", GroupID: group.ID, GroupSessionID: "session",
+		SourceDeviceID: "origin", SourceName: "Kitchen", TargetDeviceID: "peer", TargetUID: target.st.DeviceUID,
+		Action: "rinse", State: "pending", ExpiresAt: time.Now().UTC().Add(time.Minute)}
+	if err := s.saveInvite(invite); err != nil {
+		t.Fatal(err)
+	}
+	target.state.Invite = &device.GroupOffer{ID: invite.ID, From: "Kitchen", Action: "rinse", State: "accepted"}
+	for _, state := range []string{"accepted", "unavailable", "unavailable"} {
+		target.state.Invite.State = state
+		if err := s.syncBrewGroup(context.Background(), d, target.st); err != nil {
+			t.Fatal(err)
+		}
+		result, err := s.memberInvite("peer")
+		if err != nil || result == nil || result.State != state || len(target.calls) != 0 {
+			t.Fatalf("Hub invitation %+v, device state %s, commands %v, error %v", result, state, target.calls, err)
+		}
+	}
+	var watch groupJournalWatch
+	if _, err := s.db.Get("group-journal-watch", "peer", &watch); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("rejected start retained journal lookup: %+v, %v", watch, err)
+	}
+}
+
+func TestGroupFinalReadbackRequiresOriginalOffer(t *testing.T) {
+	s, _, _ := newTestServer(t)
+	d, target := groupTestBrewer(t, s, "peer", "z-series")
+	for _, tc := range []struct{ name, state, final, id, from, uid string }{
+		{"newer invitation", "expired", "accepted", "2222222222222222", "Kitchen", "peer"},
+		{"different offer", "expired", "declined", "1111111111111111", "Cellar", "peer"},
+		{"changed registration", "expired", "accepted", "1111111111111111", "Kitchen", "replacement"},
+		{"withdrawn member", "withdrawn", "accepted", "1111111111111111", "Kitchen", "peer"},
+		{"rejoined member", "expired", "accepted", "1111111111111111", "Kitchen", "peer"},
+		{"stale failure", "accepted", "unavailable", "2222222222222222", "Kitchen", "peer"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			group := brewGroup{ID: "double", DeviceIDs: []string{"origin", "peer"}}
+			if tc.name == "rejoined member" {
+				group.MemberSince = map[string]time.Time{"peer": time.Now()}
+			}
+			if _, err := s.db.Put(groupKind, group.ID, group, -1); err != nil {
+				t.Fatal(err)
+			}
+			invite := brewInvite{ID: "1111111111111111", GroupID: group.ID, SourceDeviceID: "origin", SourceName: "Kitchen",
+				TargetDeviceID: "peer", TargetUID: "peer", Action: "rinse", State: tc.state, ExpiresAt: time.Now().Add(-time.Second)}
+			if err := s.saveInvite(invite); err != nil {
+				t.Fatal(err)
+			}
+			target.st.DeviceUID = tc.uid
+			target.state.Invite = &device.GroupOffer{ID: tc.id, From: tc.from, Action: "rinse", State: tc.final}
+			if err := s.syncBrewGroup(context.Background(), d, target.st); err != nil {
+				t.Fatal(err)
+			}
+			result, err := s.memberInvite("peer")
+			if err != nil || result == nil || result.State != tc.state || len(target.calls) != 0 {
+				t.Fatalf("unexpected invitation %+v, commands %v, error %v", result, target.calls, err)
+			}
+		})
+	}
+}
+
 func TestGroupRecipeProofAndZymaticMenu(t *testing.T) {
 	s, _, _ := newTestServer(t)
 	ctx := context.Background()
@@ -589,6 +703,9 @@ func TestZOwnerProgramInvitesStayOnCompatibleModules(t *testing.T) {
 	b.caps.GroupZProgramsV1 = true
 	if code, raw := request(t, c, "POST", answer, csrf, map[string]bool{"accept": true}, nil); code != 200 || len(b.calls) != 2 || b.calls[1].Op != "accept" {
 		t.Fatalf("%d %s %+v", code, raw, b.calls)
+	}
+	if i, err := s.memberInvite("peer"); err != nil || i == nil || i.State != "accepted" || !strings.Contains(i.Message, "accepted for review") {
+		t.Fatalf("coffee review outcome: %+v, %v", i, err)
 	}
 	if name := groupHistoryCommand(brewInvite{Action: "z_program", GroupZProgram: device.GroupZProgram{ProgramID: 23}}); name != "" {
 		t.Fatal("misidentified generic coffee history", name)

@@ -142,6 +142,7 @@ private:
     std::uint32_t group_source_time_ = 0, group_sequence_ = 0;
     std::uint32_t invite_time_ = 0, invite_ticket_ = 0;
     InviteState invite_state_ = InviteState::Empty;
+    bool invite_waking_ = false;
     struct SeenInvitation { char id[17] = {}; std::uint32_t time = 0; };
     std::array<SeenInvitation,8> seen_invitations_{};
     std::uint32_t joined_program_ = 0;

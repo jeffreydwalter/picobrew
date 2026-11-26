@@ -170,8 +170,18 @@ func (s *Server) syncBrewGroup(ctx context.Context, d *runtimeDevice, status dom
 	if err != nil || invite == nil {
 		return err
 	}
-	if activeInvite(invite.State) && live.Invite != nil && live.Invite.ID == invite.ID && (live.Invite.State == "accepted" || live.Invite.State == "declined") {
-		return s.reconcileGroupInvite(ctx, d, view, wire, live.Invite, invite)
+	if inviteMember(g, invite) && invite.matchesOffer(live.Invite) && (live.Invite.State == "accepted" || live.Invite.State == "declined") {
+		if activeInvite(invite.State) {
+			return s.reconcileGroupInvite(ctx, d, view, wire, live.Invite, invite)
+		}
+		// A stale browser response or an earlier poll can close the Hub row
+		// before the device's on-time dial decision is observed. Record only
+		// the final decision of the same physical recipient and membership.
+		started := invite.ExpiresAt.Add(-inviteLifetime)
+		if invite.State == "expired" && invite.TargetUID != "" && invite.TargetUID == view.Status.DeviceUID && invite.SourceUID != invite.TargetUID &&
+			!started.Before(g.MemberSince[invite.TargetDeviceID]) && !started.Before(g.MemberSince[invite.SourceDeviceID]) {
+			return s.recordGroupOutcome(ctx, d, view, invite, live.Invite.State)
+		}
 	}
 	if err = s.expireInvite(invite, g, time.Now()); err != nil {
 		return err
@@ -314,6 +324,36 @@ func (i *brewInvite) matchesOffer(live *device.GroupOffer) bool {
 		live.Revision == i.SlotRevision && reflect.DeepEqual(live.GroupKitSelection, i.GroupKitSelection) && reflect.DeepEqual(live.GroupZProgram, i.GroupZProgram)
 }
 
+func (s *Server) recordGroupOutcome(ctx context.Context, d *runtimeDevice, v domain.DeviceView, i *brewInvite, state string) error {
+	if i.State == "accepted" && state == "unavailable" {
+		// A rejected start can have a pending journal lookup. A more recent
+		// operation on this registration may already own the lookup instead.
+		var watch groupJournalWatch
+		_, err := s.db.Get("group-journal-watch", v.ID, &watch)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+		if err == nil && watch.UID == v.Status.DeviceUID && watch.Invite.ID == i.ID && watch.Invite.GroupSessionID == i.GroupSessionID {
+			if err = s.db.Delete("group-journal-watch", v.ID); err != nil {
+				return err
+			}
+		}
+	}
+	i.State, i.Message = state, ""
+	switch state {
+	case "accepted":
+		if i.Action == "z_program" && i.ProgramID >= 20 && i.ProgramID <= 23 {
+			i.Message = "Coffee invitation accepted for review. Starting the program takes a separate selection on this Z’s dial."
+		}
+		if err := s.watchGroupHistory(ctx, d, v, *i, i.ExpiresAt.Add(-inviteLifetime)); err != nil {
+			s.cfg.Logger.Debug("Group journal link unavailable", "error", err)
+		}
+	case "unavailable":
+		i.Message = "The brewer could not start the requested routine."
+	}
+	return s.saveInvite(*i)
+}
+
 func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v domain.DeviceView, w device.GroupBrewer, live *device.GroupOffer, i *brewInvite) error {
 	if v.Status.DeviceUID != "" && i.SourceUID == v.Status.DeviceUID && activeInvite(i.State) {
 		i.State = "unavailable"
@@ -331,8 +371,17 @@ func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v d
 		return nil
 	}
 	if !activeInvite(i.State) {
-		if i.State == "accepted" && i.matchesOffer(live) && live.State == "accepted" {
-			return s.retryGroupHistory(ctx, d, v, i.GroupSessionID)
+		if i.State == "accepted" && i.matchesOffer(live) {
+			switch live.State {
+			case "accepted":
+				return s.retryGroupHistory(ctx, d, v, i.GroupSessionID)
+			case "unavailable":
+				// Firmware rechecks its interlocks when it dispatches the
+				// accepted start. Report a rejection without issuing a command.
+				if i.TargetUID != "" {
+					return s.recordGroupOutcome(ctx, d, v, i, live.State)
+				}
+			}
 		}
 		return nil
 	}
@@ -357,17 +406,9 @@ func (s *Server) reconcileGroupInvite(ctx context.Context, d *runtimeDevice, v d
 			}
 			i.State = "pending"
 		case "accepted", "declined", "expired", "withdrawn", "unavailable":
-			i.State = live.State
-			if i.State == "unavailable" {
-				i.Message = "The brewer could not start the requested routine."
-			}
+			return s.recordGroupOutcome(ctx, d, v, i, live.State)
 		default:
 			return nil
-		}
-		if i.State == "accepted" {
-			if err := s.watchGroupHistory(ctx, d, v, *i, i.ExpiresAt.Add(-inviteLifetime)); err != nil {
-				s.cfg.Logger.Debug("Group journal link unavailable", "error", err)
-			}
 		}
 		return s.saveInvite(*i)
 	}
