@@ -22,7 +22,6 @@ type releaseNotice struct {
 	DeviceID string `json:"device_id"`
 	Name     string `json:"name"`
 	Version  string `json:"version"`
-	Revised  bool   `json:"revised,omitempty"`
 }
 type releaseView struct {
 	Checked  *time.Time         `json:"checked,omitempty"`
@@ -168,19 +167,7 @@ func (s *Server) firmwareUpdates(w http.ResponseWriter, r *http.Request) {
 	}
 	seen := map[string]bool{}
 	for _, d := range s.fleetForReleases() {
-		var revisedID string
-		if d.Status != nil && d.Capabilities != nil && d.ModelSource == "firmware" &&
-			d.Model == d.Capabilities.Model && validateStatusModel(*d.Status, *d.Capabilities) == nil {
-			var receipt firmware.InstallReceipt
-			if _, err := s.db.Get("firmware-install", d.ID, &receipt); err == nil {
-				revisedID = receipt.RevisedPackageID(d.Status.DeviceUID, d.Model, d.Capabilities.DisplayVariant, d.Capabilities.FirmwareVersion)
-			} else if !errors.Is(err, store.ErrNotFound) {
-				s.storeError(w, err)
-				return
-			}
-		}
 		latest := ""
-		revised := false
 		for _, v := range c.Releases {
 			if v.Model != d.Model || (v.Model == "pico-c" && d.Capabilities != nil && v.DisplayVariant != d.Capabilities.DisplayVariant) {
 				continue
@@ -189,13 +176,12 @@ func (s *Server) firmwareUpdates(w http.ResponseWriter, r *http.Request) {
 				out.Releases = append(out.Releases, v)
 				seen[v.ArchiveSHA256] = true
 			}
-			currentRevision := revisedID != "" && v.ArchiveSHA256 == revisedID
-			if (currentRevision || updateAvailable(c, v, d.Capabilities)) && (latest == "" || newerRelease(v.FirmwareVersion, latest)) {
-				latest, revised = v.FirmwareVersion, currentRevision
+			if updateAvailable(c, v, d.Capabilities) && (latest == "" || newerRelease(v.FirmwareVersion, latest)) {
+				latest = v.FirmwareVersion
 			}
 		}
 		if latest != "" {
-			out.Notices = append(out.Notices, releaseNotice{DeviceID: d.ID, Name: d.Name, Version: latest, Revised: revised})
+			out.Notices = append(out.Notices, releaseNotice{DeviceID: d.ID, Name: d.Name, Version: latest})
 		}
 	}
 	s.json(w, 200, out)

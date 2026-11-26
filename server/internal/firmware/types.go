@@ -120,6 +120,8 @@ type Package struct {
 }
 
 type InstallReceipt struct {
+	// Only older Hub receipts contain this field. Their same-version attempts
+	// could enter recovery only after recording an explicit entering checkpoint.
 	ReplacesPackageID string    `json:"replaces_package_id,omitempty"`
 	DisplayVariant    string    `json:"display_variant,omitempty"`
 	Stage             string    `json:"stage,omitempty"`
@@ -148,7 +150,6 @@ type StockReceipt struct {
 }
 
 type MachineFirmware struct {
-	RevisedPackageID       string        `json:"revised_package_id,omitempty"`
 	CanConfirmStockStartup bool          `json:"can_confirm_stock_startup,omitempty"`
 	StockRestoreWireless   bool          `json:"stock_restore_wireless,omitempty"`
 	StockRestoreUpgrade    bool          `json:"stock_restore_upgrade,omitempty"`

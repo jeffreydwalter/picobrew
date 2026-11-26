@@ -516,10 +516,8 @@ func buildArchive(files map[string][]byte) ([]byte, error) {
 // UpdatePayload contains only fixed, validated destinations in the order used by recovery.
 type UpdatePayload struct {
 	Candidate
-	ArchiveSHA256     string
-	ReplacesPackageID string // Set by the Hub from its persisted receipt, never from package metadata.
-	Files             [6][]byte
-	PicoFerm          *PicoFermUpdate
+	Files    [6][]byte
+	PicoFerm *PicoFermUpdate
 }
 
 func ReadUpdatePayload(archive []byte) (UpdatePayload, error) {
@@ -536,7 +534,6 @@ func ReadUpdatePayload(archive []byte) (UpdatePayload, error) {
 		return payload, invalid("Choose a package that supports Hub wireless installation")
 	}
 	payload.Candidate = c
-	payload.ArchiveSHA256 = Digest(archive)
 	payload.Files[0] = files[c.Model+"-standalone.bin"]
 	for i, f := range webFiles {
 		payload.Files[i+1] = files["web/"+f.source+".gz"]

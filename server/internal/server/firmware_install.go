@@ -31,6 +31,13 @@ func otaEligible(v domain.DeviceView) bool {
 		v.Status != nil && v.Status.Ready && !v.Status.Busy && !v.Status.Stopped && v.Status.DeviceUID != ""
 }
 
+// New installs record "checking" before any device request. Older ordinary
+// CC3200 installs could already be in recovery with an empty stage, while
+// the previous same-version flow always saved "entering" before rebooting.
+func canResumeFirmware(r firmware.InstallReceipt) bool {
+	return r.State != "installed" && r.Stage != "checking" && (r.Stage != "" || r.ReplacesPackageID == "")
+}
+
 // Each checkpoint precedes a device mutation. The previous package owns the
 // transfer or trial even if the device still answers its normal status API.
 func pendingFirmwareConflict(receipt firmware.InstallReceipt) string {
@@ -120,7 +127,7 @@ func (s *Server) installFirmware(w http.ResponseWriter, r *http.Request) {
 		s.storeError(w, err)
 		return
 	}
-	resume := prior.PackageID == in.PackageID && prior.UID == in.UID && prior.State != "installed"
+	resume := prior.PackageID == in.PackageID && prior.UID == in.UID && canResumeFirmware(prior)
 	if mismatch && !(resume && awaitingIdentity) {
 		s.fail(w, 409, "ota_unavailable", "The registered brewer identity could not be verified")
 		return
@@ -223,17 +230,8 @@ func (s *Server) installFirmware(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, 409, "firmware_model", "The package model does not match this brewer")
 		return
 	}
-	if resume {
-		payload.ReplacesPackageID = prior.ReplacesPackageID
-	} else if currentVersion == payload.FirmwareVersion {
-		if in.PackageID != prior.RevisedPackageID(in.UID, model, display, currentVersion) {
-			s.fail(w, 409, "firmware_already_installed", "This firmware version is already installed on the brewer")
-			return
-		}
-		payload.ReplacesPackageID = prior.PackageID
-	}
-	if payload.ReplacesPackageID != "" && !payload.IsApprovedRevision() {
-		s.fail(w, 409, "firmware_revision", "This package does not match the approved revision for this machine")
+	if !resume && currentVersion == payload.FirmwareVersion {
+		s.fail(w, 409, "firmware_already_installed", "This firmware version is already installed on the brewer")
 		return
 	}
 	if stockPending(stock) {
@@ -242,15 +240,15 @@ func (s *Server) installFirmware(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	receipt := firmware.InstallReceipt{ReplacesPackageID: payload.ReplacesPackageID, UID: in.UID, Model: model, DisplayVariant: display, PackageID: in.PackageID, Started: time.Now().UTC(), State: "running", Message: "Checking recovery, transferring the package and confirming the new boot."}
+	receipt := firmware.InstallReceipt{UID: in.UID, Model: model, DisplayVariant: display, PackageID: in.PackageID, Started: time.Now().UTC(), State: "running", Stage: "checking", Message: "Checking recovery, transferring the package and confirming the new boot."}
 	previousStage := ""
 	if resume {
 		previousStage = prior.Stage
-		if previousStage == "" && payload.ReplacesPackageID == "" {
+		if previousStage == "" {
 			previousStage = "transferring"
 		}
+		receipt.Stage = previousStage
 	}
-	receipt.Stage = previousStage
 	version, err := s.db.Put("firmware-install", view.ID, receipt, priorVersion)
 	if err != nil {
 		s.storeError(w, err)

@@ -11,6 +11,25 @@ import (
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/firmware"
 )
 
+func TestZSameVersionNeverStartsAnotherTransfer(t *testing.T) {
+	image := []byte("selected application")
+	pkg := firmware.UpdatePayload{Candidate: firmware.Candidate{Model: "z-series", ModelFamily: "z-series", FirmwareVersion: "1.0.0", BinaryBytes: len(image), BinarySHA256: firmware.Digest(image), OTAProtocol: firmware.ESP32FactoryProtocol}}
+	pkg.Files[0] = image
+	for _, running := range [][]byte{image, []byte("older application")} {
+		info := espBootInfo{Model: pkg.Model, UID: "module", Protocol: pkg.OTAProtocol, Mode: "application", Version: pkg.FirmwareVersion,
+			Capacity: firmware.FactoryApplicationLimit(pkg.Model), RunningSize: len(running), RunningSHA: firmware.Digest(running)}
+		p := testPico(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != "GET" || r.URL.Path != espUpdater {
+				t.Errorf("unexpected firmware mutation or request: %s %s", r.Method, r.URL.Path)
+			}
+			replyJSON(w, 200, info)
+		})
+		if err := p.InstallFirmware(context.Background(), info.UID, pkg, "", nil); err == nil {
+			t.Fatal("same-version install accepted", info.RunningSHA)
+		}
+	}
+}
+
 func TestESPUpdateResumesExactImage(t *testing.T) {
 	image := bytes.Repeat([]byte{0xe9, 0x30, 0x31}, 831)
 	pkg := firmware.UpdatePayload{Candidate: firmware.Candidate{Model: "picostill", ModelFamily: "picostill", FirmwareVersion: "2.0.0", BinaryBytes: len(image), BinarySHA256: firmware.Digest(image), OTAProtocol: firmware.ESP32FactoryProtocol}}

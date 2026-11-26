@@ -2,7 +2,7 @@
 
 Open a machine's **Firmware** view to see wireless update versions for its exact model. Choose a version and click **Install**. The Hub fetches the selected archive, validates it and saves it for reuse. **Download** saves that version to your computer. You can downgrade to an earlier compatible OTA release. The running version is marked **Already installed**.
 
-If this Hub installed an earlier 1.0.0 build over Wi-Fi on a Pico S, Pro, C, Z module or PicoStill, **Install revised build** appears for a recognized installation receipt and matching final package. Before writing, the Hub also checks the application digest on the connected device. After verification the button reads **Already installed**.
+A package with the running version stays marked **Already installed**, even if its build or upload differs. If an update was interrupted, **Resume** continues that update using its original package.
 
 To update a PicoFerm from one 1.0.0 build to another, connect it by USB to the Hub that holds its original backup and device key. Open **Brewery → Add machine → USB setup and recovery**, select **PicoFerm**, and choose **Install standalone firmware**. The PicoFerm’s Wi-Fi updater accepts changes in version number. The Hub saves and verifies the live flash, updates the inactive bank and preserves the previous bank, pairing and recorded history. An unrecognized layout stops the operation. [PicoFerm USB procedure](../../firmware/picoferm/modified/dual-bank-updates.md#installing-over-wi-fi) Zymatic firmware updates also use USB.
 
