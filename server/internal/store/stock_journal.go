@@ -8,9 +8,10 @@ import (
 	"github.com/jeffreydwalter/picobrew-pico-pro-firmware/server/internal/domain"
 )
 
-// A Zymatic sends each report once. Commit the recovery pointer, journal metadata
+// The OEM brewers report over individual HTTP requests. Commit the recovery pointer, journal metadata
 // and reading together. Read the journal under the write lock to preserve owner edits.
-type ZymaticJournalWrite struct {
+type StockJournalWrite struct {
+	MachineKind     string
 	Machine         string
 	MachineRecord   any
 	MachineRevision int64
@@ -18,10 +19,10 @@ type ZymaticJournalWrite struct {
 	PreviousID      string
 	Reading         *domain.Sample
 	At              time.Time
-	End             bool
+	EndState        string
 }
 
-func (s *Store) WriteZymaticJournal(w ZymaticJournalWrite) error {
+func (s *Store) WriteStockJournal(w StockJournalWrite) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -32,7 +33,7 @@ func (s *Store) WriteZymaticJournal(w ZymaticJournalWrite) error {
 		if err != nil {
 			return err
 		}
-		if _, err := putRecord(tx, "stock-zymatic", w.Machine, payload, w.MachineRevision); err != nil {
+		if _, err := putRecord(tx, w.MachineKind, w.Machine, payload, w.MachineRevision); err != nil {
 			return err
 		}
 	}
@@ -90,9 +91,8 @@ func (s *Store) WriteZymaticJournal(w ZymaticJournalWrite) error {
 	}
 	if b.State == "recording" {
 		b.DurationMS = max(b.DurationMS, elapsed)
-		if w.End {
-			// The termination message carries no outcome or stop reason.
-			b.State = "ended"
+		if w.EndState != "" {
+			b.State = w.EndState
 		}
 	}
 	if err := saveBrew(b, v); err != nil {

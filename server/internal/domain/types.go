@@ -350,7 +350,22 @@ type Adapted struct {
 	SourceRevision     int64          `json:"source_revision"`
 	ProfileFingerprint string         `json:"profile_fingerprint,omitempty"`
 }
+
+// PicoReport holds only the fields sent by the stock Pico's log, state or error request.
+type PicoReport struct {
+	Kind             string   `json:"kind"`
+	Step             string   `json:"step,omitempty"`
+	Event            string   `json:"event,omitempty"`
+	State            *int     `json:"state,omitempty"`
+	ErrorCode        *int     `json:"error_code,omitempty"`
+	RFID             string   `json:"rfid,omitempty"`
+	ControllerStatus *int     `json:"controller_status,omitempty"`
+	SecondsLeft      *int     `json:"seconds_left,omitempty"`
+	ShuttleScale     *float64 `json:"shuttle_scale,omitempty"`
+}
+
 type Sample struct {
+	StockPico    *PicoReport    `json:"stock_pico,omitempty"`
 	StockZymatic *ZymaticReport `json:"stock_zymatic,omitempty"`
 	// ZymaticHistory selects the named channels recorded by Zymatic EEPROM.
 	ZymaticHistory   bool                `json:"zymatic_history,omitempty"`

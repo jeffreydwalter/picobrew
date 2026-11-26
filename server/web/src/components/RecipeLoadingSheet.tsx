@@ -74,7 +74,7 @@ export function RecipeLoadingSheet({
   original,
   scale = 1,
 }: {
-  recipe: Recipe
+  recipe: Pick<Recipe, 'ingredients' | 'source_yeast'>
   slots?: Adapted['hop_slots_by_minute']
   original?: Ingredient[]
   scale?: number
@@ -123,16 +123,25 @@ export function TransferLoadingSheet({
   source,
   batchLiters,
   slots,
+  ingredients,
 }: {
   source?: Recipe
   batchLiters?: number
+  ingredients?: Ingredient[]
   slots?: Adapted['hop_slots_by_minute']
 }) {
-  if (!source?.ingredients?.length || !batchLiters || source.batch_liters <= 0) return null
+  if (!batchLiters) return null
+  const bill = ingredients?.length ? { ingredients, source_yeast: source?.source_yeast } : source
+  const scale = ingredients?.length
+    ? 1
+    : source && source.batch_liters > 0
+      ? batchLiters / source.batch_liters
+      : 0
+  if (!bill?.ingredients?.length || !scale) return null
   return (
     <>
-      <EditionInstructions notes={source.notes} />
-      <RecipeLoadingSheet recipe={source} scale={batchLiters / source.batch_liters} slots={slots} />
+      <EditionInstructions notes={source?.notes} />
+      <RecipeLoadingSheet recipe={bill} scale={scale} slots={slots} />
     </>
   )
 }

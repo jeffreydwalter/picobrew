@@ -45,6 +45,7 @@ type lanDiscoveryState struct {
 	mu      sync.Mutex
 	current *discoveryRun
 	legacy  map[string]time.Time
+	picos   map[string]time.Time
 	attempt uint32
 }
 
@@ -54,17 +55,27 @@ func (s *Server) rememberZymatic(serial string) {
 	d := &s.discovery
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.legacy == nil {
-		d.legacy = make(map[string]time.Time)
+	rememberStockCaller(&d.legacy, serial)
+}
+
+func (s *Server) rememberStockPico(uid string) {
+	s.discovery.mu.Lock()
+	defer s.discovery.mu.Unlock()
+	rememberStockCaller(&s.discovery.picos, uid)
+}
+
+func rememberStockCaller(callers *map[string]time.Time, id string) {
+	if *callers == nil {
+		*callers = make(map[string]time.Time)
 	}
 	now := time.Now()
-	for key, seen := range d.legacy {
+	for key, seen := range *callers {
 		if now.Sub(seen) > 15*time.Minute {
-			delete(d.legacy, key)
+			delete(*callers, key)
 		}
 	}
-	if _, known := d.legacy[serial]; known || len(d.legacy) < 64 {
-		d.legacy[serial] = now
+	if _, known := (*callers)[id]; known || len(*callers) < 64 {
+		(*callers)[id] = now
 	}
 }
 
@@ -110,16 +121,42 @@ func (s *Server) discoverLAN(w http.ResponseWriter, r *http.Request) {
 	for _, dev := range s.fleet() {
 		registered[discoveryAddressKey(dev.BaseURL)] = true
 	}
+	stockZ, err := listRecords[stockZProgramMachine](s, stockZProgramKind)
+	if err != nil {
+		s.storeError(w, err)
+		return
+	}
+	stockAddresses := map[string]bool{}
+	for _, machine := range stockZ {
+		stockAddresses[discoveryAddressKey(machine.BaseURL)] = true
+	}
 	result := LANDiscovery{Partial: run.result.Partial, Candidates: []DiscoveryCandidate{}}
 	for _, item := range run.result.Candidates {
-		if !registered[discoveryAddressKey(item.BaseURL)] {
+		// A former stock Z flashed to standalone still needs pairing.
+		address := discoveryAddressKey(item.BaseURL)
+		knownZ := item.Source == "stock" && item.Model == "z-series" && stockAddresses[address]
+		if !knownZ && !registered[address] {
 			result.Candidates = append(result.Candidates, item)
 		}
+	}
+	picos, err := listRecords[stockPicoBrewer](s, stockPicoKind)
+	if err != nil {
+		s.storeError(w, err)
+		return
+	}
+	knownPicos := map[string]bool{}
+	for _, p := range picos {
+		knownPicos[p.UID] = true
 	}
 	d.mu.Lock()
 	for serial, seen := range d.legacy {
 		if time.Since(seen) <= 15*time.Minute {
 			result.Candidates = append(result.Candidates, DiscoveryCandidate{Name: "Zymatic", Model: "zymatic", Source: "zymatic-sync", Serial: serial})
+		}
+	}
+	for uid, seen := range d.picos {
+		if !knownPicos[uid] && time.Since(seen) <= 15*time.Minute {
+			result.Candidates = append(result.Candidates, DiscoveryCandidate{Name: "Stock Pico", Source: "pico-register", Serial: uid})
 		}
 	}
 	d.mu.Unlock()
@@ -153,6 +190,19 @@ type lanInterface struct {
 // interfaces. The first neighborhood of each search contains the Hub. On
 // wider subnets also rotate through an adjacent /24 on subsequent searches.
 func discoveryNetworks(attempt uint32) ([]lanInterface, bool, error) {
+	networks, partial, err := attachedLANs()
+	if len(networks) > 4 {
+		// Always include the primary interface and rotate the other three.
+		selected := []lanInterface{networks[0]}
+		for i := 0; i < 3; i++ {
+			selected = append(selected, networks[1+(int(attempt%uint32(len(networks)-1))+i)%(len(networks)-1)])
+		}
+		networks, partial = selected, true
+	}
+	return networks, partial, err
+}
+
+func attachedLANs() ([]lanInterface, bool, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		return nil, false, err
@@ -179,14 +229,6 @@ func discoveryNetworks(attempt uint32) ([]lanInterface, bool, error) {
 				networks = append(networks, network)
 			}
 		}
-	}
-	if len(networks) > 4 {
-		// Always include the primary interface and rotate the other three.
-		selected := []lanInterface{networks[0]}
-		for i := 0; i < 3; i++ {
-			selected = append(selected, networks[1+(int(attempt%uint32(len(networks)-1))+i)%(len(networks)-1)])
-		}
-		networks, partial = selected, true
 	}
 	return networks, partial || len(networks) == 0, nil
 }

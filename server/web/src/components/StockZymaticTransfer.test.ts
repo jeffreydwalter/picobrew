@@ -77,8 +77,12 @@ it('downloads an offline program from the normal target chooser without a brewer
   expect(screen.queryByLabelText(/Zymatic serial number/)).toBeNull()
   await click.click(screen.getByRole('button', { name: 'Preview offline programs' }))
   await click.click(await screen.findByRole('button', { name: 'Download offline program' }))
-  expect(fetchMock.mock.calls.map((r) => String(r[0]))).toEqual(['/api/v1/stock-zymatics/preview'])
-  expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+  const zymaticRequests = fetchMock.mock.calls.filter(([url]) =>
+    String(url).includes('/stock-zymatics')
+  )
+  expect(zymaticRequests.map(([url]) => String(url))).toEqual(['/api/v1/stock-zymatics/preview'])
+  expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+  expect(JSON.parse(String(zymaticRequests[0][1]?.body))).toEqual({
     recipes: [{ recipe_id: saved.id, revision: 3 }],
   })
   expect(screen.queryByRole('button', { name: 'Publish to brewer menu' })).toBeNull()

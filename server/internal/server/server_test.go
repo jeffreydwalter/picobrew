@@ -36,7 +36,11 @@ func newTestDataDir(t *testing.T) string {
 
 func newTestServer(t *testing.T) (*Server, *httptest.Server, *http.Client) {
 	t.Helper()
-	s, err := New(Config{DataDir: newTestDataDir(t), Password: ownerPassword, PollInterval: time.Hour, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	return newTestServerIn(t, newTestDataDir(t))
+}
+func newTestServerIn(t *testing.T, dir string) (*Server, *httptest.Server, *http.Client) {
+	t.Helper()
+	s, err := New(Config{DataDir: dir, Password: ownerPassword, PollInterval: time.Hour, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
 		t.Fatal(err)
 	}

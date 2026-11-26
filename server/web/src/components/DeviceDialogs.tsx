@@ -6,6 +6,7 @@ import { deviceModelLabel, liveReadingsStatus, modelLabel } from '../lib/utils'
 import type { Device } from '../types'
 import { Button, ErrorBanner, Field, Modal } from './ui'
 import { StockSetupGuide } from './StockSetupGuide'
+import { StockBrewerSetup } from './StockBrewerFleet'
 import { NetworkDiscovery, type NetworkCandidate } from './NetworkDiscovery'
 
 export function DeviceKeyNotice() {
@@ -55,6 +56,7 @@ export function DeviceDialog({
   const [identifying, setIdentifying] = useState(false)
   const [error, setError] = useState('')
   const [usbSetup, setUSBSetup] = useState(false)
+  const [stockSetup, setStockSetup] = useState<NetworkCandidate | true | null>(null)
   const [manualKey, setManualKey] = useState(false)
   const [candidate, setCandidate] = useState<NetworkCandidate | null>(null)
   const [pairCode, setPairCode] = useState('')
@@ -73,6 +75,10 @@ export function DeviceDialog({
     !!(current?.model_selection_required || current?.model_source === 'manual')
   const connectionChanged = !!form.api_key || form.base_url !== device?.base_url
   function selectCandidate(item: NetworkCandidate) {
+    if (item.source === 'pico-register' || (item.source === 'stock' && item.model === 'z-series')) {
+      setStockSetup(item)
+      return
+    }
     if (!item.base_url) return
     const address = item.base_url
     setCandidate(item)
@@ -178,6 +184,14 @@ export function DeviceDialog({
           { id: 'pico-pro', name: 'Pico Pro' },
           { id: 'pico-s', name: 'Pico S' },
         ]
+  if (stockSetup)
+    return (
+      <StockBrewerSetup
+        candidate={stockSetup === true ? undefined : stockSetup}
+        onBack={() => setStockSetup(null)}
+        onClose={onClose}
+      />
+    )
   if (usbSetup) return <StockSetupGuide onClose={() => setUSBSetup(false)} />
   return (
     <Modal
@@ -204,7 +218,12 @@ export function DeviceDialog({
       }
     >
       {!device && physical && !hub.session.demo && (
-        <NetworkDiscovery disabled={locked} onSelect={selectCandidate} onClose={onClose} />
+        <>
+          <NetworkDiscovery disabled={locked} onSelect={selectCandidate} onClose={onClose} />
+          <Button variant="secondary" disabled={locked} onClick={() => setStockSetup(true)}>
+            Add a stock brewer
+          </Button>
+        </>
       )}
       {!device && physical && !hub.session.demo && (
         <Button

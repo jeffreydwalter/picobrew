@@ -56,7 +56,7 @@ export function renameIngredient(item: Ingredient, name: string) {
 
 export const goesInKeg = (type?: string) => /^(sugar|extract|dry extract)$/i.test(type ?? '')
 
-export function unmeasuredYeast(r: Recipe) {
+export function unmeasuredYeast(r: Pick<Recipe, 'ingredients' | 'source_yeast'>) {
   return r.ingredients?.some((i) => i.kind === 'yeast') ? undefined : r.source_yeast
 }
 

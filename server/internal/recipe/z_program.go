@@ -37,6 +37,15 @@ func ExportZProgram(r domain.Recipe, profile domain.Profile) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	return EncodeStockZPlan(plan)
+}
+
+// EncodeStockZPlan writes the OEM program from the same translated plan the
+// brewer will use to measure the ingredients and load the hop compartments.
+func EncodeStockZPlan(plan domain.Adapted) ([]byte, error) {
+	if plan.Profile.ID != "z" {
+		return nil, errors.New("select the Z brewer profile")
+	}
 	if plan.MachineRecipe == nil {
 		return nil, fmt.Errorf("cannot compile this Z program: %v", plan.DeploymentBlockers)
 	}
@@ -49,7 +58,7 @@ func ExportZProgram(r domain.Recipe, profile domain.Profile) ([]byte, error) {
 	}
 	p := native.ZProgram
 	if p == nil {
-		p = &domain.ZProgram{Name: r.Name, IsBeer: true}
+		p = &domain.ZProgram{Name: plan.Recipe.Name, IsBeer: true}
 		for _, s := range native.Steps {
 			hold, drain, location := s.Minutes*60, s.DrainMinutes*60, s.Location
 			temp := json.RawMessage("null")

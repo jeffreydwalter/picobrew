@@ -4,6 +4,8 @@
 
 **Brewery → Add machine** searches the Hub computer’s directly connected private IPv4 networks for PicoBrew devices. Select a standalone brewer or accessory under **On your network** to fill in its name and address. You can edit either before adding it. On larger networks, **Check again** covers additional addresses. If the Hub runs on another subnet or inside an isolated container, you can enter the **Machine URL** manually whenever the Hub has a route to it.
 
+A stock Pico S, Pro or C can register after its LAN DNS directs its recipe and session requests to this Hub. A stock Z uses its Program Maker address for live readings and confirmed single-program replacement. [Stock brewer setup](stock-brewers.md)
+
 The original Z Program Maker and PicoStill interfaces can also appear here. **Open device website** opens Program Maker or the Still’s readings page. A stock PicoFerm exposes its setup page while the Hub computer is connected to the PicoFerm’s own setup Wi-Fi. During normal fermentation it sleeps between outbound reports. A Zymatic that recently contacted this Hub’s recipe sync service offers **Use for recipe sync**, which selects its serial number for the recipe library’s stock transfer flow. For stock Zymatic network setup, see [Stock Zymatic recipe sync](stock-zymatic.md).
 
 **Adding a PicoFerm with standalone firmware** uses the device key from USB setup. The Hub writes its reachable HTTP hostname or IPv4 address and port to the PicoFerm and verifies the saved settings. The PicoFerm posts temperature, pressure and battery readings directly to the Hub and uses the same destination after a restart. Open **Settings → Hub connection** on the PicoFerm’s local site to see where it sends readings and the result of its latest delivery.

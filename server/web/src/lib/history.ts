@@ -72,3 +72,9 @@ export function zymaticReportState(report: NonNullable<Sample['stock_zymatic']>)
   if (report.error_flags === 64) return 'Sensor disconnected'
   return `Reported fault flags ${report.error_flags}`
 }
+
+export function picoReportLabel(report: NonNullable<Sample['stock_pico']>) {
+  if (report.kind === 'error') return `Brewer error ${report.error_code}`
+  if (report.kind === 'state') return `Brewer state ${report.state}`
+  return [report.step, report.event !== report.step && report.event].filter(Boolean).join(' · ')
+}

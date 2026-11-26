@@ -25,28 +25,31 @@ type brewInvite struct {
 	device.GroupZProgram
 	ProgramName string `json:"program_name,omitempty"`
 	device.GroupKitSelection
-	SourceHistoryID uint64    `json:"source_history_id,omitempty"`
-	HubConfirmation bool      `json:"hub_confirmation,omitempty"`
-	ID              string    `json:"id"`
-	GroupID         string    `json:"group_id"`
-	GroupName       string    `json:"group_name"`
-	SourceDeviceID  string    `json:"source_device_id"`
-	SourceName      string    `json:"source_name"`
-	TargetDeviceID  string    `json:"target_device_id"`
-	GroupSessionID  string    `json:"group_session_id"`
-	MenuSerial      string    `json:"menu_serial,omitempty"`
-	SourceUID       string    `json:"source_uid"`
-	TargetUID       string    `json:"target_uid,omitempty"`
-	SourceEvent     string    `json:"source_event"`
-	Action          string    `json:"action"`
-	RecipeName      string    `json:"recipe_name,omitempty"`
-	RecipeID        string    `json:"recipe_id,omitempty"`
-	RecipeRevision  int64     `json:"recipe_revision,omitempty"`
-	TargetSlot      string    `json:"target_slot,omitempty"`
-	SlotRevision    uint32    `json:"slot_revision,omitempty"`
-	State           string    `json:"state"`
-	ExpiresAt       time.Time `json:"expires_at"`
-	Message         string    `json:"message,omitempty"`
+	SourceHistoryID uint64               `json:"source_history_id,omitempty"`
+	HubConfirmation bool                 `json:"hub_confirmation,omitempty"`
+	ID              string               `json:"id"`
+	GroupID         string               `json:"group_id"`
+	GroupName       string               `json:"group_name"`
+	SourceDeviceID  string               `json:"source_device_id"`
+	SourceName      string               `json:"source_name"`
+	TargetDeviceID  string               `json:"target_device_id"`
+	GroupSessionID  string               `json:"group_session_id"`
+	StockZReview    *stockZProgramReview `json:"stock_z_review,omitempty"`
+	StockZName      string               `json:"stock_z_name,omitempty"`
+	StockZURL       string               `json:"stock_z_url,omitempty"`
+	MenuSerial      string               `json:"menu_serial,omitempty"`
+	SourceUID       string               `json:"source_uid"`
+	TargetUID       string               `json:"target_uid,omitempty"`
+	SourceEvent     string               `json:"source_event"`
+	Action          string               `json:"action"`
+	RecipeName      string               `json:"recipe_name,omitempty"`
+	RecipeID        string               `json:"recipe_id,omitempty"`
+	RecipeRevision  int64                `json:"recipe_revision,omitempty"`
+	TargetSlot      string               `json:"target_slot,omitempty"`
+	SlotRevision    uint32               `json:"slot_revision,omitempty"`
+	State           string               `json:"state"`
+	ExpiresAt       time.Time            `json:"expires_at"`
+	Message         string               `json:"message,omitempty"`
 }
 
 const groupKind = "brew-group"
@@ -232,10 +235,22 @@ func (s *Server) stockGroupCandidates() ([]groupCandidate, error) {
 			out = append(out, groupCandidate{stockMemberPrefix + id, "Zymatic · " + id})
 		}
 	}
+	modules, err := listRecords[stockZProgramMachine](s, stockZProgramKind)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range modules {
+		out = append(out, groupCandidate{stockZMemberPrefix + m.ID, m.Name})
+	}
 	slices.SortFunc(out, func(a, b groupCandidate) int { return strings.Compare(a.ID, b.ID) })
 	return out, nil
 }
 func (s *Server) validateGroupMember(id string, previous []string) error {
+	if machine, ok := strings.CutPrefix(id, stockZMemberPrefix); ok {
+		var m stockZProgramMachine
+		_, err := s.db.Get(stockZProgramKind, machine, &m)
+		return err
+	}
 	if serial, ok := strings.CutPrefix(id, stockMemberPrefix); ok && machineSerial.MatchString(serial) {
 		if slices.Contains(previous, id) {
 			return nil

@@ -66,4 +66,4 @@ still requires matching device backups/layouts, real sensor/output tests,
 heap/stack timing measurements, controlled restart tests and operating trials.
 Zymatic has its own original AVR application and requires trials on its own hardware. Pico C needs physical installation and operating trials for each display variant. Updated releases and their model identities are recorded in the [firmware release index](../firmware/releases.json).
 
-Community servers and archives are read-only research sources. The Hub connects directly to supported custom firmware and serves the stock Zymatic’s original recipe and session requests over the LAN. [Original Zymatic protocol support](../server/docs/stock-zymatic.md)
+Community servers and archives are read-only research sources. The Hub connects directly to supported custom firmware. Its LAN adapters also serve factory Pico and Zymatic recipe and session requests and stage compatible Program Maker recipes on stock Z modules. [Stock brewer coverage](../server/docs/stock-brewers.md) · [Original Zymatic protocol support](../server/docs/stock-zymatic.md)

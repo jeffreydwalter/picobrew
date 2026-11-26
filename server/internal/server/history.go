@@ -516,6 +516,10 @@ func (s *Server) exportBrew(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", `attachment; filename="brew-`+b.ID+`.csv"`)
 		out := csv.NewWriter(w)
 		defer out.Flush()
+		if b.Source == stockPicoReportSource {
+			exportStockPicoCSV(out, b.Samples)
+			return
+		}
 		if b.Source == stockReportSource {
 			exportStockZymaticCSV(out, b.Samples)
 			return

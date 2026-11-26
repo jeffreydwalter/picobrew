@@ -311,3 +311,53 @@ func TestOpenAPISecurityAndNonJSONResponses(t *testing.T) {
 		t.Fatal("logout incorrectly requires JSON")
 	}
 }
+
+func TestOpenAPIStockBrewerReviewAndReceipts(t *testing.T) {
+	doc := openAPIDocument()
+	schemas := doc["components"].(schemaMap)["schemas"].(schemaMap)
+	paths := doc["paths"].(schemaMap)
+	for _, tc := range []struct {
+		path, request string
+		codes         []string
+	}{
+		{"/stock-picos", "StockPicoInput", []string{"201", "400", "409", "422"}},
+		{"/stock-picos/{machine}/recipes", "StockPicoMenuInput", []string{"200", "404", "409", "422"}},
+		{"/stock-z-programs", "StockZRegistrationInput", []string{"200", "201", "409", "422", "502"}},
+		{"/stock-z-programs/{machine}/recipes", "StockZRecipeInput", []string{"200", "409", "422", "502"}},
+		{"/stock-z-programs/{machine}/group-offers", "StockZOfferInput", []string{"200", "404", "409", "422"}},
+	} {
+		op := paths[tc.path].(schemaMap)["post"].(schemaMap)
+		request := op["requestBody"].(schemaMap)
+		schema := request["content"].(schemaMap)["application/json"].(schemaMap)["schema"].(schemaMap)
+		if request["required"] != true || schema["$ref"] != schemaRef(tc.request)["$ref"] {
+			t.Errorf("POST %s request schema: %v", tc.path, request)
+		}
+		for _, code := range tc.codes {
+			if op["responses"].(schemaMap)[code] == nil {
+				t.Errorf("POST %s missing response %s", tc.path, code)
+			}
+		}
+	}
+	for _, tc := range []struct {
+		name     string
+		required []string
+	}{
+		{"StockPicoMenuInput", []string{"recipes", "publish", "review_hash"}},
+		{"StockZRecipeInput", []string{"recipe_id", "revision", "confirm_replace", "program_hash", "review_hash"}},
+		{"StockZRecipeResult", []string{"status", "program_name", "step_count", "program_hash", "review_hash", "transfer_id"}},
+	} {
+		branches := schemas[tc.name].(schemaMap)["oneOf"].([]any)
+		if len(branches) != 2 || !reflect.DeepEqual(branches[1].(schemaMap)["required"], tc.required) {
+			t.Errorf("%s confirmation contract: %v", tc.name, branches)
+		}
+	}
+	offer := schemas["StockZOfferInput"].(schemaMap)
+	if !reflect.DeepEqual(offer["required"], []string{"transfer_id", "group_id", "group_revision"}) || offer["properties"].(schemaMap)["recipe_id"] != nil {
+		t.Fatal("group offers must use the transfer receipt and current group revision", offer)
+	}
+	respond := paths["/devices/{id}/brew-invite/{invite}/respond"].(schemaMap)["post"].(schemaMap)
+	reply := respond["requestBody"].(schemaMap)["content"].(schemaMap)["application/json"].(schemaMap)["schema"].(schemaMap)
+	if reply["properties"].(schemaMap)["confirm_replace"] == nil || schemas["brewInvite"].(schemaMap)["properties"].(schemaMap)["stock_z_review"] == nil {
+		t.Fatal("stock Z invite must expose replacement review and confirmation")
+	}
+}

@@ -256,8 +256,18 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 		SourceEvent: e.ID, Action: e.Action, RecipeName: src.Program.Name,
 		RecipeID: src.LibraryID, RecipeRevision: src.Revision, ExpiresAt: started.Add(inviteLifetime),
 	}
+	if err := s.offerGroupMembers(g, source, started, now, view.Status.StockSerial, problem); err != nil {
+		return err
+	}
+	if err := s.watchGroupHistory(ctx, d, view, source, started); err != nil {
+		s.cfg.Logger.Debug("Group journal link unavailable", "error", err)
+	}
+	_, err := s.db.Put("group-brew-event", key, true, 0)
+	return err
+}
+func (s *Server) offerGroupMembers(g brewGroup, source brewInvite, started, now time.Time, sourceSerial, problem string) error {
 	for _, id := range g.DeviceIDs {
-		if id == view.ID || (view.Status.StockSerial != "" && id == stockMemberPrefix+view.Status.StockSerial) || started.Before(g.MemberSince[id]) {
+		if id == source.SourceDeviceID || (sourceSerial != "" && id == stockMemberPrefix+sourceSerial) || started.Before(g.MemberSince[id]) {
 			continue
 		}
 		current, err := s.memberInvite(id)
@@ -265,7 +275,7 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 			return err
 		}
 		next := source
-		next.ID = groupEventID(key, id)
+		next.ID = groupEventID(source.GroupSessionID, id)
 		next.TargetDeviceID = id
 		next.State = "waiting"
 		if current != nil && (current.ID == next.ID || activeInvite(current.State) && current.ExpiresAt.After(now)) {
@@ -276,13 +286,17 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 			if target.Status != nil {
 				next.TargetUID = target.Status.DeviceUID
 			}
-			if target.Status != nil && target.Status.DeviceUID == source.SourceUID {
+			if source.SourceUID != "" && target.Status != nil && target.Status.DeviceUID == source.SourceUID {
 				continue
 			}
 		}
 		if problem != "" {
 			next.State = "unavailable"
 			next.Message = problem
+		} else if machine, ok := strings.CutPrefix(id, stockZMemberPrefix); ok {
+			if err = s.prepareStockZInvite(&next, machine); err != nil {
+				return err
+			}
 		} else if serial, ok := strings.CutPrefix(id, stockMemberPrefix); ok {
 			if err = s.prepareMenuInvite(&next, serial); err != nil {
 				return err
@@ -293,11 +307,7 @@ func (s *Server) recordGroupStart(ctx context.Context, d *runtimeDevice, view do
 			return err
 		}
 	}
-	if err := s.watchGroupHistory(ctx, d, view, source, started); err != nil {
-		s.cfg.Logger.Debug("Group journal link unavailable", "error", err)
-	}
-	_, err := s.db.Put("group-brew-event", key, true, 0)
-	return err
+	return nil
 }
 func (i *brewInvite) matchesOffer(live *device.GroupOffer) bool {
 	return live != nil && live.ID == i.ID && live.From == groupWireName(i.SourceName) && live.Action == i.Action && live.RecipeID == i.TargetSlot &&

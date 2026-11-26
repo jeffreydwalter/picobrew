@@ -74,6 +74,9 @@ type Server struct {
 	wg                        sync.WaitGroup
 	router                    http.Handler
 	stockMu                   sync.Mutex
+	stockPicoMu               sync.Mutex
+	stockZMu                  sync.Mutex
+	stockZOpen                func(string) (stockZEndpoint, error)
 	recipeMu                  sync.Mutex
 	aiMu                      sync.Mutex
 	configMu                  sync.Mutex
@@ -252,6 +255,7 @@ func (s *Server) routes() http.Handler {
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		s.json(w, 200, map[string]any{"status": "ok", "version": Version})
 	})
+	r.Get("/API/pico/*", s.stockPicoWire)
 	r.Get("/API/*", s.stockWire)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/auth/session", s.authStatus)
@@ -313,6 +317,17 @@ func (s *Server) routes() http.Handler {
 			r.Get("/devices/{id}/deployments/{deployment_id}", s.getDeployment)
 			r.Post("/devices/{id}/deployments/{deployment_id}/execute", s.executeDeployment)
 			r.Post("/stock-zymatics/preview", s.stockOfflinePreview)
+			r.Get("/stock-picos", s.stockPicos)
+			r.Post("/stock-picos", s.stockPicos)
+			r.Delete("/stock-picos/{machine}", s.stockPicos)
+			r.Post("/stock-picos/{machine}/recipes", s.stockPicoMenu)
+			r.Delete("/stock-picos/{machine}/recipes/{recipe_id}", s.stockPicoMenu)
+			r.Get("/stock-z-programs", s.stockZPrograms)
+			r.Post("/stock-z-programs", s.stockZPrograms)
+			r.Delete("/stock-z-programs/{machine}", s.stockZPrograms)
+			r.Get("/stock-z-programs/{machine}/state", s.stockZProgramState)
+			r.Post("/stock-z-programs/{machine}/recipes", s.stockZProgramRecipe)
+			r.Post("/stock-z-programs/{machine}/group-offers", s.offerStockZRecipe)
 			r.Get("/stock-zymatics/{machine}/recipes", s.stockMenu)
 			r.Post("/stock-zymatics/{machine}/recipes", s.stockMenu)
 			r.Delete("/stock-zymatics/{machine}/recipes/{recipe_id}", s.stockMenu)

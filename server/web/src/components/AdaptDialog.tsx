@@ -1,3 +1,4 @@
+import { StockRecipeTransfer, useStockTargets } from './StockRecipeTransfer'
 import { EditionInstructions, RecipeLoadingSheet } from './RecipeLoadingSheet'
 import { StockZymaticTransfer, offlineTarget, stockTarget } from './StockZymaticTransfer'
 import { useEffect, useRef, useState } from 'react'
@@ -20,6 +21,7 @@ export function AdaptDialog({
   initialModel?: string
 }) {
   const hub = useHub()
+  const stockMachines = useStockTargets()
   const native = isNative(recipe)
   const modelProfile = (model: string) => (model === 'z-series' ? 'z' : model)
   const supported = hub.devices.filter((d) =>
@@ -168,6 +170,18 @@ export function AdaptDialog({
     }
   }
 
+  const stockMachine = stockMachines.find((m) => m.id === deviceID)
+  if (stockMachine)
+    return (
+      <StockRecipeTransfer
+        key={stockMachine.id}
+        target={stockMachine}
+        recipes={[recipe]}
+        initialSelection={[recipe.id]}
+        onClose={onClose}
+        back={() => setDeviceID('')}
+      />
+    )
   const pairedZymatic =
     target?.adapter === 'pico-standalone' && target.model === 'zymatic' ? target : undefined
   if ([stockTarget, offlineTarget].includes(deviceID) || pairedZymatic)
@@ -264,6 +278,11 @@ export function AdaptDialog({
           </option>
           <option value={stockTarget}>Stock Zymatic · sync menu</option>
           <option value={offlineTarget}>Zymatic · offline program for USB setup</option>
+          {stockMachines.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name} · Original firmware
+            </option>
+          ))}
           {hub.devices.map((device) => (
             <option
               key={device.id}

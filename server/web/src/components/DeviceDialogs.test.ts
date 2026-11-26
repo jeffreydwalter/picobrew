@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { createElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { HubContext, type HubState } from '../context'
 import { setCSRF } from '../lib/api'
 import type { Device } from '../types'
 import { DeviceDialog, HubConnectionStatus } from './DeviceDialogs'
+import { StockBrewerFleet } from './StockBrewerFleet'
 import { FermentDialog } from './FermentDialog'
 import { dateLabel } from '../lib/utils'
 import { PicoFermAssociation } from './PicoFermAssociation'
@@ -318,6 +319,198 @@ describe('automatic physical-machine connections', () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
       model: '',
       api_key: 'provisioned-key',
+    })
+  })
+
+  it('uses the stock Pico registration UID and explicitly selected model', async () => {
+    const user = userEvent.setup()
+    const uid = '0123456789abcdef0123456789abcdef'
+    discover.mockResolvedValue(
+      json({
+        candidates: [{ name: 'Stock Pico', source: 'pico-register', serial: uid }],
+        partial: false,
+      })
+    )
+    fetchMock.mockImplementation(async (_url, options) =>
+      options?.method === 'POST' ? json({}, 201) : json({ machines: [], recent_uids: [uid] })
+    )
+    show()
+    await user.click(await screen.findByRole('button', { name: 'Add stock brewer' }))
+    await user.selectOptions(screen.getByLabelText('Model on the brewer'), 'pico-c')
+    expect((screen.getByLabelText('Stock brewer UID') as HTMLInputElement).value).toBe(uid)
+    await user.type(screen.getByLabelText('Machine name'), 'Kitchen Pico')
+    await user.click(screen.getByRole('button', { name: 'Add stock brewer' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    const post = fetchMock.mock.calls.find(([, o]) => o?.method === 'POST')!
+    expect(String(post[0])).toBe('/api/v1/stock-picos')
+    expect(JSON.parse(String(post[1]?.body))).toEqual({
+      uid,
+      name: 'Kitchen Pico',
+      model: 'pico-c',
+    })
+  })
+
+  it('shows factory menus and stock Z readings and removes individual menu entries', async () => {
+    const user = userEvent.setup()
+    const state = hub()
+    state.unit = 'F'
+    const fleet = {
+      picos: [
+        {
+          name: 'Kitchen',
+          uid: '00000000000000000000000000000000',
+          model: 'pico-s',
+          items: [
+            { recipe_id: 'ale', revision: 2, rfid: 'abcd1234', program: { name: 'Kitchen ale' } },
+          ],
+          report: { last_state: 3, state_at: '2026-11-23T12:00:00Z' },
+        },
+      ],
+      zs: [{ name: 'North Z', id: 'north', base_url: 'http://192.168.1.20' }],
+      error: '',
+      loading: false,
+    }
+    fetchMock.mockImplementation(async (_url, options) =>
+      options?.method === 'DELETE'
+        ? new Response(null, { status: 204 })
+        : json({
+            activity: 'outputs_quiet',
+            wort_c: 20,
+            thermoblock_c: 22,
+            ambient_c: 19,
+            drain_c: 20.5,
+            target_c: 0,
+            elapsed_seconds: 0,
+            remaining_seconds: 0,
+            pause_reason: 0,
+            location: 0,
+            valve_position: 3,
+            picopak_mode: false,
+            keg_pump_on: false,
+            drain_pump_on: false,
+            rssi: -45,
+          })
+    )
+    render(
+      createElement(
+        HubContext.Provider,
+        { value: state },
+        createElement(StockBrewerFleet, { fleet })
+      )
+    )
+    expect(screen.queryByRole('link', { name: /controls/i })).toBeNull()
+    expect(screen.getByText('Latest reported state')).toBeTruthy()
+    await user.click(screen.getByText('Recipe menu (1)'))
+    expect(screen.getByText(/Revision 2 · Tag abcd1234/)).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Remove Kitchen ale from Kitchen menu' }))
+    await user.click(screen.getByRole('button', { name: 'Remove from menu' }))
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, options]) =>
+            String(url).endsWith('/stock-picos/' + fleet.picos[0].uid + '/recipes/ale') &&
+            options?.method === 'DELETE'
+        )
+      ).toBe(true)
+    )
+    await user.click(screen.getByRole('button', { name: 'View readings' }))
+    expect(await screen.findByText('Outputs quiet')).toBeTruthy()
+    expect(screen.getByText('68.0°F')).toBeTruthy()
+    expect(screen.getByText('Unheated')).toBeTruthy()
+    expect(screen.getByText('Rest (3)')).toBeTruthy()
+    expect(screen.getByText('Unassigned')).toBeTruthy()
+  })
+
+  it('updates the named Z route and pause while its readings are open', async () => {
+    vi.useFakeTimers()
+    try {
+      const state = hub()
+      state.unit = 'C'
+      const fleet = {
+        picos: [],
+        zs: [{ id: 'north', name: 'North Z', base_url: 'http://192.168.1.20' }],
+        loading: false,
+        error: '',
+      }
+      const sample = {
+        activity: 'active',
+        step_name: 'Mash',
+        target_c: 65,
+        wort_c: 60,
+        thermoblock_c: 73,
+        ambient_c: 19,
+        drain_c: 58,
+        elapsed_seconds: 60,
+        remaining_seconds: 1200,
+        keg_pump_on: true,
+        drain_pump_on: true,
+        pause_reason: 0,
+        location: 2,
+        valve_position: 4,
+        picopak_mode: true,
+        rssi: -45,
+      }
+      fetchMock.mockResolvedValueOnce(json(sample)).mockResolvedValueOnce(
+        json({
+          ...sample,
+          activity: 'paused',
+          step_name: 'First hop',
+          pause_reason: 2,
+          location: 3,
+          valve_position: 6,
+          keg_pump_on: false,
+          drain_pump_on: false,
+          target_c: null,
+        })
+      )
+      render(
+        createElement(
+          HubContext.Provider,
+          { value: state },
+          createElement(StockBrewerFleet, { fleet })
+        )
+      )
+      expect(fetchMock).not.toHaveBeenCalled()
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'View readings' }))
+      })
+      expect(screen.getByText('65.0°C')).toBeTruthy()
+      expect(screen.getByText('Location').nextElementSibling?.textContent).toBe('Mash')
+      expect(screen.queryByText('Valve position')).toBeNull()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15000)
+      })
+      expect(screen.getByText('Pause reason').nextElementSibling?.textContent).toBe('User pause')
+      expect(screen.getByText('Location').nextElementSibling?.textContent).toBe('Hop addition 1')
+      expect(screen.getByText('Valve position').nextElementSibling?.textContent).toBe('6')
+      expect(screen.getByText('Target').nextElementSibling?.textContent).toBe('—')
+      fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30000)
+      })
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('can register stock Z Program Maker manually without attempting dial pairing', async () => {
+    const user = userEvent.setup()
+    fetchMock.mockImplementation(async (_url, options) =>
+      options?.method === 'POST' ? json({}, 201) : json({ machines: [], recent_uids: [] })
+    )
+    show()
+    await user.click(screen.getByRole('button', { name: 'Add a stock brewer' }))
+    await user.selectOptions(screen.getByLabelText('Model on the brewer'), 'z-series')
+    await user.type(screen.getByLabelText('Machine name'), 'North module')
+    await user.type(screen.getByLabelText('Program Maker address'), 'http://192.168.1.20')
+    await user.click(screen.getByRole('button', { name: 'Add stock brewer' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    const post = fetchMock.mock.calls.find(([, o]) => o?.method === 'POST')!
+    expect(String(post[0])).toBe('/api/v1/stock-z-programs')
+    expect(JSON.parse(String(post[1]?.body))).toEqual({
+      name: 'North module',
+      base_url: 'http://192.168.1.20',
     })
   })
 
