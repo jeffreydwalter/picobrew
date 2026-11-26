@@ -143,7 +143,7 @@ class Rotation:
 
     @property
     def backup(self):
-        return f"hub-previous-{self.old_id}-{self.commit}"
+        return f"hub-previous-{self.old_id}-{self.old_commit}"
 
     def notes(self, text):
         return text.rstrip() + "\n\n" + MARKER + json.dumps(asdict(self), sort_keys=True) + " -->"
@@ -181,129 +181,138 @@ def by_tag(rows, tag):
     return next(iter(matches), None)
 
 
-def remove_backup(gh, plan):
-    if not plan or not plan.old_id:
-        return
-    old = by_tag(gh.releases(), plan.backup)
-    ref, _ = gh.tag(plan.backup)
-    if (old or ref) and ref != plan.old_ref:
-        raise ValueError("Rollback tag changed")
+def staged_releases(rows):
+    staged = []
+    for row in rows:
+        if row["draft"] and row["tag_name"].startswith("hub-build-"):
+            plan = Rotation.from_release(row)
+            if plan and row["tag_name"] == plan.stage:
+                staged.append((row, plan))
+    return staged
+
+
+def same_origin(a, b):
+    return (a.old_id, a.old_commit, a.old_ref) == (b.old_id, b.old_commit, b.old_ref)
+
+
+def retained_release(gh, rows, plan):
+    old = by_tag(rows, plan.backup)
+    if gh.tag(plan.backup)[0]:
+        raise ValueError("A Git tag occupies the private retention name")
     if old:
-        if old["id"] != plan.old_id or old["target_commitish"] != plan.old_commit:
-            raise ValueError("Unexpected release occupies the rollback tag")
-        gh.delete_release(old["id"])
-    if ref:
-        gh.move(plan.backup, ref, "")
+        if old["id"] != plan.old_id or not old["draft"]:
+            raise ValueError("Unexpected release occupies the private retention name")
+        verify_indexes(plan.old_commit, assets(old), gh.read_asset(old, MANIFEST), gh.read_asset(old, CHECKSUMS))
+    return old
 
 
-def restore(gh, staged_id, plan):
-    """Undo a partial swap only while our replacement is still a draft."""
-    rows = gh.releases()
-    candidate = next((r for r in rows if r["id"] == staged_id), None)
-    if not candidate or not candidate["draft"] or candidate["tag_name"] != plan.stage:
+def cleanup(gh, public):
+    plan = Rotation.from_release(public)
+    if not plan:
         return
-    old = next((r for r in rows if r["id"] == plan.old_id), None)
-    if plan.old_id and (not old or old["tag_name"] not in (TAG, plan.backup)):
-        raise ValueError("Previous release is no longer at its recorded tag")
-    current = by_tag(rows, TAG)
-    if current and current["id"] != plan.old_id:
-        raise ValueError("Another release already occupies v1.0.0")
-    ref, _ = gh.tag(TAG)
-    if ref != plan.old_ref:
-        if ref != plan.commit:
-            raise ValueError("Public tag changed during recovery")
-        gh.move(TAG, ref, plan.old_ref)
-    if old and old["tag_name"] == plan.backup:
-        gh.edit(old["id"], tag_name=TAG, target_commitish=plan.old_commit, make_latest="true")
-    if plan.old_id and gh.tag(plan.backup)[0]:
-        # The old release is back under its own name before removing the spare tag.
-        public_verified(gh, by_tag(gh.releases(), TAG), plan.old_commit)
-        remove_backup(gh, plan)
+    rows = gh.releases()
+    if plan.old_id:
+        old = retained_release(gh, rows, plan)
+        if old:
+            gh.delete_release(old["id"])
+    for row, stale in staged_releases(rows):
+        if same_origin(stale, plan):
+            gh.delete_release(row["id"])
 
 
 def promote(gh, commit, directory, notes):
     inventory = local_inventory(directory, commit)
+
     def check_master():
         if gh.head() != commit:
             raise Superseded()
 
     check_master()
     rows = gh.releases()
-    for r in rows:
-        plan = Rotation.from_release(r)
-        if r["draft"] and plan and r["tag_name"] == plan.stage and plan.commit != commit:
-            restore(gh, r["id"], plan)
-            gh.delete_release(r["id"])
-    rows = gh.releases()
     current = by_tag(rows, TAG)
     if current and current["target_commitish"] == commit and not current["draft"]:
         public_verified(gh, current, commit, inventory)
-        remove_backup(gh, Rotation.from_release(current))
+        cleanup(gh, current)
         return
-    stage = "hub-build-" + commit
-    candidate = by_tag(rows, stage)
-    if candidate:
-        plan = Rotation.from_release(candidate)
-        if not candidate["draft"] or not plan or plan.commit != commit:
-            raise ValueError("Temporary release name is already in use")
+    if current and Rotation.from_release(current):
+        # A previous job may have published successfully and lost its cleanup
+        # reply. Finish that rotation before selecting the next release's origin.
+        public_verified(gh, current, current["target_commitish"])
+        cleanup(gh, current)
+        rows = gh.releases()
+
+    # A durable draft records the original release ID and tag OID. After an
+    # interrupted promotion a newer master can continue from that same origin.
+    pending = staged_releases(rows)
+    if pending:
+        origin = pending[0][1]
+        if any(not same_origin(p, origin) for _, p in pending):
+            raise ValueError("Staged releases disagree about the previous release")
+        plan = Rotation(commit, origin.old_id, origin.old_commit, origin.old_ref)
     else:
         old_ref, old_commit = gh.tag(TAG)
         if current:
             public_verified(gh, current, old_commit)
             if current.get("immutable"):
                 raise ValueError("GitHub marked the existing release immutable")
-            remove_backup(gh, Rotation.from_release(current))
         elif old_ref and old_commit != commit:
             raise ValueError("Existing source tag has no corresponding public release")
         plan = Rotation(commit, current["id"] if current else 0, old_commit, old_ref)
-        if gh.tag(stage)[0] or by_tag(rows, plan.backup) or gh.tag(plan.backup)[0]:
-            raise ValueError("A temporary release reference is already occupied")
-        candidate = gh.create(tag_name=stage, name="PicoBrew Hub 1.0.0", draft=True,
+
+    candidate = by_tag(rows, plan.stage)
+    if candidate:
+        if not candidate["draft"] or Rotation.from_release(candidate) != plan:
+            raise ValueError("Temporary release name is already in use")
+    else:
+        if gh.tag(plan.stage)[0]:
+            raise ValueError("Temporary release name is already occupied")
+        if plan.old_id:
+            retained_release(gh, rows, plan)
+        candidate = gh.create(tag_name=plan.stage, name="PicoBrew Hub 1.0.0", draft=True,
                               target_commitish=commit, body=plan.notes(notes))
 
     # Replace incomplete or interrupted uploads only on the managed private draft.
-    rows = candidate["assets"]
-    if any(a["name"] not in inventory for a in rows):
+    entries = candidate["assets"]
+    if any(a["name"] not in inventory for a in entries):
         raise ValueError("Unexpected file on staged release")
-    ready = {a["name"] for a in rows if a["state"] == "uploaded"
+    ready = {a["name"] for a in entries if a["state"] == "uploaded"
              and (a["size"], a.get("digest")) == (inventory[a["name"]][0], "sha256:" + inventory[a["name"]][1])}
     files = [directory / name for name in sorted(inventory.keys() - ready)]
     if files:
-        gh.upload(stage, files)
-    candidate = by_tag(gh.releases(), stage)
+        gh.upload(plan.stage, files)
+    rows = gh.releases()
+    candidate = by_tag(rows, plan.stage)
     if not candidate or not candidate["draft"] or Rotation.from_release(candidate) != plan or assets(candidate) != inventory:
         raise ValueError("Staged downloads do not match the assembled release")
-    try:
-        check_master()
-        if plan.old_id:
-            old = next((r for r in gh.releases() if r["id"] == plan.old_id), None)
-            if not old or old["target_commitish"] != plan.old_commit or old["tag_name"] not in (TAG, plan.backup):
-                raise ValueError("Previous release changed during staging")
-            backup_ref, _ = gh.tag(plan.backup)
-            if backup_ref and backup_ref != plan.old_ref:
-                raise ValueError("Unexpected rollback tag")
-            if not backup_ref:
-                if gh.tag(TAG)[0] != plan.old_ref:
-                    raise ValueError("Public tag changed during staging")
-                gh.move(plan.backup, "", plan.old_ref)
-            if old["tag_name"] == TAG:
-                if gh.tag(TAG)[0] != plan.old_ref:
-                    raise ValueError("Public tag changed during staging")
-                gh.edit(old["id"], tag_name=plan.backup, target_commitish=plan.old_commit)
-        ref, _ = gh.tag(TAG)
-        if ref != commit:
-            if ref != plan.old_ref:
-                raise ValueError("Public tag changed during staging")
-            gh.move(TAG, ref, commit)
-        check_master()
-        published = gh.edit(candidate["id"], tag_name=TAG, target_commitish=commit, draft=False, make_latest="true")
-        public_verified(gh, published, commit, inventory)
-        if assets(published) != inventory:
-            raise ValueError("Published assets differ from the prepared draft")
-    except Exception:
-        restore(gh, candidate["id"], plan)
-        raise
-    remove_backup(gh, plan)
+
+    check_master()
+    allowed_refs = {p.commit for _, p in staged_releases(rows) if same_origin(p, plan)} | {plan.old_ref}
+    current = by_tag(rows, TAG)
+    if current:
+        if (current["id"] != plan.old_id or current["target_commitish"] != plan.old_commit
+                or current["draft"] or current.get("immutable")):
+            raise ValueError("Previous release changed during staging")
+        if retained_release(gh, rows, plan):
+            raise ValueError("Private retention name is occupied")
+        if gh.tag(TAG)[0] != plan.old_ref:
+            raise ValueError("Public tag changed during staging")
+        # No Git ref is created for a draft. Target current master so an ordinary
+        # Actions token never needs permission to write historical workflow files.
+        gh.edit(current["id"], tag_name=plan.backup, target_commitish=commit, draft=True)
+    if plan.old_id and not retained_release(gh, gh.releases(), plan):
+        raise ValueError("Previous downloads are missing from the retained draft")
+    check_master()
+    ref, _ = gh.tag(TAG)
+    if ref not in allowed_refs:
+        raise ValueError("Public tag changed during staging")
+    if ref != commit:
+        gh.move(TAG, ref, commit)
+    check_master()
+    published = gh.edit(candidate["id"], tag_name=TAG, target_commitish=commit, draft=False, make_latest="true")
+    public_verified(gh, published, commit, inventory)
+    if assets(published) != inventory:
+        raise ValueError("Published assets differ from the prepared draft")
+    cleanup(gh, published)
 
 
 def main():

@@ -42,6 +42,7 @@ class Remote:
         self.files = {}
         self.next_id = 1
         self.stop = lambda *_: None
+        self.enforce_master_targets = False
 
     def head(self):
         return self.master
@@ -51,6 +52,8 @@ class Remote:
         return ref, ref
 
     def move(self, tag, before, after):
+        if after and self.enforce_master_targets:
+            assert after == self.master, "historical tag write"
         assert self.tags.get(tag, "") == before
         if after:
             self.tags[tag] = after
@@ -62,6 +65,8 @@ class Remote:
         return copy.deepcopy(list(self.rows.values()))
 
     def create(self, **payload):
+        if self.enforce_master_targets:
+            assert payload["target_commitish"] == self.master, "historic release target"
         n = self.next_id
         self.next_id += 1
         self.rows[n] = {"id": n, "prerelease": False, "assets": [], **payload}
@@ -69,6 +74,8 @@ class Remote:
         return copy.deepcopy(self.rows[n])
 
     def edit(self, n, **payload):
+        if self.enforce_master_targets:
+            assert payload["target_commitish"] == self.master, "historic release update"
         tag = payload["tag_name"]
         assert not any(r["tag_name"] == tag for r in self.rows.values() if r["id"] != n)
         if not payload.get("draft", self.rows[n]["draft"]):
@@ -116,6 +123,7 @@ class RollingReleaseTest(unittest.TestCase):
         self.old = self.gh.create(tag_name=release.TAG, target_commitish=OLD, body="Original notes", draft=False)["id"]
         self.gh.latest_id = self.old
         self.gh.upload(release.TAG, old.iterdir())
+        self.gh.enforce_master_targets = True
 
     def publish(self, commit=NEW):
         release.promote(self.gh, commit, self.directory, "Release notes")
@@ -132,18 +140,18 @@ class RollingReleaseTest(unittest.TestCase):
         self.publish()
         self.assertEqual(self.gh.releases(), saved)
 
-    def test_failure_after_tag_move_restores_old_downloads(self):
+    def test_failure_after_tag_move_retains_old_downloads(self):
         def fail(op, name):
             if op == "move" and name == release.TAG and self.gh.tags[release.TAG] == NEW:
                 raise RuntimeError("tag move reply lost")
         self.gh.stop = fail
         with self.assertRaisesRegex(RuntimeError, "reply lost"):
             self.publish()
-        restored = release.by_tag(self.gh.releases(), release.TAG)
-        self.assertEqual(restored["id"], self.old)
-        self.assertEqual(self.gh.tags[release.TAG], OLD)
-        self.assertEqual(restored["body"], "Original notes")
-        self.assertEqual(self.gh.latest_id, self.old)
+        retained = self.gh.rows[self.old]
+        self.assertTrue(retained["draft"])
+        self.assertEqual(len(retained["assets"]), 27)
+        self.assertEqual(self.gh.tags[release.TAG], NEW)
+        self.assertEqual(retained["body"], "Original notes")
         self.gh.stop = lambda *_: None
         self.publish()
         self.assertEqual(self.gh.tags, {"unrelated": LATER, release.TAG: NEW})
@@ -177,6 +185,20 @@ class RollingReleaseTest(unittest.TestCase):
         self.assertNotIn(self.old, self.gh.rows)
         self.assertEqual(len(self.gh.rows), 1)
 
+    def test_new_master_after_publication_but_before_cleanup(self):
+        def stop(op, name):
+            if op == "edit" and name == release.TAG:
+                raise KeyboardInterrupt()
+        self.gh.stop = stop
+        with self.assertRaises(KeyboardInterrupt):
+            self.publish()
+        self.gh.stop = lambda *_: None
+        self.gh.master = LATER
+        write_package(self.directory, LATER)
+        self.publish(LATER)
+        self.assertEqual(self.gh.tags, {"unrelated": LATER, release.TAG: LATER})
+        self.assertEqual(len(self.gh.rows), 1)
+
     def test_superseded_draft_preserves_existing_release(self):
         self.gh.stop = lambda op, name: setattr(self.gh, "master", LATER) if op == "upload" else None
         with self.assertRaises(release.Superseded):
@@ -192,7 +214,7 @@ class RollingReleaseTest(unittest.TestCase):
         write_package(self.directory, NEW)
         colliding = release.Rotation(NEW, self.old, OLD, OLD).backup
         self.gh.tags[colliding] = OLD
-        with self.assertRaisesRegex(ValueError, "occupied"):
+        with self.assertRaisesRegex(ValueError, "occupies"):
             self.publish()
         self.assertIn(colliding, self.gh.tags)
         self.assertEqual(list(self.gh.rows), [self.old])
@@ -227,7 +249,7 @@ class RollingReleaseTest(unittest.TestCase):
             if op == "edit" and name == release.TAG:
                 self.gh.tags[backup] = LATER
         self.gh.stop = concurrent_change
-        with self.assertRaisesRegex(ValueError, "Rollback tag changed"):
+        with self.assertRaisesRegex(ValueError, "occupies"):
             self.publish()
         self.assertEqual(self.gh.tags[backup], LATER)
         self.assertEqual(self.gh.rows[self.old]["tag_name"], backup)
