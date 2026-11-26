@@ -9,6 +9,7 @@ for (const viewport of [
     page,
   }) => {
     await page.setViewportSize(viewport)
+    await page.emulateMedia({ colorScheme: viewport.name === 'desktop' ? 'dark' : 'light' })
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     let device: Device | null = null
@@ -139,6 +140,11 @@ for (const viewport of [
     expect(registrations).toBe(1)
     await card.getByRole('link', { name: 'Open Automatically connected Pico S controls' }).click()
     await page.getByRole('button', { name: 'Manage machine' }).click()
+    const management = page.getByRole('dialog', { name: 'Machine management' })
+    const keySection = management.getByRole('region', { name: 'Device API key' })
+    await expect(keySection.getByRole('button', { name: 'Copy key' })).toBeEnabled()
+    expect(await management.evaluate((d) => d.scrollWidth <= d.clientWidth + 1)).toBe(true)
+    await management.screenshot({ path: test.info().outputPath('machine-management.png') })
     await page.getByRole('button', { name: 'Brewer preferences' }).click()
     dialog = page.getByRole('dialog', { name: 'Brewer preferences' })
     await expect(dialog.getByLabel('Receiver host')).toHaveValue('hub.local')
