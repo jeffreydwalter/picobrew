@@ -34,7 +34,7 @@ Old `#/settings/new-device` links redirect to the Brewery add-machine dialog.
 
 ## One provisioned key per physical brewer
 
-The Hub encrypts the device key it obtained during pairing or USB setup. The owner can use **Manage machine → Open machine website** on a connected machine that advertises pairing, or **Copy device API key** for manual sign-in. Ordinary machine responses and workspace exports omit credentials.
+The Hub encrypts the device key it obtained during pairing or USB setup. In **Manage machine**, choose **Open machine website** on a connected machine that advertises pairing, or use **Copy key** in the **Device API key** section to sign in manually. Ordinary machine responses and workspace exports omit credentials.
 
 For manual enrollment, upload the private `api.key` file from setup or enter its 64 hexadecimal characters under **Machine API key**. The S/Pro provisioning tool generates a random 32-byte key and stores it at `/local/api.key` on that brewer. Multiple clients for one brewer use the same key. Use a distinct key for each physical machine.
 

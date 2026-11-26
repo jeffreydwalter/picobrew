@@ -4356,10 +4356,53 @@ hr,
   }
 }
 
+.management-address {
+  overflow-wrap: anywhere;
+}
 .management-actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
-  gap: 10px;
+  gap: 8px;
+}
+.management-actions .button,
+.button.management-button {
+  min-height: 34px;
+  padding: 6px 10px;
+  gap: 6px;
+  font-size: $text-small;
+  @media (pointer: coarse) {
+    min-height: 44px;
+  }
+}
+.management-actions + section,
+.management-key {
+  margin-top: 20px;
+}
+.management-key {
+  border-top: 1px solid $line;
+  padding-top: 16px;
+  p {
+    margin: 8px 0 0;
+    color: $muted;
+    font-size: $text-body;
+  }
+  .text-button {
+    margin-top: 8px;
+    @media (pointer: coarse) {
+      min-height: 44px;
+    }
+  }
+}
+.management-notice {
+  margin: 12px 0 0;
+}
+.management-key-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  h4 {
+    margin: 0;
+  }
 }
 
 .library-list {

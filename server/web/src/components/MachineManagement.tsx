@@ -1,5 +1,13 @@
 import { useState } from 'react'
-import { Settings2, RefreshCw, Pencil, Trash2, SlidersHorizontal } from 'lucide-react'
+import {
+  ArrowUpRight,
+  Copy,
+  Settings2,
+  RefreshCw,
+  Pencil,
+  Trash2,
+  SlidersHorizontal,
+} from 'lucide-react'
 import { brewerOutputsIdle, isAccessory, preferenceFields, supports } from '../lib/capabilities'
 import { api, copyText, errorMessage } from '../lib/api'
 import type { Device } from '../types'
@@ -85,10 +93,19 @@ export function MachineManagement({
         Manage machine
       </Button>
       {open && (
-        <Modal title="Machine management" onClose={() => setOpen(false)}>
+        <Modal
+          title="Machine management"
+          onClose={() => setOpen(false)}
+          actions={
+            <Button variant="danger" className="management-button" onClick={() => choose(remove)}>
+              <Trash2 size={15} />
+              Remove machine
+            </Button>
+          }
+        >
           <h3>{device.name}</h3>
-          {device.base_url && <p>{device.base_url}</p>}
-          <div className="management-actions">
+          {device.base_url && <p className="management-address">{device.base_url}</p>}
+          <div className="inline-actions management-actions">
             <Button
               variant="secondary"
               disabled={testing || !device.enabled}
@@ -121,34 +138,43 @@ export function MachineManagement({
                 Restart brewer
               </Button>
             )}
-            <Button variant="danger" onClick={() => choose(remove)}>
-              <Trash2 size={16} />
-              Remove machine
-            </Button>
           </div>
           <MachineEvents device={device} />
           {device.adapter === 'pico-standalone' && device.key_configured && (
-            <section>
-              <h4>Device API key</h4>
+            <section className="management-key" aria-label="Device API key">
+              <div className="management-key-heading">
+                <h4>Device API key</h4>
+                <Button
+                  variant="secondary"
+                  className="management-button"
+                  disabled={working}
+                  onClick={() => void accessMachine('copy')}
+                >
+                  <Copy size={15} />
+                  Copy key
+                </Button>
+              </div>
               <p>
-                The Hub keeps this key for machine controls. You can also use it on the brewer’s
+                The Hub uses this key to control the machine. It also signs you in to the machine’s
                 local website.
               </p>
               {supports(device.capabilities, 'pairing_v1') && (
-                <Button
-                  variant="secondary"
+                <button
+                  className="text-button"
                   disabled={working || !device.online}
                   onClick={() => void accessMachine('open')}
                 >
                   Open machine website
-                </Button>
+                  <ArrowUpRight size={15} />
+                </button>
               )}
-              <Button variant="ghost" disabled={working} onClick={() => void accessMachine('copy')}>
-                Copy device API key
-              </Button>
             </section>
           )}
-          {notice && <p role="status">{notice}</p>}
+          {notice && (
+            <p className="management-notice" role="status">
+              {notice}
+            </p>
+          )}
         </Modal>
       )}
       {restart && (
