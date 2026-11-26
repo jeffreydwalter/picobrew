@@ -2,7 +2,9 @@
 
 Open a machine's **Firmware** view to see wireless update versions for its exact model. Choose a version and click **Install**. The Hub fetches the selected archive, validates it and saves it for reuse. **Download** saves that version to your computer. You can downgrade to an earlier compatible OTA release. The running version is marked **Already installed**.
 
-If this Hub installed an earlier 1.0.0 build on a Pico S, Pro, C, Z module or PicoStill, **Install revised build** appears for a recognized installation receipt and matching final package. Before writing, the Hub also checks the application digest on the connected device. After verification the button reads **Already installed**. An earlier PicoFerm 1.0.0 rejects a replacement with the same version at the device. For a paired PicoFerm with a recognized dual-bank installation, connect USB and choose **Install standalone firmware** using the Hub that holds its original backup and device key. The Hub saves and verifies the live flash, updates the inactive bank and preserves the previous bank, pairing and recorded history. An unrecognized layout stops the operation. [PicoFerm USB procedure](../../firmware/picoferm/modified/dual-bank-updates.md#installing-over-wi-fi) Zymatic firmware updates also use USB.
+If this Hub installed an earlier 1.0.0 build over Wi-Fi on a Pico S, Pro, C, Z module or PicoStill, **Install revised build** appears for a recognized installation receipt and matching final package. Before writing, the Hub also checks the application digest on the connected device. After verification the button reads **Already installed**.
+
+To update a PicoFerm from one 1.0.0 build to another, connect it by USB to the Hub that holds its original backup and device key. Open **Brewery → Add machine → USB setup and recovery**, select **PicoFerm**, and choose **Install standalone firmware**. The PicoFerm’s Wi-Fi updater accepts changes in version number. The Hub saves and verifies the live flash, updates the inactive bank and preserves the previous bank, pairing and recorded history. An unrecognized layout stops the operation. [PicoFerm USB procedure](../../firmware/picoferm/modified/dual-bank-updates.md#installing-over-wi-fi) Zymatic firmware updates also use USB.
 
 ## GitHub source and version checks
 
@@ -12,7 +14,7 @@ While physical devices are registered, the Hub checks daily. The Brewery page di
 
 The public 1.0.0 catalog has seven wireless packages covering Pico S, Pico Pro, both Pico C displays, generic Z modules, PicoStill, and PicoFerm. The picker filters them for the selected machine. Pico C recovery checks the application's display marker, and the Z and accessory packages specify their recovery protocol. The Hub checks the connected device’s identity, protocol and flash layout before transfer. Both Zymatic 1.0.0 builds are provisioned over USB with the owner’s key. [USB setup and stock restoration](#usb-setup-backup-and-stock-restoration)
 
-The revised builds retain version **1.0.0**. The default branch catalog identifies each package by its SHA-256. The original GitHub tag identifies the first public build.
+The revised builds retain version **1.0.0**. The default branch catalog identifies each package by its SHA-256. The public release’s attached `releases.json` records the source commit and checksums for the six Hub executables and USB programmers. [PicoBrew 1.0.0 downloads](https://github.com/jeffreydwalter/picobrew/releases/tag/v1.0.0)
 
 A generic Z module and PicoStill transfer only their application over Wi-Fi. Each machine’s protected recovery and existing filesystem stay in place. PicoFerm transfers the application built for its inactive bank. After reboot the Hub reads the running image hash before confirming the new bank. A failed or unconfirmed PicoFerm trial returns to the previous bank on the next reset. Earlier single-application installations need USB setup to gain these capabilities.
 

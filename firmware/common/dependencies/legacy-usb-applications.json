@@ -153,6 +153,20 @@
           "binary_sha256": "29c626ef117bbe101dde294eb43f9c01da88cc610431a585e582ee7822716b7b"
         }
       ]
+    },
+    {
+      "version": "1.0.0",
+      "archive_sha256": "d568fa521f1b9301fb4d2eae8fc723112712571abcb2dae06d30b1558cb75c8e",
+      "banks": [
+        {
+          "binary_bytes": 400256,
+          "binary_sha256": "3ee1374b777a10ff43abd2603fc33b6bfffa4a488c61877d7c0f7b9bf2a679bb"
+        },
+        {
+          "binary_bytes": 400256,
+          "binary_sha256": "58ca6f6f86009b2cac4c6856c5e133bad43cfeed104c6e04211e390136d9aa89"
+        }
+      ]
     }
   ]
 }

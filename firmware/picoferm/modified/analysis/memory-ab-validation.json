@@ -23,10 +23,10 @@
     "uart": 16,
     "uart_rx_control": 16
   },
-  "target_heap_start": "0x3fff5290",
+  "target_heap_start": "0x3fff5330",
   "target_heap_end": "0x3fffc000",
-  "target_heap_bytes": 28016,
-  "elf_sha256": "b0d69a799412526e3676ed133fbb5708e13a901a6054bc9097d72ee0ff3efab5",
+  "target_heap_bytes": 27856,
+  "elf_sha256": "aece346ed474b7d3df113077e73724a23e6b55ff91d8ead2451849f983f68292",
   "build_source_entries_verified": null,
   "native_type_bytes": {
     "engine_impl": 2528,
@@ -46,13 +46,13 @@
   "native": {
     "checks": 1838,
     "pointer_bytes": 4,
-    "heap_bytes": 28016,
+    "heap_bytes": 27856,
     "sdk_network_reservation": 16384,
     "platform_reservation": 1008,
     "allocations": 14238,
     "allocation_failures": 0,
     "peak_used_bytes": 27224,
-    "minimum_free_bytes": 792,
+    "minimum_free_bytes": 632,
     "largest_request_bytes": 2528,
     "peak_phase": 4,
     "phase_peaks": [
@@ -78,10 +78,10 @@
     "hal_reads": 3597974,
     "hal_writes": 25948,
     "completed_sessions": 9,
-    "final_free_bytes": 28008,
+    "final_free_bytes": 27848,
     "passed": true
   },
-  "native_compiler": "g++ (Debian 12.2.0-14+deb12u1) 12.2.0",
+  "native_compiler": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
   "native_execution": "System multilib compiler and native 32-bit execution",
   "phase_names": [
     "startup",
@@ -101,9 +101,9 @@
     "picoferm/reverse-engineered/src/hardware.cpp": "21229e08540302786909e7b34c5654c2dc6f789fa18e790e22456a2708b84a30",
     "picoferm/reverse-engineered/src/core.cpp": "e240bbf86afc795f67308bb188f0d61c2310217e314256a82eab2dd0af956d6b",
     "common/platform/esp8266/storage.cpp": "5b6762c959f9101116c059be820c5c18261f1e8c9e312209fe2b0f0a71fb90c4",
-    "common/src/engine.cpp": "166a25e70ffc9b42bba9b99ac610fcc534b03e0e3cb3bd652ba6cd64285ae526",
-    "common/src/api.cpp": "884b67b6b6b1ac3d347acdff0a0c9c10e2c84b01e2e830242b9100baf4aa7088",
-    "common/src/values.cpp": "640a186e1055f2bf68b5aa31534b77e5ee663c3f77334692ddd4d14dba9412d3",
+    "common/src/engine.cpp": "67952e6a87ed53c121f7a1c0cbd956266f369281c40bfaf46ae8ee93032926f1",
+    "common/src/api.cpp": "e25f1fd8a883acbaabae59884f4bf46fdb4e7317faf52b4a0883f775e52adede",
+    "common/src/values.cpp": "93e2f1d20b30509cc7fc636492a7df1a05283eec31def2ef11147df9c0c82a96",
     "common/src/records.cpp": "9deec7864ea4dbfb9dcfad9a24ed9c52416724fb67af0c89ac6c7a000151ccc2",
     "common/src/history.cpp": "b66d329d4a860a3e0dc5f44e3a9eef8e76795f360fefbcdb31eaf091ce308d71",
     "common/src/history_records.cpp": "0336a037dcdb32ca4f4d8f237839a4e412b6030d91d8fd676e22ea02a4296e2b",
@@ -116,8 +116,8 @@
     "common/src/engine_internal.hpp": "2d3f37aebc1ba249c4d986a2e1b484b1ec35f2efbce690618d612bb161eb16b2",
     "common/src/json.hpp": "5ee0a5b00b92a6f5c3070fc0b29114fb707cc686380f0ab6abf28589c65c6654",
     "common/src/records.hpp": "19dc25a561479648e6bae02d8157f6e6d47678acd313d4a37d9c7350ecd5c6bd",
-    "common/src/recipe_record.hpp": "56f1184b773dfe54bfa0f28fab0aaa343579ce2c002ec08bade0a6c062b4264d",
-    "common/include/picobrew/device_services.hpp": "213befe40d7a1e9c5d2998526550e7de77a83475bbddec7dea943261bd9857e6"
+    "common/src/recipe_record.hpp": "5968d7b76c0f9c4fa04dd064f4a91ff1f08e24d9bd5867be0e6a2a0140b063bf",
+    "common/include/picobrew/device_services.hpp": "5d1c66c5812cbebda9456b87b4184c854cbd30f23d13f3d4d65c86634eaf941a"
   },
   "sdk_sha256": {
     "cores/esp8266/spiffs/spiffs_hydrogen.c": "53c0add000910baf555a9e07d19d52676a175eeb4475cf92221ee9c2afbf7f48",
