@@ -74,7 +74,7 @@ Press **Ctrl+C** to stop the Hub. Restart it from the same folder to reopen your
 
 Join your brewery network, then open **Brewery → Add machine**. Choose your device under **On your network**, or enter its address manually. After Hub USB setup, continue with **Add machine** from the completed job so the Hub can use the pairing information it saved. For dial pairing on a Pico S, Pro, C, or Z, open **Settings → About → Pair with Hub**. On a pairing-capable Zymatic, open **About Zymatic**. Compare the code and approve it at the dial. Adding a standalone PicoFerm sets it up to send readings directly to the Hub. Open **Ferment** on the brewer’s Hub page to link it to that brewer or a batch. [Pairing instructions](server/docs/device-connections.md)
 
-With factory firmware, **Pico S, Pro and C** can fetch recipes and report brew sessions. A **Z module on 0.0.119** can share live readings and accept a single Program Maker recipe for dial start. A **Zymatic on 1.1.14** can fetch recipes and report four temperature channels, step changes and errors. The stock Pico and direct stock Z connections require a Hub build that includes those adapters. [Connect a stock brewer](server/docs/stock-brewers.md) · [Stock Zymatic setup](server/docs/stock-zymatic.md)
+With factory firmware, **Pico S, Pro and C** can fetch recipes and report brew sessions. A **Z module on 0.0.119** can share live readings and accept a single Program Maker recipe for dial start. A **Zymatic on 1.1.14** can fetch recipes and report four temperature channels, step changes and errors. [Connect a stock brewer](server/docs/stock-brewers.md) · [Stock Zymatic setup](server/docs/stock-zymatic.md)
 
 #### Install later updates from the Hub
 
