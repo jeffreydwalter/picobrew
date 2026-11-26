@@ -1,6 +1,6 @@
 # Connect a brewer running factory firmware
 
-Use a Hub build that includes the stock Pico and Z connections described here. The published v1.0.0 Hub already includes stock Zymatic recipe sync and stock Z Program Maker file export. The Pico and Z adapters below run in the Hub and leave the brewer's firmware in place.
+Use the current [PicoBrew Hub download](https://github.com/jeffreydwalter/picobrew/releases/tag/v1.0.0) to connect a brewer running factory firmware. The adapters below run on the Hub computer.
 
 | Stock firmware | How it connects | What the owner can do |
 | --- | --- | --- |

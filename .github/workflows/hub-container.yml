@@ -15,14 +15,44 @@ concurrency:
   group: hub-container-publication
   cancel-in-progress: false
 jobs:
-  publish:
+  refresh-beta:
     if: >-
-      github.repository == 'jeffreydwalter/picobrew' &&
+      github.repository == 'jeffreydwalter/picobrew' && github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'master' &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      COMMIT: ${{ github.event.workflow_run.head_sha }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Publish the current verified beta under v1.0.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=$(python3 server/tools/usb/release.py source-tag)
+          [[ "$tag" == v1.0.0 ]] || exit 0
+          head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/master" --jq .object.sha)
+          [[ "$head" == "$COMMIT" ]] || exit 0
+          assets="$RUNNER_TEMP/rolling-release"
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "hub-release-v1.0.0-$COMMIT" --dir "$assets"
+          python3 server/tools/usb/rolling_release.py --commit "$COMMIT" --artifacts "$assets" --notes server/tools/usb/release-notes.md
+  publish:
+    needs: refresh-beta
+    if: >-
+      !cancelled() && github.repository == 'jeffreydwalter/picobrew' &&
       ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
-       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.head_repository.full_name == github.repository &&
-        github.event.workflow_run.head_branch == 'master' &&
-        (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')))
+       needs.refresh-beta.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

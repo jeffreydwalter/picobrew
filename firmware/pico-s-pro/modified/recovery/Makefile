@@ -20,7 +20,7 @@ test: verify-imports
 	$(PYTHON) tests/test_http_server.py
 
 web-test: verify-imports
-	$(PYTHON) tests/test_recovery_web.py
+	$(PYTHON) tests/recovery_browser.py
 
 verify: recovery test
 	$(PYTHON) verify_import.py --build
