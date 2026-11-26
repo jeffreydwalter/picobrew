@@ -51,7 +51,9 @@ export function NetworkDiscovery({
                   <small>
                     {[
                       item.base_url || serial,
-                      item.source === 'stock' ? 'Original firmware' : '',
+                      item.source === 'stock' || item.source === 'pico-register'
+                        ? 'Original firmware'
+                        : '',
                       item.firmware_version,
                     ]
                       .filter(Boolean)
@@ -70,24 +72,24 @@ export function NetworkDiscovery({
                   >
                     Use for recipe sync
                   </Button>
+                ) : item.source === 'pico-register' ||
+                  (item.source === 'stock' && item.model === 'z-series') ? (
+                  <Button variant="secondary" disabled={disabled} onClick={() => onSelect(item)}>
+                    Add stock brewer
+                  </Button>
                 ) : item.source === 'standalone' && item.base_url ? (
                   <Button variant="secondary" disabled={disabled} onClick={() => onSelect(item)}>
                     Select
                   </Button>
-                ) : (
-                  item.source === 'stock' &&
-                  item.base_url &&
-                  /^http:\/\//.test(item.base_url) && (
-                    <a
-                      href={
-                        item.model === 'picostill' ? item.base_url + '/data-page' : item.base_url
-                      }
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Open device website
-                    </a>
-                  )
+                ) : null}
+                {item.source === 'stock' && item.base_url && /^http:\/\//.test(item.base_url) && (
+                  <a
+                    href={item.model === 'picostill' ? item.base_url + '/data-page' : item.base_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open device website
+                  </a>
                 )}
               </li>
             )

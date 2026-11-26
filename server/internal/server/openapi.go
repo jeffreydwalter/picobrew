@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"reflect"
 	"regexp"
@@ -28,6 +29,17 @@ var endpoints = []endpoint{
 	{"GET", "/usb/jobs/{id}", "Read physical firmware job progress and the current confirmation prompt", nil},
 	{"POST", "/usb/jobs/{id}/confirm", "Accept this job’s current physical operation", map[string]any{"confirm": "current prompt identifier"}},
 	{"POST", "/usb/jobs/{id}/cancel", "Cancel an unanswered physical operation", map[string]any{"confirm": "current prompt identifier"}},
+	{"GET", "/stock-picos", "List configured factory Pico brewers and recent registration requests", nil},
+	{"POST", "/stock-picos", "Assign a factory Pico UID to its model", map[string]any{"uid": "1234567890abcdef1234567890abcdef", "model": "pico-s", "name": "Pico S"}},
+	{"DELETE", "/stock-picos/{machine}", "Forget a stock Pico and its recipe menu", nil},
+	{"POST", "/stock-picos/{machine}/recipes", "Preview or publish saved library revisions on a factory Pico menu", map[string]any{"recipes": []map[string]any{{"recipe_id": "saved-recipe", "revision": 1}}, "publish": false}},
+	{"DELETE", "/stock-picos/{machine}/recipes/{recipe_id}", "Unpublish one recipe from a factory Pico menu", nil},
+	{"GET", "/stock-z-programs", "List registered factory Z modules", nil},
+	{"POST", "/stock-z-programs", "Identify and register a local Z Program Maker", map[string]any{"name": "Z module", "base_url": "http://192.168.1.50"}},
+	{"DELETE", "/stock-z-programs/{machine}", "Forget a factory Z module", nil},
+	{"GET", "/stock-z-programs/{machine}/state", "Read current Program Maker telemetry", nil},
+	{"POST", "/stock-z-programs/{machine}/recipes", "Preview a recipe or confirm replacement of the Z working program for a dial start", map[string]any{"recipe_id": "saved-recipe", "revision": 1, "confirm_replace": false}},
+	{"POST", "/stock-z-programs/{machine}/group-offers", "Offer the latest acknowledged stock Z transfer to its selected group", map[string]any{"transfer_id": "1234567890abcdef1234567890abcdef", "group_id": "group", "group_revision": 1}},
 	{"POST", "/stock-zymatics/preview", "Compile saved recipe revisions for offline Zymatic USB setup", map[string]any{"recipes": []map[string]any{{"recipe_id": "saved-recipe", "revision": 1}}}},
 	{"GET", "/stock-zymatics/{machine}/recipes", "Read stock Zymatic sync menu and last request", nil},
 	{"POST", "/stock-zymatics/{machine}/recipes", "Preview or publish saved recipe revisions to one stock Zymatic menu", map[string]any{"recipes": []map[string]any{{"recipe_id": "saved-recipe", "revision": 1}}, "publish": false}},
@@ -50,7 +62,7 @@ var endpoints = []endpoint{
 	{"PUT", "/devices/{id}/brewer", "Choose a brewer for this PicoFerm, or clear its association", map[string]any{"brewer_id": "registered-brewer-id", "revision": 0}},
 	{"GET", "/devices/{id}", "Read one machine", nil}, {"PUT", "/devices/{id}", "Update a machine connection", map[string]any{"name": "My Pico", "model": "", "adapter": "pico-standalone", "base_url": "http://192.168.1.50", "location": "Brew room"}}, {"DELETE", "/devices/{id}", "Remove an idle machine", nil}, {"POST", "/devices/{id}/test", "Probe connection and discover capabilities", map[string]any{}}, {"GET", "/devices/{id}/display", "Read raw OLED framebuffer and display geometry", nil}, {"POST", "/devices/{id}/commands", "Queue a capability-checked command once", map[string]any{"command": "encoder", "delta": 1}}, {"GET", "/devices/{id}/recipes", "Read recipes stored on the appliance", nil}, {"GET", "/devices/{id}/settings", "Read device preferences", nil}, {"PATCH", "/devices/{id}/settings", "Update device preferences", map[string]any{"temperature_unit": "F"}}, {"GET", "/devices/{id}/telemetry", "Read the saved live-data receiver settings", nil}, {"PUT", "/devices/{id}/telemetry", "Save live-data receiver settings and apply them when the machine is available", map[string]any{"enabled": true, "host": "192.168.1.20", "port": 8080}}, {"POST", "/devices/{id}/sync-history", "Archive retained device history", map[string]any{}}, {"POST", "/devices/{id}/deploy", "Compile and deploy a reviewed recipe without starting it", map[string]any{"recipe_id": "recipe-id", "profile_id": "pico-pro", "batch_liters": 5, "source_revision": 1}},
 	{"GET", "/profiles", "List planning and control capabilities by model", nil}, {"GET", "/recipes", "List shared recipes", nil}, {"POST", "/recipes", "Create a recipe", map[string]any{"name": "New recipe", "batch_liters": 5, "efficiency": 55, "ingredients": []any{}, "steps": []any{map[string]any{"name": "Mash", "kind": "mash", "target_c": 67, "minutes": 60, "location": 0, "drain_minutes": 0}}}}, {"GET", "/recipes/{id}", "Read a recipe", nil}, {"PUT", "/recipes/{id}", "Save a recipe using its current revision", map[string]any{"revision": 1}}, {"DELETE", "/recipes/{id}", "Remove a recipe from the library", nil}, {"POST", "/recipes/import", "Import JSON or BeerXML", map[string]any{"format": "beerxml", "data": "<RECIPES>...</RECIPES>"}}, {"POST", "/recipes/{id}/adapt", "Preview a machine-specific recipe adaptation", map[string]any{"profile_id": "pico-pro", "batch_liters": 5}}, {"GET", "/recipes/{id}/export", "Export recipe as JSON or BeerXML (?format=)", nil}, {"GET", "/recipes/{id}/revisions", "Read saved recipe revisions", nil},
-	{"GET", "/brew-groups", "List brewing groups and known Zymatic menus", nil},
+	{"GET", "/brew-groups", "List brewing groups, known Zymatic menus and registered stock Z modules", nil},
 	{"POST", "/brew-groups", "Create a brewing group", map[string]any{"name": "Brew day", "device_ids": []string{"first", "second"}, "revision": 0}},
 	{"PUT", "/brew-groups/{group}", "Edit a brewing group", map[string]any{"name": "Brew day", "device_ids": []string{"first", "second"}, "revision": 1}},
 	{"DELETE", "/brew-groups/{group}", "Remove a brewing group (?revision=N)", nil},
@@ -345,8 +357,73 @@ func buildSchemas() schemaMap {
 	r.properties("Request")["prompt"] = schemaMap{"type": "string", "maxLength": 16000}
 	r.properties("Result")["recipe"] = schemaRef("Recipe")
 	r.properties("AIAdvice")["recipe"] = schemaRef("Recipe")
+	addStockBrewerSchemas(r)
 	addFirmwareSchemas(r.values)
 	return r.values
+}
+
+func addStockBrewerSchemas(r *schemaRegistry) {
+	for _, value := range []any{stockPicoBrewer{}, stockPicoDiagnostics{}, stockZProgramMachine{}, stockZState{}, stockZProgramReview{}} {
+		r.describe(reflect.TypeOf(value))
+	}
+	uid := schemaMap{"type": "string", "pattern": "^[0-9A-Fa-f]{32}$"}
+	model := schemaMap{"type": "string", "enum": []string{"pico-s", "pico-pro", "pico-c"}}
+	revision := schemaMap{"type": "integer", "minimum": 1}
+	hash := schemaMap{"type": "string", "pattern": "^[a-f0-9]{64}$"}
+	r.values["StockPicoInput"] = schemaObject(schemaMap{
+		"uid": uid, "model": model, "name": schemaMap{"type": "string", "minLength": 1, "maxLength": 120},
+	}, "uid", "model", "name")
+	r.properties("stockPicoBrewer")["uid"] = uid
+	r.properties("stockPicoBrewer")["model"] = model
+	picoSummary := maps.Clone(r.properties("stockPicoBrewer"))
+	picoSummary["report"] = schemaRef("stockPicoDiagnostics")
+	r.values["StockPicoSummary"] = schemaObject(picoSummary, "uid", "name", "model", "items")
+	r.values["StockPicoList"] = schemaObject(schemaMap{
+		"machines": schemaArray(schemaRef("StockPicoSummary")), "recent_uids": schemaArray(uid),
+	}, "machines", "recent_uids")
+	selected := schemaObject(schemaMap{
+		"recipe_id": stringSchema(), "revision": revision,
+		"rfid": schemaMap{"type": "string", "nullable": true, "pattern": "^(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{14}|[0-9a-fA-F]{20})?$", "description": "Omit to retain the current physical tag. An empty string clears the association."},
+	}, "recipe_id", "revision")
+	picoRecipes := schemaArray(selected)
+	picoRecipes["minItems"] = 1
+	picoPreview := schemaObject(schemaMap{"recipes": picoRecipes, "publish": schemaMap{"type": "boolean", "enum": []bool{false}, "default": false}}, "recipes")
+	picoPublish := schemaObject(schemaMap{"recipes": picoRecipes, "publish": schemaMap{"type": "boolean", "enum": []bool{true}}, "review_hash": hash}, "recipes", "publish", "review_hash")
+	r.values["StockPicoMenuInput"] = schemaMap{"oneOf": []any{picoPreview, picoPublish}, "description": "Preview the selected revisions and tag assignments, then resubmit the same selection and its review_hash to publish."}
+	r.values["StockPicoMenuResult"] = schemaObject(schemaMap{
+		"items": schemaArray(schemaRef("stockPicoItem")), "published": boolSchema(), "review_hash": hash,
+	}, "items", "published", "review_hash")
+	r.values["StockZRegistrationInput"] = schemaObject(schemaMap{
+		"base_url": schemaMap{"type": "string", "format": "uri", "description": "HTTP URL on port 80 at a private IPv4 address on a network directly attached to the Hub."},
+		"name":     schemaMap{"type": "string", "maxLength": 80, "default": "Pico Z"},
+	}, "base_url")
+	r.properties("stockZState")["activity"] = schemaMap{
+		"type": "string", "enum": []string{"active", "paused", "outputs_quiet", "unknown"},
+		"description": "Derived from the reported outputs and timing. Verify an idle brewer at its physical dial before replacing the working program.",
+	}
+	zPreview := schemaObject(schemaMap{
+		"recipe_id": stringSchema(), "revision": revision, "confirm_replace": schemaMap{"type": "boolean", "enum": []bool{false}, "default": false},
+	}, "recipe_id", "revision")
+	zReplace := schemaObject(schemaMap{
+		"recipe_id": stringSchema(), "revision": revision, "confirm_replace": schemaMap{"type": "boolean", "enum": []bool{true}},
+		"program_hash": hash, "review_hash": hash,
+	}, "recipe_id", "revision", "confirm_replace", "program_hash", "review_hash")
+	r.values["StockZRecipeInput"] = schemaMap{"oneOf": []any{zPreview, zReplace}, "description": "Preview, then confirm the intended idle module and resubmit the same library revision with both hashes to replace its working program."}
+	r.properties("stockZProgramReview")["program_hash"] = schemaMap{"type": "string", "pattern": hash["pattern"], "description": "SHA-256 of the encoded OEM Program Maker upload."}
+	r.properties("stockZProgramReview")["review_hash"] = schemaMap{"type": "string", "pattern": hash["pattern"], "description": "SHA-256 of the reviewed program and loading details, including ingredient quantities when available."}
+	r.values["stockZProgramReview"].(schemaMap)["required"] = []string{"program_name", "step_count", "program_hash", "review_hash"}
+	zResult := maps.Clone(r.properties("stockZProgramReview"))
+	zResult["status"] = schemaMap{"type": "string", "enum": []string{"preview"}}
+	zAcknowledged := maps.Clone(zResult)
+	zAcknowledged["status"] = schemaMap{"type": "string", "enum": []string{"acknowledged"}}
+	zAcknowledged["transfer_id"] = schemaMap{"type": "string", "description": "Receipt of this module’s latest acknowledged Hub upload. A later replacement attempt retires the receipt. Start the program at the dial."}
+	r.values["StockZRecipeResult"] = schemaMap{"oneOf": []any{
+		schemaObject(zResult, "status", "program_name", "step_count", "program_hash", "review_hash"),
+		schemaObject(zAcknowledged, "status", "program_name", "step_count", "program_hash", "review_hash", "transfer_id"),
+	}}
+	r.values["StockZOfferInput"] = schemaObject(schemaMap{
+		"transfer_id": zAcknowledged["transfer_id"], "group_id": stringSchema(), "group_revision": revision,
+	}, "transfer_id", "group_id", "group_revision")
 }
 
 func addFirmwareSchemas(values schemaMap) {
@@ -491,12 +568,25 @@ func operationParameters(e endpoint) []any {
 func requestSchema(e endpoint) (schemaMap, bool) {
 	name := ""
 	switch e.path {
+	case "/stock-picos":
+		name = "StockPicoInput"
+	case "/stock-picos/{machine}/recipes":
+		name = "StockPicoMenuInput"
+	case "/stock-z-programs":
+		name = "StockZRegistrationInput"
+	case "/stock-z-programs/{machine}/recipes":
+		name = "StockZRecipeInput"
+	case "/stock-z-programs/{machine}/group-offers":
+		name = "StockZOfferInput"
 	case "/brew-groups", "/brew-groups/{group}":
 		if e.method == "POST" || e.method == "PUT" {
 			return schemaRef("BrewGroupInput"), true
 		}
 	case "/devices/{id}/brew-invite/{invite}/respond":
-		return schemaObject(schemaMap{"accept": boolSchema()}, "accept"), true
+		return schemaObject(schemaMap{
+			"accept":          boolSchema(),
+			"confirm_replace": schemaMap{"type": "boolean", "description": "Required true when accepting a stock Z invitation. First review stock_z_review and confirm the intended module is idle at stock_z_url."},
+		}, "accept"), true
 	case "/devices/{id}/picostill":
 		if e.method == "PATCH" {
 			return schemaObject(schemaMap{"session_logging": boolSchema()}, "session_logging"), true
@@ -587,6 +677,34 @@ func successResponses(e endpoint) schemaMap {
 	code := "200"
 	description := "Successful response"
 	switch e.path {
+	case "/stock-picos":
+		if e.method == "GET" {
+			schema = schemaRef("StockPicoList")
+		} else {
+			code = "201"
+			schema = schemaRef("stockPicoBrewer")
+		}
+	case "/stock-picos/{machine}", "/stock-picos/{machine}/recipes/{recipe_id}", "/stock-z-programs/{machine}":
+		code = "204"
+		description = "Registration or menu entry removed."
+	case "/stock-picos/{machine}/recipes":
+		schema = schemaRef("StockPicoMenuResult")
+	case "/stock-z-programs":
+		if e.method == "GET" {
+			schema = schemaObject(schemaMap{"machines": schemaArray(schemaRef("stockZProgramMachine"))}, "machines")
+		} else {
+			record := schemaMap{"application/json": schemaMap{"schema": schemaRef("stockZProgramMachine")}}
+			return schemaMap{
+				"200": schemaMap{"description": "Program Maker address already registered.", "content": record},
+				"201": schemaMap{"description": "Program Maker identified and registered.", "content": record},
+			}
+		}
+	case "/stock-z-programs/{machine}/state":
+		schema = schemaRef("stockZState")
+	case "/stock-z-programs/{machine}/recipes":
+		schema = schemaRef("StockZRecipeResult")
+	case "/stock-z-programs/{machine}/group-offers":
+		schema = schemaObject(schemaMap{"offered": schemaMap{"type": "integer", "minimum": 0, "description": "Number of active invitations issued. A retry for the same receipt and group revision returns the saved count."}}, "offered")
 	case "/brew-groups":
 		if e.method == "GET" {
 			schema = schemaObject(schemaMap{"groups": schemaArray(schemaRef("brewGroup")), "stock_candidates": schemaArray(schemaRef("groupCandidate"))}, "groups", "stock_candidates")
@@ -828,6 +946,43 @@ func operationResponses(e endpoint, public, requiresJSON bool) schemaMap {
 			statuses[code] = message
 		}
 	}
+	switch e.path {
+	case "/stock-picos":
+		if e.method == "POST" {
+			statuses[409] = "Brewer UID already registered."
+			statuses[422] = "Choose a supported model, name and 32-character hexadecimal UID."
+		}
+	case "/stock-picos/{machine}":
+		statuses[400] = "Invalid brewer UID."
+	case "/stock-picos/{machine}/recipes", "/stock-picos/{machine}/recipes/{recipe_id}":
+		statuses[404] = "Unknown brewer or recipe, invalid UID, or stock service disabled in demo mode."
+		statuses[409] = "Recipe revision, reviewed menu or stored brewer changed."
+		if e.method == "POST" {
+			statuses[422] = "Invalid selection, tag, duplicate menu entry or unsupported stock program."
+		}
+	case "/stock-z-programs":
+		if e.method == "POST" {
+			statuses[409] = "Address is registered to another machine."
+			statuses[422] = "Invalid name, address or network selection."
+			statuses[499] = "Request canceled while reading the Z."
+			statuses[502] = "The Z could not be identified or its state could not be read."
+		}
+	case "/stock-z-programs/{machine}/state", "/stock-z-programs/{machine}/recipes":
+		statuses[404] = "Registered module or requested recipe does not exist."
+		statuses[499] = "Device request canceled."
+		statuses[502] = "Device unavailable, invalid stock response or uncertain delivery. Inspect the dial before retrying an upload."
+		if e.method == "POST" {
+			statuses[409] = "Recipe revision or review hashes changed, or the Z reports activity, a pause or uncertain state."
+			statuses[422] = "Invalid saved revision or unsupported Program Maker recipe."
+		}
+	case "/stock-z-programs/{machine}/group-offers":
+		statuses[404] = "Module unavailable or stock service disabled in demo mode."
+		statuses[409] = "Group, receipt or reviewed revision changed, or the offer expired."
+		statuses[422] = "The recipe cannot be compiled for stock Program Maker."
+	case "/devices/{id}/brew-invite/{invite}/respond":
+		statuses[409] = "Invitation expired or changed, brewer unavailable, or stock Z staging could not be confirmed. Inspect the dial before another upload."
+		statuses[422] = "Confirm the replacement before accepting a stock Z invitation, and review a recipe compatible with the target."
+	}
 	if e.path == "/auth/login" || e.path == "/auth/setup" {
 		statuses[401] = "Incorrect password or setup token."
 		statuses[403] = "Invalid request origin."
@@ -898,7 +1053,15 @@ func operationResponses(e endpoint, public, requiresJSON bool) schemaMap {
 		}
 	}
 	for code, description := range statuses {
-		responses[strconv.Itoa(code)] = schemaMap{"description": description, "content": schemaMap{"application/json": schemaMap{"schema": schemaRef("Error")}}}
+		content := schemaMap{"application/json": schemaMap{"schema": schemaRef("Error")}}
+		if code == 404 {
+			switch e.path {
+			case "/stock-picos/{machine}/recipes", "/stock-picos/{machine}/recipes/{recipe_id}", "/stock-z-programs/{machine}/group-offers", "/devices/{id}/brew-invite/{invite}/respond":
+				// Disabled stock routes use the plain HTTP not-found response.
+				content["text/plain"] = schemaMap{"schema": stringSchema()}
+			}
+		}
+		responses[strconv.Itoa(code)] = schemaMap{"description": description, "content": content}
 	}
 	return responses
 }

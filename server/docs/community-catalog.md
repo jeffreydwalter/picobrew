@@ -86,7 +86,7 @@ recognize a program already present on the brewer.
 The ten chiefwigms Pico base recipes use named locations and a separate `Prime`
 step whose translation is not verified here. Their notes, illustrations and
 original JSON are browsable, but automatic copying/deployment is disabled.
-The 39 archived Z schedules run on standalone Z modules that report original Z schedule support. The Hub also transfers compatible original PicoPak programs to a Z with kit support, for use with the pack and adapter. A stock Zymatic can retrieve a compatible published program from its sync menu. A stock Z on 0.0.119 can import a compatible Program Maker export through its own website. [Z recipe formats](family-devices.md#z-recipes-and-front-panel) · [Stock Zymatic setup](stock-zymatic.md)
+The 39 archived Z schedules run on standalone Z modules that report original Z schedule support. The Hub also transfers compatible original PicoPak programs to a Z with kit support, for use with the pack and adapter. A stock Zymatic can retrieve a compatible published program from its sync menu. A stock Pico menu can serve compatible kit programs. A stock Z on 0.0.119 can accept a compatible Program Maker recipe from the Hub or through its own website. [Stock brewer transfers](stock-brewers.md) · [Z recipe formats](family-devices.md#z-recipes-and-front-panel) · [Stock Zymatic setup](stock-zymatic.md)
 
 Every entry carries its repository, pinned commit, source path, SHA-256,
 attribution/license notice and conversion warnings. Grouped PicoPak entries expose

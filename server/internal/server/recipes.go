@@ -180,6 +180,8 @@ func (s *Server) saveRecipe(w http.ResponseWriter, r *http.Request) {
 	s.json(w, code, recipeWithVersions(v, profiles))
 }
 func (s *Server) deleteRecipe(w http.ResponseWriter, r *http.Request) {
+	s.recipeMu.Lock()
+	defer s.recipeMu.Unlock()
 	if e := s.db.Delete("recipe", chi.URLParam(r, "id")); e != nil {
 		s.storeError(w, e)
 		return

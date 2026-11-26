@@ -115,13 +115,35 @@
   gap: 12px;
   margin-bottom: 16px;
 }
-.brew-group-bar:empty { display: none; }
+.brew-group-bar:empty {
+  display: none;
+}
 .brew-group-members {
   margin: 16px 0;
   padding: 12px 16px;
   border: 1px solid var(--line);
   border-radius: 8px;
 }
-.brew-group-members label { padding: 5px 0; }
-.brew-invitation { justify-content: space-between; }
-.brew-invitation p { margin: 6px 0 0; }
+.brew-group-members label {
+  padding: 5px 0;
+}
+.brew-invitation {
+  justify-content: space-between;
+}
+.brew-invitation p {
+  margin: 6px 0 0;
+}
+
+.stock-brewer-readings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin: 0;
+  dt {
+    color: var(--hub-muted);
+  }
+  dd {
+    margin: 0;
+    font-weight: 600;
+  }
+}

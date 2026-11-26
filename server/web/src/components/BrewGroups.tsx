@@ -4,6 +4,9 @@ import { useHub, useResource } from '../context'
 import type { Device } from '../types'
 import { api, errorMessage } from '../lib/api'
 import { temperature } from '../lib/utils'
+import { TransferLoadingSheet } from './RecipeLoadingSheet'
+import { StockZTemperatureLimits, type StockZTemperatureLimit } from './StockZTemperatureLimits'
+import type { Ingredient } from '../types'
 import { Button, ErrorBanner, Field, Modal } from './ui'
 
 export interface BrewGroup {
@@ -28,6 +31,16 @@ type Invite = {
   recipe_name?: string
   state: string
   message?: string
+  recipe_id?: string
+  recipe_revision?: number
+  stock_z_review?: {
+    temperature_limits?: StockZTemperatureLimit[]
+    batch_liters?: number
+    ingredients?: Ingredient[]
+    hop_slots_by_minute?: Record<number, number>
+  }
+  stock_z_name?: string
+  stock_z_url?: string
   menu_serial?: string
   expires_at: string
 }
@@ -211,11 +224,13 @@ function BrewGroupEditor({
                     {d.name}
                     {other
                       ? ` · ${other.name}`
-                      : d.id.startsWith('stock-zymatic:')
-                        ? ' · Recipe menu'
-                        : d.online === false
-                          ? ' · Offline'
-                          : ''}
+                      : d.id.startsWith('stock-z:')
+                        ? ' · Program Maker'
+                        : d.id.startsWith('stock-zymatic:')
+                          ? ' · Recipe menu'
+                          : d.online === false
+                            ? ' · Offline'
+                            : ''}
                   </span>
                 </label>
               )
@@ -246,8 +261,10 @@ export function BrewInvitations({ devices, deviceID }: { devices: Device[]; devi
     : fleet.data?.invites || []
   const [error, setError] = useState('')
   const [pending, setPending] = useState('')
-  const { notify, unit } = useHub()
-  async function respond(invite: Invite, accept: boolean) {
+  const { notify, unit, recipes } = useHub()
+  const [replacement, setReplacement] = useState<Invite | null>(null)
+  const [confirmIdle, setConfirmIdle] = useState(false)
+  async function respond(invite: Invite, accept: boolean, confirmReplace = false) {
     setError('')
     setPending(invite.id + invite.target_device_id)
     try {
@@ -255,13 +272,14 @@ export function BrewInvitations({ devices, deviceID }: { devices: Device[]; devi
         `/devices/${invite.target_device_id}/brew-invite/${invite.id}/respond`,
         {
           method: 'POST',
-          body: { accept },
+          body: { accept, ...(confirmReplace && { confirm_replace: true }) },
         }
       )
       notify(result.message || inviteStates[result.state] || 'Checking invitation status.')
     } catch (e) {
       setError(errorMessage(e))
     } finally {
+      setReplacement(null)
       setPending('')
       ;(deviceID ? machine : fleet).reload()
     }
@@ -303,7 +321,8 @@ export function BrewInvitations({ devices, deviceID }: { devices: Device[]; devi
               </strong>
               <p>
                 {invite.source_name} invited{' '}
-                {device?.name ||
+                {invite.stock_z_name ||
+                  device?.name ||
                   (invite.menu_serial ? 'Zymatic ' + invite.menu_serial : 'this brewer')}
                 . {invite.message}
               </p>
@@ -325,14 +344,23 @@ export function BrewInvitations({ devices, deviceID }: { devices: Device[]; devi
                   Decline
                 </Button>
                 <Button
-                  disabled={!!pending || (!invite.menu_serial && !device?.online)}
-                  onClick={() => void respond(invite, true)}
+                  disabled={
+                    !!pending || (!invite.menu_serial && !invite.stock_z_url && !device?.online)
+                  }
+                  onClick={() => {
+                    if (invite.stock_z_url) {
+                      setConfirmIdle(false)
+                      setReplacement(invite)
+                    } else void respond(invite, true)
+                  }}
                 >
-                  {invite.menu_serial
-                    ? 'Add to brewer menu'
-                    : coffee
-                      ? 'Review on brewer'
-                      : 'Accept invitation'}
+                  {invite.stock_z_url
+                    ? 'Review replacement'
+                    : invite.menu_serial
+                      ? 'Add to brewer menu'
+                      : coffee
+                        ? 'Review on brewer'
+                        : 'Accept invitation'}
                 </Button>
               </div>
             ) : (
@@ -341,6 +369,52 @@ export function BrewInvitations({ devices, deviceID }: { devices: Device[]; devi
           </article>
         )
       })}
+      {replacement && (
+        <Modal
+          title={'Replace working recipe on ' + replacement.stock_z_name + '?'}
+          onClose={() => {
+            if (!pending) setReplacement(null)
+          }}
+          actions={
+            <>
+              <Button variant="secondary" disabled={!!pending} onClick={() => setReplacement(null)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={!!pending || !confirmIdle}
+                onClick={() => void respond(replacement, true, true)}
+              >
+                Replace working recipe
+              </Button>
+            </>
+          }
+        >
+          <p>
+            {replacement.recipe_name} will become the working program on this Z. Review and start it
+            at the dial.
+          </p>
+          <StockZTemperatureLimits limits={replacement.stock_z_review?.temperature_limits} />
+          {replacement.stock_z_review && (
+            <TransferLoadingSheet
+              source={recipes?.find(
+                (r) => r.id === replacement.recipe_id && r.revision === replacement.recipe_revision
+              )}
+              batchLiters={replacement.stock_z_review.batch_liters}
+              ingredients={replacement.stock_z_review.ingredients}
+              slots={replacement.stock_z_review.hop_slots_by_minute}
+            />
+          )}
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={confirmIdle}
+              disabled={!!pending}
+              onChange={(e) => setConfirmIdle(e.target.checked)}
+            />
+            I verified that {replacement.stock_z_name} at {replacement.stock_z_url} is idle.
+          </label>
+        </Modal>
+      )}
     </>
   )
 }

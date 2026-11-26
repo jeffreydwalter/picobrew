@@ -52,6 +52,13 @@ jobs:
         env:
           PICO_HUB_RECOVERY_TEST: ${{ github.workspace }}/firmware/pico-s-pro/modified/tests/hub_recovery_host.py
         run: go test ./internal/device -run TestHubOTAWithNativeRecovery -count=1
+      - name: Exercise Hub recipe transfers with original stock clients
+        if: runner.os == 'Linux'
+        env:
+          PICO_HUB_STOCK_PROTOCOL_TEST: ${{ github.workspace }}/tools/check_stock_recipe_protocol.py
+        run: |
+          python -m pip install -r ../firmware/pico-s-pro/reverse-engineered/requirements-test.txt
+          go test ./internal/server -run TestStockRecipesWithOEMFirmware -count=1
       - name: Check backend races
         if: runner.os != 'Windows'
         env:

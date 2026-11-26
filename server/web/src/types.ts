@@ -280,6 +280,17 @@ export interface Adapted {
   profile_fingerprint?: string
 }
 export interface Sample {
+  stock_pico?: {
+    kind: 'log' | 'state' | 'error'
+    step?: string
+    event?: string
+    state?: number
+    error_code?: number
+    rfid?: string
+    controller_status?: number
+    seconds_left?: number
+    shuttle_scale?: number
+  }
   stock_zymatic?: {
     kind: 'temperatures' | 'step' | 'error'
     step_name?: string

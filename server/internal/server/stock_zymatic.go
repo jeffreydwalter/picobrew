@@ -430,7 +430,7 @@ func (s *Server) stockWire(w http.ResponseWriter, r *http.Request) {
 					if previous.ID != "" && !previous.Ended {
 						write.PreviousID = stockBrewID(previous.ID)
 					}
-					if err := s.db.WriteZymaticJournal(write); err != nil {
+					if err := s.db.WriteStockJournal(write); err != nil {
 						http.Error(w, "storage unavailable", 500)
 						return
 					}
@@ -451,13 +451,15 @@ func (s *Server) stockWire(w http.ResponseWriter, r *http.Request) {
 			}
 			b.Session.Ended = code == "3"
 			write := s.stockJournal(b, version, time.Now().UTC())
-			write.End = b.Session.Ended
+			if b.Session.Ended {
+				write.EndState = "ended"
+			}
 			write.Reading = stockReading(code, q)
-			if !write.End && !newCheckpoint && write.Reading == nil {
+			if write.EndState == "" && !newCheckpoint && write.Reading == nil {
 				stockReply(w, "")
 				return
 			}
-			if err := s.db.WriteZymaticJournal(write); err != nil {
+			if err := s.db.WriteStockJournal(write); err != nil {
 				http.Error(w, "storage unavailable", 500)
 				return
 			}

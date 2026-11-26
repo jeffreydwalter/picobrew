@@ -1,3 +1,4 @@
+import { StockRecipeTransfer, useStockTargets } from './StockRecipeTransfer'
 import { StockZymaticTransfer, offlineTarget, stockTarget } from './StockZymaticTransfer'
 import { useState } from 'react'
 import { ArrowRight, Check, RefreshCw, Send } from 'lucide-react'
@@ -42,6 +43,7 @@ export function TransferDialog({
   onComplete?: () => void
 }) {
   const hub = useHub()
+  const stockMachines = useStockTargets()
   const [selection, setSelection] = useState(initialSelection || [])
   const chosen = recipes.filter((recipe) => selection.includes(recipe.id))
   const requiresZ = chosen.some((r) => !!r.native_program?.z_program)
@@ -165,6 +167,18 @@ export function TransferDialog({
       setBusy('')
     }
   }
+  const stockMachine = stockMachines.find((m) => m.id === deviceID)
+  if (stockMachine)
+    return (
+      <StockRecipeTransfer
+        key={stockMachine.id}
+        target={stockMachine}
+        recipes={recipes}
+        initialSelection={selection}
+        onClose={onClose}
+        back={() => setDeviceID('')}
+      />
+    )
   const pairedZymatic = target && pairedMenu(target) ? target : undefined
   if (([stockTarget, offlineTarget].includes(deviceID) && !requiresZ) || pairedZymatic)
     return (
@@ -262,6 +276,13 @@ export function TransferDialog({
                   <option value={offlineTarget}>Zymatic · offline program for USB setup</option>
                 </>
               )}
+              {stockMachines
+                .filter((m) => !requiresZ || m.model === 'z-series')
+                .map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} · Original firmware
+                  </option>
+                ))}
               {hub.devices.filter(canReceive).map((device) => (
                 <option key={device.id} value={device.id}>
                   {device.name}

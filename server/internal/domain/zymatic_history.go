@@ -25,6 +25,17 @@ type ZymaticReport struct {
 }
 
 func (s Sample) MarshalJSON() ([]byte, error) {
+	if s.StockPico != nil {
+		return json.Marshal(struct {
+			ElapsedMS    int64               `json:"elapsed_ms"`
+			ObservedAt   *time.Time          `json:"observed_at,omitempty"`
+			Source       string              `json:"source"`
+			StockPico    *PicoReport         `json:"stock_pico"`
+			WortF        *float64            `json:"wort_f,omitempty"`
+			ThermoblockF *float64            `json:"thermoblock_f,omitempty"`
+			Readings     map[string]*float64 `json:"readings,omitempty"`
+		}{s.ElapsedMS, s.ObservedAt, s.Source, s.StockPico, s.WortF, s.ThermoblockF, s.Readings})
+	}
 	if !s.ZymaticHistory {
 		return json.Marshal(fullSample(s))
 	}

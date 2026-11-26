@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -52,7 +53,8 @@ func (s *Server) brewInvites(w http.ResponseWriter, r *http.Request) {
 func (s *Server) respondBrewInvite(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var input struct {
-		Accept *bool `json:"accept"`
+		Accept         *bool `json:"accept"`
+		ConfirmReplace bool  `json:"confirm_replace,omitempty"`
 	}
 	if !s.decode(w, r, &input) {
 		return
@@ -93,6 +95,10 @@ func (s *Server) respondBrewInvite(w http.ResponseWriter, r *http.Request) {
 	}
 	if i.State != "pending" || !inviteMember(g, i) {
 		s.fail(w, 409, "invitation", "This invitation is no longer pending")
+		return
+	}
+	if machine, stockZ := strings.CutPrefix(id, stockZMemberPrefix); stockZ {
+		s.respondStockZGroup(w, r, i, machine, *input.Accept, input.ConfirmReplace)
 		return
 	}
 	var matched *device.GroupOffer

@@ -117,6 +117,7 @@ function plan(batch = 5, ready = false, profile = pro): Adapted {
 
 function state(overrides: Partial<HubState> = {}): HubState {
   return {
+    session: { demo: false },
     profiles: [pro, s, z],
     devices: [],
     notify: vi.fn(),
@@ -143,11 +144,13 @@ beforeEach(() => {
   fetchMock.mockReset()
   inventory = []
   onClose.mockReset()
-  vi.stubGlobal('fetch', (path: RequestInfo | URL, options?: RequestInit) =>
-    String(path).startsWith('/api/v1/devices/') && String(path).endsWith('/recipes')
-      ? Promise.resolve(json({ recipes: inventory }))
-      : fetchMock(path, options)
-  )
+  vi.stubGlobal('fetch', (path: RequestInfo | URL, options?: RequestInit) => {
+    if (['/api/v1/stock-picos', '/api/v1/stock-z-programs'].includes(String(path)))
+      return Promise.resolve(json({ machines: [] }))
+    if (String(path).startsWith('/api/v1/devices/') && String(path).endsWith('/recipes'))
+      return Promise.resolve(json({ recipes: inventory }))
+    return fetchMock(path, options)
+  })
   setCSRF('test-csrf')
   for (const name of dialogMethods)
     Object.defineProperty(HTMLDialogElement.prototype, name, {

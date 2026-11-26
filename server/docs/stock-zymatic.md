@@ -23,6 +23,15 @@ Set `--hub-host brewery.lan:8080` during USB setup to point both network clients
 
 In a saved recipe’s **Send** dialog, choose **Zymatic · offline program for USB setup**, then **Preview offline programs**. Review the steps and select **Use in USB setup**. Connect an idle Zymatic to the Hub computer and confirm installation. The Hub writes the reviewed schedule along with the firmware and verifies the complete flash. The machine stores one offline program. You can also choose **Download offline program** and select that JSON file in a later USB setup. The command-line installer accepts the same file with `--offline-program PATH`. [Zymatic USB setup](../../firmware/zymatic/modified/README.md)
 
+## Physical acceptance check
+
+Use this procedure with a stock 1.1.14 Zymatic and a Hub reachable on its LAN. Record the Hub revision, firmware shown in **About Zymatic**, connection type and local test date. This physical check is pending.
+
+1. Configure DNS and LAN port 80 as described above. Publish one distinct, previously reviewed program for the correct serial. Record the recipe name, revision and steps shown in the Hub preview.
+2. On the brewer, select the **PicoBrew Hub** account and refresh its recipes. Confirm that the expected name appears on the actual LCD. Record the display observation and the Hub's menu-request time separately.
+3. Prepare the machine for that program according to its owner manual and loading instructions. Select and start it at the physical dial. In **Brew journal**, verify that the session appears for this brewer and that reported temperatures and step changes agree with observations at the machine.
+4. When the operator ends the session normally, verify that the journal records **Ended** and retains its final reports after reloading. Download the CSV and check the observed times and sensor fields against the journal. Record any missing report or mismatch and the network interface used. If both Wi-Fi and Ethernet must be qualified, repeat the check on the other interface.
+
 ## Compatibility beyond Zymatic
 
-Standalone S, Pro, C and generic Z use the Hub's REST adapters. PicoStill and PicoFerm expose their respective standalone capabilities. The community server documents separate stock protocols for the Pico, Z-series, Still and Ferm families, so additional adapters are feasible on a model-by-model basis. A stock protocol can expose telemetry or fetch recipes without providing remote controls or OTA. [Community implementation](https://github.com/chiefwigms/picobrew_pico/tree/36acae3003845b72568ef5f7d6cf168acb6f9b69/app/main)
+Standalone S, Pro, C and generic Z use the Hub's REST adapters. Original Pico S, Pro and C use separate menu and report routes. Stock Z uses its local Program Maker interface. PicoStill and PicoFerm expose their respective standalone capabilities. [Connect a stock Pico or Z](stock-brewers.md) · [Community implementation](https://github.com/chiefwigms/picobrew_pico/tree/36acae3003845b72568ef5f7d6cf168acb6f9b69/app/main)

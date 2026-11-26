@@ -1,5 +1,6 @@
 import './fleet.scss'
-import {BrewGroupManager, BrewInvitations} from '../components/BrewGroups'
+import { BrewGroupManager, BrewInvitations } from '../components/BrewGroups'
+import { StockBrewerFleet, useStockBrewerFleet } from '../components/StockBrewerFleet'
 import { careTasksDue } from '../components/MachineCare'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -47,6 +48,8 @@ export default function Fleet({
 }) {
   const hub = useHub()
   const { devices, brews, unit, navigate, loading } = hub
+  const stock = useStockBrewerFleet(!hub.session.demo)
+  const stockCount = stock.picos.length + stock.zs.length
   const [editing, setEditing] = useState<Device | 'new' | null>(addMachine ? 'new' : null)
   const updates = useResource<FirmwareUpdates>(
     devices.some((d) => d.adapter === 'pico-standalone') ? '/firmware/updates' : null,
@@ -93,7 +96,16 @@ export default function Fleet({
     <>
       <PageTitle
         title="Brewery"
-        description={`${devices.filter((d) => d.online).length} of ${devices.length} machines connected · ${active.length} session${active.length === 1 ? '' : 's'} in progress${attention.length ? ` · ${attention.length} awaiting attention` : ''}`}
+        description={[
+          devices.length || !stockCount
+            ? `${devices.filter((d) => d.online).length} of ${devices.length} machines connected`
+            : '',
+          stockCount ? `${stockCount} stock ${stockCount === 1 ? 'brewer' : 'brewers'}` : '',
+          `${active.length} monitored session${active.length === 1 ? '' : 's'} in progress`,
+          attention.length ? `${attention.length} awaiting attention` : '',
+        ]
+          .filter(Boolean)
+          .join(' · ')}
         actions={
           <>
             <Button variant="secondary" onClick={() => setEditing('new')}>
@@ -119,8 +131,8 @@ export default function Fleet({
       {firmwareID && (
         <MachineFirmwareDialog deviceID={firmwareID} onClose={() => setFirmwareID('')} />
       )}
-      <BrewGroupManager devices={devices}/>
-      <BrewInvitations devices={devices}/>
+      <BrewGroupManager devices={devices} />
+      <BrewInvitations devices={devices} />
       {devices.length ? (
         <div className="brewery-list">
           {ordered.map((device) => (
@@ -133,11 +145,11 @@ export default function Fleet({
             />
           ))}
         </div>
-      ) : (
+      ) : !stockCount && !stock.loading && !stock.error ? (
         <div className="panel">
           <Empty
             title="Make room for your first brewer."
-            description="Connect a Pico running standalone firmware, then manage it here alongside your other machines."
+            description="Add a brewer running stock or standalone firmware."
             action={
               <Button onClick={() => setEditing('new')}>
                 <Plus size={16} />
@@ -146,7 +158,8 @@ export default function Fleet({
             }
           />
         </div>
-      )}
+      ) : null}
+      <StockBrewerFleet fleet={stock} />
       <div className="overview-bottom">
         <section className="panel trace-panel">
           <SectionHeading

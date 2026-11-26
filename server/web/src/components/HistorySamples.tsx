@@ -5,6 +5,7 @@ import {
   unheatedTarget,
   sampleReading,
   zymaticReportLabel,
+  picoReportLabel,
   zymaticReportState,
 } from '../lib/history'
 import { sensorValue } from '../lib/capabilities'
@@ -59,7 +60,9 @@ export function HistorySamples({
         <thead>
           <tr>
             <th>Time</th>
-            {brew.source === 'zymatic-report' && <th>Brewer report</th>}
+            {['zymatic-report', 'stock-pico-report'].includes(brew.source) && (
+              <th>Brewer report</th>
+            )}
             {columns.map(([key, label]) => (
               <th key={key}>{brew.field_metadata?.[key]?.label || label}</th>
             ))}
@@ -79,6 +82,7 @@ export function HistorySamples({
           {brew.samples.slice(page * 100, (page + 1) * 100).map((sample: Sample, index) => (
             <tr key={index}>
               <td>{clockTime(sample.elapsed_ms)}</td>
+              {sample.stock_pico && <td>{picoReportLabel(sample.stock_pico)}</td>}
               {sample.stock_zymatic && (
                 <td>
                   {[
@@ -114,7 +118,7 @@ export function HistorySamples({
               {stateColumns.map(([key]) => (
                 <td key={key}>{sessionState(brew, key, sample[key], sample.source)}</td>
               ))}
-              <td>{sample.stock_zymatic ? 'Brewer report' : sample.source}</td>
+              <td>{sample.stock_zymatic || sample.stock_pico ? 'Brewer report' : sample.source}</td>
             </tr>
           ))}
         </tbody>

@@ -52,7 +52,7 @@ var stockFieldMetadata = map[string]domain.FieldMetadata{
 	"sensor_backup_heat_f": {Label: "Backup heater", Unit: "F", Kind: "temperature"},
 }
 
-func (s *Server) stockJournal(b stockBrewer, version int64, at time.Time) store.ZymaticJournalWrite {
+func (s *Server) stockJournal(b stockBrewer, version int64, at time.Time) store.StockJournalWrite {
 	session := b.Session
 	brew := domain.Brew{
 		ID: stockBrewID(session.ID), DeviceID: stockMemberPrefix + b.Machine,
@@ -72,7 +72,7 @@ func (s *Server) stockJournal(b stockBrewer, version int64, at time.Time) store.
 			break
 		}
 	}
-	return store.ZymaticJournalWrite{Machine: b.Machine, MachineRecord: b, MachineRevision: version, Brew: brew, At: at}
+	return store.StockJournalWrite{MachineKind: stockKind, Machine: b.Machine, MachineRecord: b, MachineRevision: version, Brew: brew, At: at}
 }
 
 func reportNumber(value string) *int {
@@ -197,14 +197,14 @@ func (s *Server) stockDiagnosticsReport(w http.ResponseWriter, op string, q url.
 		now := time.Now().UTC()
 		var b domain.Brew
 		_, err := s.db.Get("brew", stockBrewID(sid), &b)
-		var write store.ZymaticJournalWrite
+		var write store.StockJournalWrite
 		switch {
 		case err == nil:
 			if b.Source != stockReportSource || b.StockSerial != machine {
 				http.Error(w, "unknown session", 404)
 				return
 			}
-			write = store.ZymaticJournalWrite{Brew: b, At: now}
+			write = store.StockJournalWrite{Brew: b, At: now}
 		case errors.Is(err, store.ErrNotFound):
 			// An in-flight session created by an older Hub has no journal yet.
 			var legacy stockBrewer
@@ -225,7 +225,7 @@ func (s *Server) stockDiagnosticsReport(w http.ResponseWriter, op string, q url.
 		}
 		if write.Brew.ID != "" {
 			write.Reading = newStockReading(domain.ZymaticReport{Kind: "error", ErrorCode: code})
-			if err := s.db.WriteZymaticJournal(write); err != nil {
+			if err := s.db.WriteStockJournal(write); err != nil {
 				http.Error(w, "storage unavailable", 500)
 				return
 			}

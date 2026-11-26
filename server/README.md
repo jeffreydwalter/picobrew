@@ -2,7 +2,7 @@
 
 The Hub runs on your computer or Raspberry Pi and serves a browser interface for machine controls, recipes, and brew history. For first-time setup, machine compatibility, and your first brew, start with the [PicoBrew owner guide](../README.md).
 
-Custom Pico S, Pro, C, generic Z-series, PicoStill, and PicoFerm firmware reports its controls and sensors to the Hub. Custom Zymatic firmware offers a wired interface whose capabilities depend on the installed build. An unmodified Zymatic 1.1.14 can fetch recipes from the Hub over its original LAN protocol. Stock Pico S, Pro, C, and Z-series firmware have no equivalent Hub adapter. [Feature coverage](docs/coverage.md) · [Stock Zymatic setup](docs/stock-zymatic.md)
+Custom Pico S, Pro, C, generic Z-series, PicoStill, and PicoFerm firmware reports its controls and sensors to the Hub. Custom Zymatic firmware offers a wired interface whose capabilities depend on the installed build. On factory firmware, Pico S, Pro and C can fetch recipes and report sessions to the Hub. A Z running the 0.0.119 Program Maker can report its current state and accept a single working recipe for dial start. A stock Zymatic 1.1.14 fetches recipes and reports sessions over its original LAN protocol. [Connect a stock brewer](docs/stock-brewers.md) · [Feature coverage](docs/coverage.md) · [Stock Zymatic setup](docs/stock-zymatic.md)
 
 ## Run locally on Windows, macOS or Linux
 

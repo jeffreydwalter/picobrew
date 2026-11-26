@@ -45,7 +45,7 @@ program. The Hub reads the device's advertised limits rather than assuming other
 models use these values. Maintenance programs use the same source-model and
 capacity rules. A stock Zymatic retrieves its published maintenance programs in the cleaning list. The Hub blocks sending Zymatic maintenance instructions to a Pico S, Pro or C. [Stock Zymatic setup](stock-zymatic.md)
 
-For a standalone Z, direct transfer preserves the selected format, including original Z cloud schedules and PicoPak adapter programs when supported. Each retains its own setup prompts and routing. A stock 0.0.119 Z takes a compatible Program Maker export through its own website. [Z recipes and front panel](family-devices.md#z-recipes-and-front-panel)
+For a standalone Z, direct transfer preserves the selected format, including original Z cloud schedules and PicoPak adapter programs when supported. Each retains its own setup prompts and routing. A registered stock 0.0.119 Z can receive a reviewed Program Maker recipe for dial start. Its own website also accepts compatible exported JSON. [Stock brewer transfers](stock-brewers.md) · [Z recipes and front panel](family-devices.md#z-recipes-and-front-panel)
 
 Before execution, the Hub verifies device identity, idle state, current profile,
 recipe revisions, current inventory and firmware capabilities against the

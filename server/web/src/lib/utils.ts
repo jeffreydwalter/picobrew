@@ -146,6 +146,16 @@ export function newRecipe(): Recipe {
 export function transitions(samples: Sample[]) {
   let previousFlags: number | undefined
   return samples.filter((sample, i) => {
+    if (sample.stock_pico) {
+      const current = sample.stock_pico
+      const previous = samples[i - 1]?.stock_pico
+      return (
+        current.kind !== 'log' ||
+        !!current.event ||
+        current.step !== previous?.step ||
+        current.controller_status !== previous?.controller_status
+      )
+    }
     const report = sample.stock_zymatic
     if (report) {
       if (report.kind !== 'temperatures') return true

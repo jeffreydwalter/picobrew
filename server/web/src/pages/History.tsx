@@ -2,7 +2,7 @@ import { FermentDialog } from '../components/FermentDialog'
 import { MachineCare } from '../components/MachineCare'
 import { ConditioningJournal } from '../components/ConditioningJournal'
 import { sessionState } from '../lib/sessionState'
-import { zymaticReportLabel, zymaticReportState } from '../lib/history'
+import { picoReportLabel, zymaticReportLabel, zymaticReportState } from '../lib/history'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowUpRight,
@@ -266,9 +266,11 @@ function BrewPage({ id, analyze }: { id: string; analyze: boolean }) {
         !d.model_error
     )
   const samples = brew.samples || []
-  const stock = brew.source === 'zymatic-report'
+  const stock = brew.source === 'zymatic-report' || brew.source === 'stock-pico-report'
   const measurements = stock
-    ? samples.filter((row) => row.stock_zymatic?.kind === 'temperatures')
+    ? samples.filter(
+        (row) => row.stock_zymatic?.kind === 'temperatures' || row.stock_pico?.kind === 'log'
+      )
     : samples
   const last = measurements.at(-1)
   return (
@@ -496,7 +498,18 @@ function BrewPage({ id, analyze }: { id: string; analyze: boolean }) {
               <div key={index}>
                 <span className="timeline-dot" />
                 <time>{clockTime(sample.elapsed_ms)}</time>
-                {sample.stock_zymatic ? (
+                {sample.stock_pico ? (
+                  <div>
+                    <strong>{picoReportLabel(sample.stock_pico)}</strong>
+                    {sample.stock_pico.kind === 'log' && (
+                      <small>
+                        {temperature(sample.wort_f, hub.unit)} wort · Controller{' '}
+                        {sample.stock_pico.controller_status} · {sample.stock_pico.seconds_left} s
+                        remaining
+                      </small>
+                    )}
+                  </div>
+                ) : sample.stock_zymatic ? (
                   <div>
                     <strong>{zymaticReportLabel(sample.stock_zymatic)}</strong>
                     <small>{zymaticReportState(sample.stock_zymatic)}</small>
