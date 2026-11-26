@@ -183,6 +183,7 @@ bool Adapter::show_invite() {
 void Adapter::finish_invite(InviteState state) {
     const bool owns_screen = group_screen();
     invite_state_ = state;
+    invite_waking_ = false;
     invite_time_ = ports_.millis(ports_.context);
     if (owns_screen && core_.core.state.id == CoreStateId::Idle && !core_.system_error)
         show_home();
@@ -195,8 +196,25 @@ void Adapter::poll_group() {
     if (group_source_id_[0] && now - group_source_time_ >= OfferLifetime) group_source_id_[0] = 0;
     if (invite_state_ == InviteState::Pending) {
         if (now - invite_time_ >= group_invite_.ttl_ms) finish_invite(InviteState::Expired);
-        else if (!group_ready() || !group_screen() || core_.core.state.id != CoreStateId::Idle ||
-                 core_.core.commands.pending || core_.runtime_commands.pending)
+        else if (!group_ready() || core_.core.state.id != CoreStateId::Idle || core_.core.commands.pending)
+            finish_invite(InviteState::Unavailable);
+        else if (invite_waking_) {
+            // Entering Idle posts the wake screen to Head and Stop to the idle
+            // Runtime. Let both run normally before presenting the invitation.
+            const auto& event = head_.core_events.value;
+            const bool wake_screen = event.type == CoreEventType::StateTransition &&
+                event.argument == static_cast<unsigned>(CoreStateId::Idle) &&
+                event.second_argument == static_cast<unsigned>(CoreStateId::StandBy);
+            if (page_ != Page::Home || encoder_click_ || head_.ui_events.pending ||
+                head_.button_events.pending || head_.encoder_events.pending ||
+                (head_.core_events.pending && !wake_screen) ||
+                (core_.runtime_commands.pending && core_.runtime_commands.value.id != RuntimeCommandId::Stop))
+                finish_invite(InviteState::Unavailable);
+            else if (!head_.core_events.pending && !core_.runtime_commands.pending) {
+                invite_waking_ = false;
+                if (!show_invite()) finish_invite(InviteState::Unavailable);
+            }
+        } else if (!group_screen() || core_.runtime_commands.pending)
             finish_invite(InviteState::Unavailable);
         else if (core_.safeties.filter_missing != invite_filter_missing_ && !show_invite())
             finish_invite(InviteState::Unavailable);
@@ -223,7 +241,8 @@ api::Result Adapter::receive_invite(const GroupInvitation& offer) {
             if (!std::strcmp(seen.id, offer.id)) return {409,"invitation_closed","This group invitation has already been handled"};
         } else if (!slot) slot = &seen;
     }
-    if (!slot || invite_state_ == InviteState::Pending || !group_ready() || !idle() ||
+    const bool waking = core_.core.state.id == CoreStateId::StandBy;
+    if (!slot || invite_state_ == InviteState::Pending || !group_ready() || !idle() || (waking && head_.core_events.pending) ||
         head_.ui_events.pending || head_.encoder_events.pending || head_.button_events.pending)
         return {409,"busy","Group invitations require an idle brewer at its home screen"};
     api::Recipe recipe;
@@ -244,13 +263,17 @@ api::Result Adapter::receive_invite(const GroupInvitation& offer) {
     if (!wake_standby()) return {409,"unavailable","The brewer could not wake for the invitation"};
     group_invite_ = offer;
     invite_state_ = InviteState::Pending;
+    invite_waking_ = waking;
     invite_time_ = now;
     std::strcpy(slot->id, offer.id); slot->time = now;
     api::detail::copy(invite_name_, sizeof invite_name_, label);
-    if (!show_invite()) {
+    if (!waking && !show_invite()) {
         finish_invite(InviteState::Unavailable);
         return {503,"display_unavailable","The brewer could not display the group invitation"};
     }
+    // Keep an already-awake recipient from entering automatic standby while
+    // the operator reads the prompt. Duplicate deliveries return above.
+    core_.encoder.activity_date = ports_.millis(ports_.context);
     return {};
 }
 
@@ -266,6 +289,7 @@ api::Result Adapter::respond_invite(const char* id, const char* op) {
         return {409,"invitation_expired","The group invitation has expired"};
     }
     if (!accept) { finish_invite(state); return {}; }
+    if (invite_waking_) return {409,"busy","The brewer is waking. Try again when the invitation appears."};
     if (!group_ready() || !group_screen() || core_.core.state.id != CoreStateId::Idle ||
         core_.core.commands.pending || core_.runtime_commands.pending) {
         finish_invite(InviteState::Unavailable);

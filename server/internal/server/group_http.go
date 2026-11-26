@@ -31,10 +31,8 @@ func (s *Server) brewInvites(w http.ResponseWriter, r *http.Request) {
 		if id != "" && id != i.TargetDeviceID {
 			continue
 		}
-		if err = s.expireInvite(&i, groupFor(groups, i.TargetDeviceID), now); err != nil {
-			s.storeError(w, err)
-			return
-		}
+		// A dial response can precede the deadline and reach the Hub on its
+		// next poll. Listing invitations only determines what is visible.
 		if i.ExpiresAt.After(now) && i.State != "withdrawn" && inviteMember(groupFor(groups, i.TargetDeviceID), &i) {
 			out = append(out, i)
 		}

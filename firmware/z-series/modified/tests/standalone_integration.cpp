@@ -978,6 +978,25 @@ void group_brew() {
     World origin, target;
     auto r = recipe();
     assert(origin.engine.recipe_store(r).ok() && target.engine.recipe_store(r).ok());
+    auto previous = r;
+    std::strcpy(previous.id,"previous");
+    std::strcpy(previous.name,"Previous local brew");
+    std::strcpy(previous.steps[0].name,"Earlier hold");
+    previous.steps[0].minutes=11;
+    assert(target.engine.recipe_store(previous).ok() && target.adapter.load_recipe(previous,false).ok());
+    target.head_tick();
+    physical_group_button(target,1);
+    assert(target.adapter.idle());
+    const auto check_buffer = [&](const api::Recipe& expected) {
+        const auto& program=target.core.program.record();
+        const auto& view=program.view;
+        assert(program.type==SessionType::LocalBrew && !std::strcmp(view.name,expected.name));
+        assert(view.string_count>1 && !std::strcmp(view.strings[1],expected.steps[0].name));
+        const unsigned hold=60u*expected.steps[0].minutes;
+        assert(std::any_of(view.code,view.code+view.code_size,[hold](Instruction i) {
+            return i.opcode==OpCode::HoldFor && i.argument==hold;
+        }));
+    };
     assert(origin.request(PICO_HTTP_GET,"/api/v1",nullptr,200).find("\"group_brewing_v1\":true")!=std::string::npos);
     assert(origin.adapter.load_recipe(r,true).ok());
     assert(origin.request(PICO_HTTP_GET,group_path,nullptr,200)=="{\"source\":null,\"invite\":null}");
@@ -994,15 +1013,26 @@ void group_brew() {
     assert(target.head.encoder.state.menu.selected==0 && !std::strcmp(target.head.screens.menu_data.items[0].text.data(),"Decline"));
     const auto stale_click=target.head.screens.menu_data.items[1].event;
     assert(target.request(PICO_HTTP_POST,group_path,post.c_str(),200)==first);
+    check_buffer(previous);
+    World rebooted(&target.files);
+    assert(rebooted.request(PICO_HTTP_GET,group_path,nullptr,200)=="{\"source\":null,\"invite\":null}");
+    rebooted.request(PICO_HTTP_POST,group_path,R"({"op":"accept","id":"1000000000000002"})",409);
+    assert(!rebooted.core.core.commands.pending && rebooted.adapter.idle());
     physical_group_button(target,0);
     assert(target.request(PICO_HTTP_POST,group_path,post.c_str(),200).find("\"declined\"")!=std::string::npos);
     assert(!target.core.core.commands.pending);
+    check_buffer(previous);
+    target.request(PICO_HTTP_POST,group_path,group_recipe_offer(target.engine.recipe_revision(),"1000000000000004").c_str(),200);
+    target.now+=120000;
+    assert(target.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"expired\"")!=std::string::npos);
+    check_buffer(previous);
     const auto another=group_recipe_offer(target.engine.recipe_revision(),"1000000000000003");
     target.request(PICO_HTTP_POST,group_path,another.c_str(),200);
     assert(target.head.receive_ui(stale_click));target.head_tick();
     assert(!target.core.core.commands.pending);
     physical_group_button(target,1);
     assert(target.core.core.commands.pending && target.dispatch() && target.core.core.state.id==CoreStateId::Starting);
+    check_buffer(r);
     auto accepted=target.request(PICO_HTTP_GET,group_path,nullptr,200);
     assert(accepted.find("\"source\":null")!=std::string::npos && accepted.find("\"state\":\"accepted\"")!=std::string::npos);
     target.request(PICO_HTTP_POST,group_path,R"({"op":"accept","id":"1000000000000003"})",200);
@@ -1294,6 +1324,35 @@ void group_routines() {
     assert(checkpoint.recipe().z_program && checkpoint.recipe().steps[0].z.seconds==73 && checkpoint.recipe().steps[1].z.pause);
 }
 void group_interlocks() {
+    // A sleeping recipient wakes through the same Core transition as a local
+    // remote start. Let Head draw the wake screen and Runtime consume its Stop.
+    World sleeping;
+    assert(sleeping.core.core.transition(CoreStateId::StandBy)==CoreFlowResult::Ok);
+    sleeping.head_tick();
+    assert(sleeping.adapter.service_stage(CoreTickStage::Runtime,sleeping.now));
+    sleeping.request(PICO_HTTP_POST,group_path,rinse_invite,200);
+    sleeping.request(PICO_HTTP_POST,group_path,accept_rinse,409);
+    assert(!sleeping.core.core.commands.pending);
+    sleeping.head_tick();
+    assert(sleeping.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"pending\"")!=std::string::npos);
+    assert(sleeping.adapter.service_stage(CoreTickStage::Runtime,sleeping.now));
+    sleeping.adapter.poll();
+    assert(sleeping.request(PICO_HTTP_GET,group_path,nullptr,200).find("\"pending\"")!=std::string::npos);
+    assert(!std::strcmp(sleeping.head.screens.state.title.data(),"Group Brewing"));
+    physical_group_button(sleeping,1);
+    assert(sleeping.dispatch() && sleeping.core.core.state.id==CoreStateId::Starting);
+
+    World near_standby;
+    near_standby.core.encoder.activity_date=near_standby.core.core.state.state_date=near_standby.now;
+    near_standby.now+=near_standby.core.core.standby_delay_ms-1;
+    near_standby.request(PICO_HTTP_POST,group_path,rinse_invite,200);
+    near_standby.now+=2;
+    near_standby.core.refresh_observed();
+    assert(near_standby.core.core.advance(near_standby.now)==CoreFlowResult::Ok);
+    assert(near_standby.core.core.state.id==CoreStateId::Idle);
+    near_standby.request(PICO_HTTP_POST,group_path,accept_rinse,200);
+    assert(near_standby.dispatch() && near_standby.core.core.state.id==CoreStateId::Starting);
+
     World w;
     assert(w.engine.recipe_store(recipe()).ok());
     // Source labels and commands cannot be supplied as executable programs.
